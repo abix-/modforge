@@ -18,12 +18,13 @@
 
 use modforge::hook::Hook;
 use modforge::keen::{
-    LookupKey, PendingEvents, find_in, find_in_exe, fixed_to_m, map_keys, registry,
+    LookupKey, Outboxes, PROGRAM_HOST_ONLY, PROGRAM_SYSTEM, PendingEvents, ProgramCtx, ProgramDef,
+    add_programs, find_in, find_in_exe, fixed_to_m, map_keys, outboxes, registry,
 };
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -36,8 +37,6 @@ const SIM_STEP_PERIOD: &str = "48 8B 86 {storage.clock_period:d32} 48 85 D2 75 0
 const DELIVER_EVENTS: &str = "40 56 41 55 41 56 48 83 EC 40 48 8B 31 45 33 ED 4C 8B F1 4C 39 A9 {gameplay/storage.pending_count:d32} 0F 86";
 const DELIVER_PENDING: &str = "4D 8B BE {gameplay/storage.pending:d32} 33 ED 4C 03 F9 41 39 6F {gameplay/buffer.used:d8} 0F 86";
 const DELIVER_RECORD: &str = "4C 8B 9E {gameplay/events.map.cap:d32} 8B FD 49 03 3F 83 BE {gameplay/events.map.count:d32} 00 44 0F B6 67 {gameplay/record.size:d8} 44 8B 0F 74 ?? 48 8B 9E {gameplay/events.map.bits:d32}";
-const EMIT_EVENT: &str =
-    "48 83 EC 28 4C 8B D9 41 81 F8 00 01 00 00 73 ?? 45 8B D0 41 8B C0 41 83 E2 07";
 const GET_COMPONENT: &str =
     "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8D BA {world.storage:d32} 44 89";
 const GET_ENTITY_TRANSFORM: &str =
@@ -59,7 +58,6 @@ const ACCEPT_EVENT: &str = "keen::ecs::AcceptOfferedInteractionEvent";
 const OFFER_COMPONENT: &str = "keen::ecs::InteractionOfferRuntime";
 
 type DeliverFn = unsafe extern "system" fn(usize) -> usize;
-type EmitFn = unsafe extern "system" fn(usize, u32, u32, u16) -> *mut u8;
 type GetComponentFn =
     unsafe extern "system" fn(*mut [usize; 2], usize, u32, u32) -> *mut [usize; 2];
 type GetTransformFn = unsafe extern "system" fn(usize, u32) -> *const i64;
@@ -104,7 +102,6 @@ struct Armed {
     world_storage: usize,
     clock: usize,
     clock_period: usize,
-    emit: EmitFn,
     get_component: GetComponentFn,
     get_transform: GetTransformFn,
     loot: LootLayout,
@@ -143,8 +140,6 @@ static SERVER_STEPS: AtomicU64 = AtomicU64::new(0);
 /// Auto loot on, and its radius in meters (f64 bits).
 static AUTO: AtomicBool = AtomicBool::new(true);
 static AUTO_RADIUS: AtomicU64 = AtomicU64::new(0x4018_0000_0000_0000); // 6.0
-/// The program id the game's own loot events carry, once one is seen.
-static LOOT_PROGRAM: AtomicU32 = AtomicU32::new(u32::MAX);
 /// The slowest auto-loot scan so far, in microseconds.
 static SCAN_WORST_US: AtomicU64 = AtomicU64::new(0);
 /// Host -> server step it was last sent, so a pile is sent once per
@@ -152,8 +147,82 @@ static SCAN_WORST_US: AtomicU64 = AtomicU64::new(0);
 static SENT_AT: Mutex<Option<HashMap<u32, u64>>> = Mutex::new(None);
 /// Corpses seen and not looted yet.
 static VISITS: Mutex<Option<HashMap<u32, Visit>>> = Mutex::new(None);
-/// The pending buffer index (<< 16) and program of the last send.
-static LAST_BUFFER: AtomicU64 = AtomicU64::new(u64::MAX);
+/// The mod's own program: it sends these, in this order (outbox 0, 1).
+const PROGRAM: &str = "modforge_loot";
+const PROGRAM_EVENTS: &[&str] = &["AcceptOfferedInteractionEvent", "LootInteractionEvent"];
+const OUTBOX_ACCEPT: usize = 0;
+const OUTBOX_LOOT: usize = 1;
+/// One event waiting for the program's next update.
+struct Outgoing {
+    outbox: usize,
+    host: u32,
+    offer: u32,
+}
+static OUTGOING: Mutex<Vec<Outgoing>> = Mutex::new(Vec::new());
+/// Updates of the mod's program, so a send can tell it is running.
+static PROGRAM_RUNS: AtomicU64 = AtomicU64::new(0);
+static SEND_FAILS: AtomicU64 = AtomicU64::new(0);
+/// The world's storage and kind offsets, for picking the server world
+/// at registration.
+static WORLD_KIND: OnceLock<(usize, usize)> = OnceLock::new();
+
+fn queue(out: Outgoing) -> Json {
+    if PROGRAM_RUNS.load(Ordering::Relaxed) == 0 {
+        return json!({"error": "the mod's program is not running: inject at the main menu, then load the world"});
+    }
+    let j = json!({"queued": true, "host": out.host, "offer": out.offer});
+    OUTGOING.lock().unwrap().push(out);
+    j
+}
+
+/// The server world: storage kind 0.
+fn is_server(world: usize) -> bool {
+    let Some((storage, kind)) = WORLD_KIND.get() else {
+        return false;
+    };
+    // SAFETY: RegisterAllPrograms hands a live world.
+    unsafe { *((world + storage + kind) as *const u8) == 0 }
+}
+
+/// The mod's program: each step it sends what auto loot queued, from
+/// its own outboxes.
+unsafe extern "system" fn loot_program(ctx: *mut ProgramCtx) {
+    PROGRAM_RUNS.fetch_add(1, Ordering::Relaxed);
+    let Some(a) = ARMED.get() else { return };
+    let outgoing = std::mem::take(&mut *OUTGOING.lock().unwrap());
+    if outgoing.is_empty() {
+        return;
+    }
+    let r = modforge::seh::guard(|| {
+        // SAFETY: the engine's ctx for this update.
+        let Some(boxes) = (unsafe { outboxes(ctx, PROGRAM_EVENTS.len()) }) else {
+            SEND_FAILS.fetch_add(outgoing.len() as u64, Ordering::Relaxed);
+            modforge::log!(
+                "{PROGRAM}: the job does not have {} outboxes; nothing sent",
+                PROGRAM_EVENTS.len()
+            );
+            return;
+        };
+        for out in &outgoing {
+            // SAFETY: inside this update, with its outboxes.
+            if unsafe { a.write(&boxes, out) } {
+                if out.outbox == OUTBOX_LOOT {
+                    LOOT_SENT.fetch_add(1, Ordering::Relaxed);
+                }
+            } else {
+                SEND_FAILS.fetch_add(1, Ordering::Relaxed);
+                modforge::log!(
+                    "{PROGRAM}: outbox {} full; host {} not sent",
+                    out.outbox,
+                    out.host
+                );
+            }
+        }
+    });
+    if r.is_err() {
+        FAULTS.fetch_add(1, Ordering::Relaxed);
+    }
+}
 /// The entities near the player, from the last full scan.
 static NEAR: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 /// The slowest quick check so far, in microseconds.
@@ -340,7 +409,7 @@ impl Armed {
                     });
                     if !v.opened {
                         if let Some((offer, true)) = self.offer_of(world, id) {
-                            let r = self.accept(storage, id, offer);
+                            let r = self.accept(id, offer);
                             modforge::log!("auto loot open corpse {id}: {r}");
                             // a failed open is tried again next check
                             v.opened = r.get("error").is_none();
@@ -353,7 +422,7 @@ impl Armed {
                     }
                     visits.remove(&id);
                 }
-                let r = self.loot_all(storage, id);
+                let r = self.loot_all(id);
                 modforge::log!(
                     "auto loot {} {id} at {:.1} m: {r}",
                     if ground { "item" } else { "corpse" },
@@ -437,27 +506,23 @@ impl Armed {
         }
     }
 
-    unsafe fn loot_all(&self, storage: usize, host: u32) -> Json {
-        let flags = [self.loot.loot_all, self.loot.bypass];
-        // SAFETY: on the sim thread before delivery.
-        match unsafe { self.send(storage, &self.loot.ev, host, 0, &flags) } {
-            Ok((program, time)) => {
-                LOOT_SENT.fetch_add(1, Ordering::Relaxed);
-                json!({"sent": true, "host": host, "program": program, "time": time})
-            }
-            Err(e) => json!({"error": e}),
-        }
+    /// Queues a loot-all from the player to host, as holding E does;
+    /// the mod's own program sends it this step.
+    fn loot_all(&self, host: u32) -> Json {
+        queue(Outgoing {
+            outbox: OUTBOX_LOOT,
+            host,
+            offer: 0,
+        })
     }
 
-    /// Opens host's offer, as pressing E does.
-    unsafe fn accept(&self, storage: usize, host: u32, offer: u32) -> Json {
-        // SAFETY: on the sim thread before delivery.
-        match unsafe { self.send(storage, &self.accept, host, offer, &[]) } {
-            Ok((program, time)) => {
-                json!({"opened": true, "host": host, "offer": offer, "program": program, "time": time})
-            }
-            Err(e) => json!({"error": e}),
-        }
+    /// Queues opening host's offer, as pressing E does.
+    fn accept(&self, host: u32, offer: u32) -> Json {
+        queue(Outgoing {
+            outbox: OUTBOX_ACCEPT,
+            host,
+            offer,
+        })
     }
 
     /// host's InteractionOfferRuntime: (offer id, usable), None when it
@@ -476,65 +541,30 @@ impl Armed {
         }
     }
 
-    /// Sends one interaction event from the player to host: time,
-    /// guest, host, offer, and each byte in `flags` set to 1. Returns
-    /// (program, time).
-    unsafe fn send(
-        &self,
-        storage: usize,
-        ev: &EventLayout,
-        host: u32,
-        offer: u32,
-        flags: &[usize],
-    ) -> Result<(u16, i64), &'static str> {
-        // SAFETY: on the sim thread before delivery.
+    /// Writes one queued event into the mod's own outboxes: time, guest
+    /// (the player), host, offer, and for a loot-all lootAll and
+    /// bypassInteraction.
+    unsafe fn write(&self, boxes: &Outboxes, out: &Outgoing) -> bool {
+        let (ev, flags): (&EventLayout, &[usize]) = if out.outbox == OUTBOX_LOOT {
+            (&self.loot.ev, &[self.loot.loot_all, self.loot.bypass])
+        } else {
+            (&self.accept, &[])
+        };
+        // SAFETY: inside the program's update; the event is ev.size
+        // zeroed bytes from EmitEvent.
         unsafe {
-            // Send from a buffer that already holds a program's events,
-            // with that program's id, as that program would: the
-            // program that sends the game's own loot events when it is
-            // known, else the first buffer with events.
-            let wanted = LOOT_PROGRAM.load(Ordering::Relaxed);
-            let mut target = None;
-            let buffers = *((storage + self.pending.pending) as *const usize);
-            let count = *((storage + self.pending.pending_count) as *const u64) as usize;
-            for i in 0..count {
-                let buf = buffers + i * BUFFER_STRIDE;
-                if *((buf + self.pending.used) as *const u32) >= 8 {
-                    let first = *(buf as *const usize);
-                    let program = *((first + 4) as *const u16);
-                    if u32::from(program) == wanted {
-                        target = Some((buf, program));
-                        break;
-                    }
-                    target.get_or_insert((buf, program));
-                }
-            }
-            // No program sent anything this step: the buffer and
-            // program used last time, as that program would send.
-            let last = LAST_BUFFER.load(Ordering::Relaxed);
-            if target.is_none() && last != u64::MAX && ((last >> 16) as usize) < count {
-                target = Some((buffers + (last >> 16) as usize * BUFFER_STRIDE, last as u16));
-            }
-            let Some((buf, program)) = target else {
-                return Err("no event buffer with events this step");
-            };
-            LAST_BUFFER.store(
-                (((buf - buffers) / BUFFER_STRIDE) as u64) << 16 | u64::from(program),
-                Ordering::Relaxed,
-            );
-            let e = (self.emit)(buf, ev.hash, ev.size, program);
+            let e = boxes.emit(out.outbox, ev.hash, ev.size);
             if e.is_null() {
-                return Err("event buffer full");
+                return false;
             }
-            let now = self.now(storage);
-            *(e as *mut i64) = now;
+            *(e as *mut i64) = self.now(boxes.storage);
             *(e.add(ev.guest) as *mut u32) = PLAYER;
-            *(e.add(ev.host) as *mut u32) = host;
-            *(e.add(ev.offer) as *mut u32) = offer;
+            *(e.add(ev.host) as *mut u32) = out.host;
+            *(e.add(ev.offer) as *mut u32) = out.offer;
             for f in flags {
                 *e.add(*f) = 1;
             }
-            Ok((program, now))
+            true
         }
     }
 }
@@ -557,7 +587,7 @@ unsafe extern "system" fn on_deliver(storage: usize) -> usize {
                             let _ = reply.send(a.near(storage, radius));
                         }
                         Request::LootAll { host, reply } => {
-                            let _ = reply.send(a.loot_all(storage, host));
+                            let _ = reply.send(a.loot_all(host));
                         }
                     }
                 }
@@ -580,9 +610,6 @@ unsafe extern "system" fn on_deliver(storage: usize) -> usize {
                 let u32_at = |o: usize| *(data.add(o) as *const u32);
                 let header = data.sub(8);
                 let program = *(header.add(4) as *const u16);
-                if u32_at(ev.guest) == PLAYER && *data.add(a.loot.bypass) == 1 {
-                    LOOT_PROGRAM.store(u32::from(program), Ordering::Relaxed);
-                }
                 modforge::log!(
                     "loot event (world kind {kind}): guest {} host {} offer {} lootAll {} bypass {} program {} time {} now {}",
                     u32_at(ev.guest),
@@ -641,7 +668,6 @@ fn arm() -> Result<(), String> {
     let (_, v) = find_in_exe(WORLD_DESTROY)?;
     let kind = value(&v, "storage.kind")?;
     let world_storage = value(&v, "world.storage")?;
-    let (emit, _) = find_in_exe(EMIT_EVENT)?;
     let (get_component, _) = find_in_exe(GET_COMPONENT)?;
     let (get_transform, _) = find_in_exe(GET_ENTITY_TRANSFORM)?;
     let loot = loot_layout()?;
@@ -657,9 +683,8 @@ fn arm() -> Result<(), String> {
         .map_err(|e| format!("{e:#}"))?;
     // SAFETY: each address is the entry of the game function its
     // signature names, with the ABI Kiln documents.
-    let (emit, get_component, get_transform) = unsafe {
+    let (get_component, get_transform) = unsafe {
         (
-            std::mem::transmute::<usize, EmitFn>(emit),
             std::mem::transmute::<usize, GetComponentFn>(get_component),
             std::mem::transmute::<usize, GetTransformFn>(get_transform),
         )
@@ -677,7 +702,6 @@ fn arm() -> Result<(), String> {
         world_storage,
         clock,
         clock_period,
-        emit,
         get_component,
         get_transform,
         loot,
@@ -703,6 +727,21 @@ fn arm() -> Result<(), String> {
             }
         })
         .keep();
+    // The mod's own program, sending auto loot from its own outboxes.
+    // The engine takes programs only while it sets a world up, so this
+    // works when injected at the main menu.
+    let _ = WORLD_KIND.set((world_storage, kind));
+    if let Err(e) = add_programs(
+        vec![ProgramDef {
+            name: PROGRAM,
+            events_out: PROGRAM_EVENTS,
+            flags: PROGRAM_SYSTEM | PROGRAM_HOST_ONLY,
+            update: loot_program,
+        }],
+        is_server,
+    ) {
+        modforge::log!("events: program {PROGRAM} not added: {e}");
+    }
     Ok(())
 }
 
@@ -772,7 +811,8 @@ pub fn register() {
                     "radius": f64::from_bits(AUTO_RADIUS.load(Ordering::Relaxed)),
                     "server_steps": SERVER_STEPS.load(Ordering::Relaxed),
                     "loot_sent": LOOT_SENT.load(Ordering::Relaxed),
-                    "loot_program": LOOT_PROGRAM.load(Ordering::Relaxed),
+                    "program_runs": PROGRAM_RUNS.load(Ordering::Relaxed),
+                    "send_fails": SEND_FAILS.load(Ordering::Relaxed),
                     "slowest_scan_us": SCAN_WORST_US.load(Ordering::Relaxed),
                     "slowest_check_us": CHECK_WORST_US.load(Ordering::Relaxed),
                 }))
