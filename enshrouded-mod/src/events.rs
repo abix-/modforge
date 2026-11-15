@@ -594,6 +594,27 @@ unsafe extern "system" fn on_deliver(storage: usize) -> usize {
                     *(data as *const i64),
                     a.now(storage)
                 );
+                // What the host is, so the game's own hold-E picks can
+                // be set against what auto loot takes.
+                if kind == 0 {
+                    let world = storage - a.world_storage;
+                    let host = u32_at(ev.host);
+                    let has: Vec<&str> = a
+                        .components
+                        .iter()
+                        .filter(|(_, h)| a.has(world, *h, host))
+                        .map(|(n, _)| n.as_str())
+                        .collect();
+                    let inventory = a.has(world, a.inventory, host);
+                    let taken = if !inventory && a.has(world, a.pickup_item, host) {
+                        "item"
+                    } else if inventory && a.has(world, a.dead_marker, host) {
+                        "corpse"
+                    } else {
+                        "NOT TAKEN"
+                    };
+                    modforge::log!("loot host {host}: auto loot {taken}; components {has:?}");
+                }
             });
         }
     });
