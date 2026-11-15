@@ -1363,6 +1363,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mainsequence-mod"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "memoffset",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "ueforge",
+ "widestring",
+ "windows-sys 0.61.2",
+ "zerocopy",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
