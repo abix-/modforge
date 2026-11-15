@@ -1,0 +1,22 @@
+[package]
+name = "enshrouded-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Enshrouded mod. Keen Games' own engine, native PE, no anti-cheat
+# loaded. Runs as its own program next to the game and reads its
+# memory read-only (modforge::process_memory), as poe2-mod does.
+# Never loaded into the game, never writes to it.
+
+[dependencies]
+modforge = { path = "../modforge" }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+# Section kinds for patterns.find; same version patternsleuth uses.
+object = { version = "0.32", default-features = false, features = ["read"] }
+
+[lints]
+workspace = true
