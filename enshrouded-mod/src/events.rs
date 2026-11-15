@@ -152,6 +152,8 @@ static SCAN_WORST_US: AtomicU64 = AtomicU64::new(0);
 static SENT_AT: Mutex<Option<HashMap<u32, u64>>> = Mutex::new(None);
 /// Corpses seen and not looted yet.
 static VISITS: Mutex<Option<HashMap<u32, Visit>>> = Mutex::new(None);
+/// The pending buffer index (<< 16) and program of the last send.
+static LAST_BUFFER: AtomicU64 = AtomicU64::new(u64::MAX);
 /// The entities near the player, from the last full scan.
 static NEAR: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 /// The slowest quick check so far, in microseconds.
@@ -337,10 +339,11 @@ impl Armed {
                         opened: false,
                     });
                     if !v.opened {
-                        v.opened = true;
                         if let Some((offer, true)) = self.offer_of(world, id) {
                             let r = self.accept(storage, id, offer);
                             modforge::log!("auto loot open corpse {id}: {r}");
+                            // a failed open is tried again next check
+                            v.opened = r.get("error").is_none();
                             sent += 1;
                             if sent >= SENDS_PER_SCAN {
                                 break;
@@ -356,6 +359,9 @@ impl Armed {
                     if ground { "item" } else { "corpse" },
                     d2.sqrt()
                 );
+                if r.get("error").is_some() {
+                    continue; // tried again at the next check
+                }
                 sent_at.insert(id, step);
                 sent += 1;
                 if sent >= SENDS_PER_SCAN {
@@ -503,9 +509,19 @@ impl Armed {
                     target.get_or_insert((buf, program));
                 }
             }
+            // No program sent anything this step: the buffer and
+            // program used last time, as that program would send.
+            let last = LAST_BUFFER.load(Ordering::Relaxed);
+            if target.is_none() && last != u64::MAX && ((last >> 16) as usize) < count {
+                target = Some((buffers + (last >> 16) as usize * BUFFER_STRIDE, last as u16));
+            }
             let Some((buf, program)) = target else {
                 return Err("no event buffer with events this step");
             };
+            LAST_BUFFER.store(
+                (((buf - buffers) / BUFFER_STRIDE) as u64) << 16 | u64::from(program),
+                Ordering::Relaxed,
+            );
             let e = (self.emit)(buf, ev.hash, ev.size, program);
             if e.is_null() {
                 return Err("event buffer full");
