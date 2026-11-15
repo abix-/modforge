@@ -55,6 +55,8 @@ const SIM_STEP_SCOPE: usize = 8192;
 const PLAYER: u32 = 1;
 
 const LOOT_EVENT: &str = "keen::ecs::LootInteractionEvent";
+const ACCEPT_EVENT: &str = "keen::ecs::AcceptOfferedInteractionEvent";
+const OFFER_COMPONENT: &str = "keen::ecs::InteractionOfferRuntime";
 
 type DeliverFn = unsafe extern "system" fn(usize) -> usize;
 type EmitFn = unsafe extern "system" fn(usize, u32, u32, u16) -> *mut u8;
@@ -62,15 +64,37 @@ type GetComponentFn =
     unsafe extern "system" fn(*mut [usize; 2], usize, u32, u32) -> *mut [usize; 2];
 type GetTransformFn = unsafe extern "system" fn(usize, u32) -> *const i64;
 
-/// The loot event's hash, size and field offsets, from the type tables.
-struct LootLayout {
+/// An interaction event's hash, size and field offsets, from the type
+/// tables.
+struct EventLayout {
     hash: u32,
     size: u32,
     guest: usize,
     host: usize,
     offer: usize,
+}
+
+/// The loot event: an interaction event with lootAll and
+/// bypassInteraction.
+struct LootLayout {
+    ev: EventLayout,
     loot_all: usize,
     bypass: usize,
+}
+
+/// The corpse's offer (InteractionOfferRuntime): its id and whether it
+/// is switched off.
+struct OfferLayout {
+    hash: u32,
+    offer: usize,
+    disabled: usize,
+}
+
+/// One corpse on its way to the bag, as kiln-auto-loot's VisitTable:
+/// first seen, then opened (the accept, as pressing E), then looted.
+struct Visit {
+    first: u64,
+    opened: bool,
 }
 
 struct Armed {
@@ -84,6 +108,8 @@ struct Armed {
     get_component: GetComponentFn,
     get_transform: GetTransformFn,
     loot: LootLayout,
+    accept: EventLayout,
+    offer: OfferLayout,
     /// (name, hash) of the components `loot.near` looks for.
     components: Vec<(String, u32)>,
     /// What auto loot takes, as kiln-auto-loot finds it
@@ -124,6 +150,11 @@ static SCAN_WORST_US: AtomicU64 = AtomicU64::new(0);
 /// Host -> server step it was last sent, so a pile is sent once per
 /// [`RESEND_STEPS`].
 static SENT_AT: Mutex<Option<HashMap<u32, u64>>> = Mutex::new(None);
+/// Corpses seen and not looted yet.
+static VISITS: Mutex<Option<HashMap<u32, Visit>>> = Mutex::new(None);
+/// A new corpse waits 1 s before it is opened, so the game can fill it
+/// (kiln-auto-loot's OpenDelay default).
+const OPEN_DELAY_STEPS: u64 = 60;
 /// Auto loot scans once a second (60 steps).
 const SCAN_STEPS: u64 = 60;
 /// A host is sent again after 10 s if it is still there.
@@ -139,25 +170,56 @@ fn value(values: &[(String, u64)], name: &str) -> Result<usize, String> {
         .ok_or_else(|| format!("no {name}"))
 }
 
-fn loot_layout() -> Result<LootLayout, String> {
+/// A type by full name: (hash, size, field offset by name).
+#[allow(clippy::type_complexity)]
+fn type_fields(
+    name: &str,
+) -> Result<(u32, u32, impl Fn(&str) -> Result<usize, String> + '_), String> {
     let reg = registry()?;
     let ty = reg
-        .get_by_name(LookupKey::Qualified(LOOT_EVENT))
-        .ok_or_else(|| format!("no type {LOOT_EVENT}"))?;
-    let field = |name: &str| {
+        .get_by_name(LookupKey::Qualified(name))
+        .ok_or_else(|| format!("no type {name}"))?;
+    let field = move |f: &str| {
         ty.struct_fields
-            .get(name)
-            .map(|f| f.data_offset as usize)
-            .ok_or_else(|| format!("{LOOT_EVENT} has no {name}"))
+            .get(f)
+            .map(|x| x.data_offset as usize)
+            .ok_or_else(|| format!("{name} has no {f}"))
     };
+    Ok((ty.qualified_hash, ty.size, field))
+}
+
+fn loot_layout() -> Result<LootLayout, String> {
+    let (hash, size, field) = type_fields(LOOT_EVENT)?;
     Ok(LootLayout {
-        hash: ty.qualified_hash,
-        size: ty.size,
-        guest: field("guestId")?,
-        host: field("hostId")?,
-        offer: field("offerId")?,
+        ev: EventLayout {
+            hash,
+            size,
+            guest: field("guestId")?,
+            host: field("hostId")?,
+            offer: field("offerId")?,
+        },
         loot_all: field("lootAll")?,
         bypass: field("bypassInteraction")?,
+    })
+}
+
+fn accept_layout() -> Result<EventLayout, String> {
+    let (hash, size, field) = type_fields(ACCEPT_EVENT)?;
+    Ok(EventLayout {
+        hash,
+        size,
+        guest: field("guestEntityId")?,
+        host: field("hostEntityId")?,
+        offer: field("offerId")?,
+    })
+}
+
+fn offer_layout() -> Result<OfferLayout, String> {
+    let (hash, _, field) = type_fields(OFFER_COMPONENT)?;
+    Ok(OfferLayout {
+        hash,
+        offer: field("offerId")?,
+        disabled: field("isDisabled")?,
     })
 }
 
@@ -205,6 +267,9 @@ impl Armed {
         let mut sent_at = SENT_AT.lock().unwrap();
         let sent_at = sent_at.get_or_insert_with(HashMap::new);
         sent_at.retain(|_, at| step - *at < RESEND_STEPS);
+        let mut visits = VISITS.lock().unwrap();
+        let visits = visits.get_or_insert_with(HashMap::new);
+        visits.retain(|_, v| step - v.first < RESEND_STEPS);
         // SAFETY: on the sim thread before delivery.
         unsafe {
             let Some(me) = self.position(world, PLAYER) else {
@@ -227,6 +292,31 @@ impl Armed {
                 let corpse = inventory && self.has(world, self.dead_marker, id);
                 if !ground && !corpse {
                     continue;
+                }
+                if corpse {
+                    // kiln-auto-loot's container steps: wait for the
+                    // game to fill it, open it as E does, then loot-all
+                    // in the next scan.
+                    let v = visits.entry(id).or_insert(Visit {
+                        first: step,
+                        opened: false,
+                    });
+                    if step - v.first < OPEN_DELAY_STEPS {
+                        continue;
+                    }
+                    if !v.opened {
+                        v.opened = true;
+                        if let Some((offer, true)) = self.offer_of(world, id) {
+                            let r = self.accept(storage, id, offer);
+                            modforge::log!("auto loot open corpse {id}: {r}");
+                            sent += 1;
+                            if sent >= SENDS_PER_SCAN {
+                                break;
+                            }
+                            continue;
+                        }
+                    }
+                    visits.remove(&id);
                 }
                 let r = self.loot_all(storage, id);
                 modforge::log!(
@@ -310,6 +400,55 @@ impl Armed {
     }
 
     unsafe fn loot_all(&self, storage: usize, host: u32) -> Json {
+        let flags = [self.loot.loot_all, self.loot.bypass];
+        // SAFETY: on the sim thread before delivery.
+        match unsafe { self.send(storage, &self.loot.ev, host, 0, &flags) } {
+            Ok((program, time)) => {
+                LOOT_SENT.fetch_add(1, Ordering::Relaxed);
+                json!({"sent": true, "host": host, "program": program, "time": time})
+            }
+            Err(e) => json!({"error": e}),
+        }
+    }
+
+    /// Opens host's offer, as pressing E does.
+    unsafe fn accept(&self, storage: usize, host: u32, offer: u32) -> Json {
+        // SAFETY: on the sim thread before delivery.
+        match unsafe { self.send(storage, &self.accept, host, offer, &[]) } {
+            Ok((program, time)) => {
+                json!({"opened": true, "host": host, "offer": offer, "program": program, "time": time})
+            }
+            Err(e) => json!({"error": e}),
+        }
+    }
+
+    /// host's InteractionOfferRuntime: (offer id, usable), None when it
+    /// has none.
+    unsafe fn offer_of(&self, world: usize, host: u32) -> Option<(u32, bool)> {
+        let mut out = [0usize; 2];
+        // SAFETY: the game's GetComponent; the data is offer.hash's type.
+        unsafe {
+            (self.get_component)(&mut out, world, self.offer.hash, host);
+            let data = out[0] as *const u8;
+            if data.is_null() {
+                return None;
+            }
+            let id = *(data.add(self.offer.offer) as *const u32);
+            Some((id, *data.add(self.offer.disabled) == 0))
+        }
+    }
+
+    /// Sends one interaction event from the player to host: time,
+    /// guest, host, offer, and each byte in `flags` set to 1. Returns
+    /// (program, time).
+    unsafe fn send(
+        &self,
+        storage: usize,
+        ev: &EventLayout,
+        host: u32,
+        offer: u32,
+        flags: &[usize],
+    ) -> Result<(u16, i64), &'static str> {
         // SAFETY: on the sim thread before delivery.
         unsafe {
             // Send from a buffer that already holds a program's events,
@@ -333,22 +472,21 @@ impl Armed {
                 }
             }
             let Some((buf, program)) = target else {
-                return json!({"error": "no event buffer with events this step"});
+                return Err("no event buffer with events this step");
             };
-            let e = (self.emit)(buf, self.loot.hash, self.loot.size, program);
+            let e = (self.emit)(buf, ev.hash, ev.size, program);
             if e.is_null() {
-                return json!({"error": "event buffer full"});
+                return Err("event buffer full");
             }
             let now = self.now(storage);
             *(e as *mut i64) = now;
-            *(e.add(self.loot.guest) as *mut u32) = PLAYER;
-            *(e.add(self.loot.host) as *mut u32) = host;
-            *(e.add(self.loot.offer) as *mut u32) = 0;
-            *e.add(self.loot.loot_all) = 1;
-            *e.add(self.loot.bypass) = 1;
-            LOOT_SENT.fetch_add(1, Ordering::Relaxed);
-            modforge::log!("loot.all sent: host {host} program {program} time {now}");
-            json!({"sent": true, "host": host, "program": program, "time": now})
+            *(e.add(ev.guest) as *mut u32) = PLAYER;
+            *(e.add(ev.host) as *mut u32) = host;
+            *(e.add(ev.offer) as *mut u32) = offer;
+            for f in flags {
+                *e.add(*f) = 1;
+            }
+            Ok((program, now))
         }
     }
 }
@@ -381,21 +519,22 @@ unsafe extern "system" fn on_deliver(storage: usize) -> usize {
                 }
             }
             a.pending.each(storage, |hash, data, size| {
-                if hash != a.loot.hash || size <= a.loot.bypass {
+                let ev = &a.loot.ev;
+                if hash != ev.hash || size <= a.loot.bypass {
                     return;
                 }
                 LOOT_SEEN.fetch_add(1, Ordering::Relaxed);
                 let u32_at = |o: usize| *(data.add(o) as *const u32);
                 let header = data.sub(8);
                 let program = *(header.add(4) as *const u16);
-                if u32_at(a.loot.guest) == PLAYER && *data.add(a.loot.bypass) == 1 {
+                if u32_at(ev.guest) == PLAYER && *data.add(a.loot.bypass) == 1 {
                     LOOT_PROGRAM.store(u32::from(program), Ordering::Relaxed);
                 }
                 modforge::log!(
                     "loot event (world kind {kind}): guest {} host {} offer {} lootAll {} bypass {} program {} time {} now {}",
-                    u32_at(a.loot.guest),
-                    u32_at(a.loot.host),
-                    u32_at(a.loot.offer),
+                    u32_at(ev.guest),
+                    u32_at(ev.host),
+                    u32_at(ev.offer),
                     *data.add(a.loot.loot_all),
                     *data.add(a.loot.bypass),
                     program,
@@ -432,6 +571,8 @@ fn arm() -> Result<(), String> {
     let (get_component, _) = find_in_exe(GET_COMPONENT)?;
     let (get_transform, _) = find_in_exe(GET_ENTITY_TRANSFORM)?;
     let loot = loot_layout()?;
+    let accept = accept_layout()?;
+    let offer = offer_layout()?;
     let components = loot_components()?;
     let pickup_item = component_hash("PickupItem")?;
     let inventory = component_hash("Inventory")?;
@@ -466,6 +607,8 @@ fn arm() -> Result<(), String> {
         get_component,
         get_transform,
         loot,
+        accept,
+        offer,
         components,
         pickup_item,
         inventory,
@@ -474,7 +617,7 @@ fn arm() -> Result<(), String> {
     modforge::log!(
         "events: DeliverEvents hooked at {deliver:#x}, {:?}, kind +{kind:#x}, world.storage {world_storage:#x}, clock +{clock:#x}, period +{clock_period:#x}, loot hash {:#x}, {} components watched",
         armed.pending,
-        armed.loot.hash,
+        armed.loot.ev.hash,
         armed.components.len()
     );
     ARMED.set(armed).map_err(|_| "already armed".to_string())?;

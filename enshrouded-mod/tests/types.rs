@@ -37,6 +37,31 @@ fn loot_interaction_event_fields() {
         .expect("lootAll field");
     assert_eq!(loot_all["offset"], "0x14");
     assert_eq!(loot_all["type"], "keen::bool");
+    // Opening a corpse (pressing E): the accept event and the corpse's
+    // offer, the fields auto loot reads and writes by name.
+    for (name, fields) in [
+        (
+            "keen::ecs::AcceptOfferedInteractionEvent",
+            &["guestEntityId", "hostEntityId", "offerId"][..],
+        ),
+        (
+            "keen::ecs::InteractionOfferRuntime",
+            &["offerId", "isDisabled"][..],
+        ),
+    ] {
+        let ty = describe(&reg, name).unwrap_or_else(|| panic!("no {name}"));
+        println!("{}", serde_json_pretty(ty.clone()));
+        for f in fields {
+            assert!(
+                ty["fields"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|x| x["name"] == *f),
+                "{name} has no {f}"
+            );
+        }
+    }
 }
 
 fn serde_json_pretty(v: serde_json::Value) -> String {
