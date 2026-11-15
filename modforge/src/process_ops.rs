@@ -294,6 +294,12 @@ pub fn register() {
             crate::scanner::scan_memory,
         ),
         OpDef::new(
+            "memory.find_bytes",
+            "Find a byte sequence or text (UTF-8, or UTF-16 with utf16) in readable private memory",
+            "{text?: string, utf16?: bool, hex?: string, max?: 1000}",
+            crate::scanner::find_bytes,
+        ),
+        OpDef::new(
             "memory.rescan",
             "Narrow a memory scan after game state changes",
             "{session_id: u64, mode: exact|changed|unchanged|decreased|increased, value?: number}",

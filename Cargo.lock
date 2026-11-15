@@ -1393,6 +1393,7 @@ dependencies = [
  "hudhook",
  "imgui",
  "insta",
+ "memchr",
  "noise",
  "object",
  "parking_lot",

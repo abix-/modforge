@@ -396,7 +396,12 @@ fn ensure_sweeper() {
             .spawn(move || sweeper_loop(stop_clone))
             .expect("spawn freeze sweeper");
         crate::shutdown::SHUTDOWN_REGISTRY
-            .record("freeze sweeper", String::new(), 400, shutdown_sweeper_if_running)
+            .record(
+                "freeze sweeper",
+                String::new(),
+                400,
+                shutdown_sweeper_if_running,
+            )
             .keep();
         Sweeper {
             stop,
@@ -535,7 +540,12 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
     // Clear any prior cancellation flag so this scan starts fresh.
     SCAN_CANCEL.store(false, Ordering::Release);
 
-    let regions = iter_private_rw_regions();
+    // Only pages in the working set; see resident_runs for why.
+    let regions: Vec<Region> = iter_private_rw_regions()
+        .iter()
+        .flat_map(|r| resident_runs(r.base, r.size))
+        .map(|(base, size)| Region { base, size })
+        .collect();
     let step = ty.size();
     let mut survivors = Vec::new();
     let mut cancelled = false;
@@ -609,6 +619,136 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
         "sample": sample,
         "cancelled": cancelled,
     }))
+}
+
+/// Most hits [`find_bytes`] keeps, so a common needle cannot fill the
+/// host's memory with survivors.
+const FIND_BYTES_MAX: usize = 10_000;
+
+/// Every address in private RW memory holding a byte sequence: `hex`,
+/// or `text` as UTF-8 (or UTF-16 with `utf16: true`). For finding
+/// strings the game keeps on its heap, which the primitive scan
+/// cannot express. Stops at `max` hits (at most [`FIND_BYTES_MAX`]).
+pub fn find_bytes(args: &Json) -> Result<Json, String> {
+    let needle: Vec<u8> = if let Some(text) = args.get("text").and_then(Json::as_str) {
+        if args.get("utf16").and_then(Json::as_bool).unwrap_or(false) {
+            text.encode_utf16().flat_map(u16::to_le_bytes).collect()
+        } else {
+            text.as_bytes().to_vec()
+        }
+    } else {
+        let hex = arg_str(args, "hex")?;
+        let compact: String = hex.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+        if compact.is_empty() || !compact.len().is_multiple_of(2) {
+            return Err("'hex' must be an even number of hex digits".into());
+        }
+        (0..compact.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&compact[i..i + 2], 16).map_err(|e| e.to_string()))
+            .collect::<Result<_, _>>()?
+    };
+    let max = (arg_u64(args, "max", Some(1_000))? as usize).min(FIND_BYTES_MAX);
+
+    SCAN_CANCEL.store(false, Ordering::Release);
+    let regions = iter_private_rw_regions();
+    const CHUNK: usize = 1024 * 1024;
+    let n = needle.len();
+    let finder = memchr::memmem::Finder::new(&needle);
+    let mut scratch = vec![0u8; CHUNK + n];
+    let mut hits = Vec::new();
+    let mut cancelled = false;
+    let mut resident_bytes = 0usize;
+    'outer: for r in &regions {
+        for (base, size) in resident_runs(r.base, r.size) {
+            resident_bytes += size;
+            // Chunks overlap by n - 1 bytes so a match across a chunk
+            // boundary is still seen, and seen once.
+            let mut off = 0usize;
+            while off < size {
+                if SCAN_CANCEL.load(Ordering::Acquire) {
+                    cancelled = true;
+                    break 'outer;
+                }
+                let want = (size - off).min(CHUNK + n - 1);
+                let got = safe_read_chunk(base + off, &mut scratch[..want]);
+                for i in finder.find_iter(&scratch[..got]) {
+                    hits.push(base + off + i);
+                    if hits.len() >= max {
+                        break 'outer;
+                    }
+                }
+                if off + want >= size {
+                    break;
+                }
+                off += want.saturating_sub(n - 1).max(1);
+            }
+        }
+    }
+    SCAN_CANCEL.store(false, Ordering::Release);
+    Ok(json!({
+        "needle_len": n,
+        "matches": hits.len(),
+        "capped": hits.len() >= max,
+        "cancelled": cancelled,
+        "regions_scanned": regions.len(),
+        "resident_bytes": resident_bytes,
+        "hits": hits.iter().map(|a| format!("0x{a:X}")).collect::<Vec<_>>(),
+    }))
+}
+
+/// The runs of pages in `[base, base + size)` that are in this
+/// process's working set. Reading a committed page the process never
+/// touched makes Windows give it a real zeroed page, so a scan that
+/// reads everything grows the host's memory by every untouched page
+/// it owns: 1.9 GB to 12.7 GB in Enshrouded, 2026-11-15. A page that
+/// was never touched holds only zeros, so skipping it loses nothing;
+/// a page swapped out to disk is skipped too.
+fn resident_runs(base: usize, size: usize) -> Vec<(usize, usize)> {
+    use windows_sys::Win32::System::ProcessStatus::{
+        K32QueryWorkingSetEx, PSAPI_WORKING_SET_EX_INFORMATION,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    const PAGE: usize = 4096;
+    const BATCH: usize = 4096;
+
+    let pages = size / PAGE;
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    let mut info: Vec<PSAPI_WORKING_SET_EX_INFORMATION> = Vec::with_capacity(BATCH);
+    let mut first = 0usize;
+    while first < pages {
+        let count = (pages - first).min(BATCH);
+        info.clear();
+        info.extend((0..count).map(|i| PSAPI_WORKING_SET_EX_INFORMATION {
+            VirtualAddress: (base + (first + i) * PAGE) as *mut _,
+            ..Default::default()
+        }));
+        // SAFETY: `info` holds `count` initialized entries and its byte
+        // size is passed; the call only fills their attribute words.
+        let ok = unsafe {
+            K32QueryWorkingSetEx(
+                GetCurrentProcess(),
+                info.as_mut_ptr().cast(),
+                (count * std::mem::size_of::<PSAPI_WORKING_SET_EX_INFORMATION>()) as u32,
+            )
+        };
+        if ok != 0 {
+            for (i, entry) in info.iter().enumerate() {
+                // SAFETY: Flags is the plain usize view of the union; bit 0
+                // is Valid, set when the page is in the working set.
+                let valid = unsafe { entry.VirtualAttributes.Flags } & 1 != 0;
+                if !valid {
+                    continue;
+                }
+                let at = base + (first + i) * PAGE;
+                match runs.last_mut() {
+                    Some((start, len)) if *start + *len == at => *len += PAGE,
+                    _ => runs.push((at, PAGE)),
+                }
+            }
+        }
+        first += count;
+    }
+    runs
 }
 
 /// Cancellation flag for [`scan_memory`] / [`scan_rescan`]. Set
@@ -887,6 +1027,58 @@ fn parse_addr(s: &str) -> Result<usize, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn find_bytes_finds_heap_text_and_skips_untouched_pages() {
+        use windows_sys::Win32::System::Memory::{
+            MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAlloc, VirtualFree,
+        };
+        let text = format!("modforge-find-{}", fastrand::u64(..));
+        let held = text.clone().into_bytes();
+
+        // 64 committed pages, only the first one touched.
+        let size = 64 * 4096;
+        // SAFETY: fresh private allocation, freed below.
+        let block = unsafe {
+            VirtualAlloc(
+                std::ptr::null(),
+                size,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_READWRITE,
+            )
+        } as usize;
+        assert_ne!(block, 0);
+        // SAFETY: the first page is committed and ours.
+        unsafe { (block as *mut u8).write(1) };
+        let runs = resident_runs(block, size);
+        assert_eq!(
+            runs,
+            vec![(block, 4096)],
+            "only the touched page is resident"
+        );
+
+        let out = find_bytes(&json!({"text": text, "max": 10})).unwrap();
+        let hits: Vec<usize> = out["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| {
+                usize::from_str_radix(h.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
+            })
+            .collect();
+        assert!(
+            hits.contains(&(held.as_ptr() as usize)),
+            "{text} at {:#x} not in {hits:x?}",
+            held.as_ptr() as usize
+        );
+        assert_eq!(
+            resident_runs(block, size),
+            vec![(block, 4096)],
+            "the search must not touch untouched pages"
+        );
+        // SAFETY: block came from VirtualAlloc above.
+        unsafe { VirtualFree(block as *mut _, 0, MEM_RELEASE) };
+    }
 
     // Property: every numeric Ty round-trips through
     // `Val::from_json` -> `Val::bytes` so the scanner's
