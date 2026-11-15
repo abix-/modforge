@@ -133,8 +133,21 @@ pub fn hole_value(hole: &Hole, bytes: &[u8], at: u64) -> Option<u64> {
 /// The one match of a Kiln signature in the running exe's code, and
 /// each hole's value by name (rel32 holes as absolute addresses).
 pub fn find_in_exe(sig: &str) -> Result<(usize, Vec<(String, u64)>), String> {
+    find_in(sig, None)
+}
+
+/// [`find_in_exe`] counting only matches inside `within` (start, len):
+/// Kiln's scoped signatures, which are unique in one function only.
+pub fn find_in(
+    sig: &str,
+    within: Option<(usize, usize)>,
+) -> Result<(usize, Vec<(String, u64)>), String> {
     let (pattern, holes) = kiln_sig(sig)?;
-    let hits = crate::patterns::sleuth::scan_all_matches(&pattern).map_err(|e| format!("{e:#}"))?;
+    let hits: Vec<usize> = crate::patterns::sleuth::scan_all_matches(&pattern)
+        .map_err(|e| format!("{e:#}"))?
+        .into_iter()
+        .filter(|a| within.is_none_or(|(start, len)| (start..start + len).contains(a)))
+        .collect();
     let [at] = hits[..] else {
         return Err(format!("{} matches for {sig:?}", hits.len()));
     };
@@ -194,6 +207,31 @@ impl PendingEvents {
             }
         }
     }
+}
+
+/// The keys of one of the engine's hash maps at `map`: occupancy bits
+/// pointer at +0x8, capacity at +0x10, u32 keys pointer at +0x28
+/// (Kiln, docs/re/world.md "keen hash map"; the event map in
+/// DeliverEvents has the same shape).
+///
+/// # Safety
+/// `map` must be a live map read where nothing changes it meanwhile.
+pub unsafe fn map_keys(map: usize) -> Vec<u32> {
+    // SAFETY: the caller hands a live map with the layout above.
+    unsafe {
+        let bits = *((map + 0x8) as *const *const u64);
+        let cap = *((map + 0x10) as *const u64) as usize;
+        let keys = *((map + 0x28) as *const *const u32);
+        (0..cap)
+            .filter(|i| (*bits.add(i / 64) >> (i % 64)) & 1 == 1)
+            .map(|i| *keys.add(i))
+            .collect()
+    }
+}
+
+/// A world position in the engine's 32.32 fixed point, in meters.
+pub fn fixed_to_m(v: i64) -> f64 {
+    v as f64 / 4_294_967_296.0
 }
 
 /// `types.find {name}`: one type; `types.search {text, max?}`: the full
