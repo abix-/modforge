@@ -4,12 +4,12 @@
 //! type, and the other names they point at hint at its fields.
 //!
 //! ```text
-//! cargo run -p enshrouded-mod        # game running
+//! modforge-inject --process enshrouded.exe --dll target/x86_64-pc-windows-msvc/release/enshrouded.dll
 //! k3sc cargo-lock test -p enshrouded-mod --test research_types -- --nocapture
 //! ```
 //!
-//! SKIPs (prints why and passes) when enshrouded-mod or the game is
-//! not running.
+//! SKIPs (prints why and passes) when the game or the DLL is not
+//! running.
 
 use modforge::memory_research::Remote;
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ fn hex_sig(bytes: &[u8]) -> String {
 }
 
 fn addresses(found: &Value) -> Vec<u64> {
-    found["addresses"]
+    found["hits"]
         .as_array()
         .into_iter()
         .flatten()
@@ -49,7 +49,7 @@ fn text_at(r: &Remote, addr: u64) -> Option<String> {
 
 #[test]
 fn something_points_at_a_type_name() {
-    let r = Remote::at(17187);
+    let r = Remote::at(33080);
     let game = match r.op("game", json!({})) {
         Ok(g) => g,
         Err(e) => {
@@ -65,8 +65,11 @@ fn something_points_at_a_type_name() {
     exact.extend(NAME.as_bytes());
     exact.push(0);
     let found = r
-        .op("patterns.find", json!({"sig": hex_sig(&exact), "section": "any"}))
-        .expect("patterns.find name");
+        .op(
+            "image.scan",
+            json!({"signature": hex_sig(&exact), "section": "all"}),
+        )
+        .expect("image.scan name");
     let names: Vec<u64> = addresses(&found).iter().map(|a| a + 1).collect();
     println!("{NAME:?} as a whole text at {names:x?}");
     assert!(!names.is_empty(), "{NAME} not in memory as its own text");
@@ -75,12 +78,12 @@ fn something_points_at_a_type_name() {
     for name in &names {
         let found = r
             .op(
-                "patterns.find",
-                json!({"sig": hex_sig(&name.to_le_bytes()), "section": "any"}),
+                "image.scan",
+                json!({"signature": hex_sig(&name.to_le_bytes()), "section": "all"}),
             )
-            .expect("patterns.find pointer");
+            .expect("image.scan pointer");
         let refs = addresses(&found);
-        println!("{} pointers to {name:#x}: {refs:x?}", found["count"]);
+        println!("{} pointers to {name:#x}: {refs:x?}", found["total"]);
         pointed += refs.len();
         for at in refs.iter().take(SHOWN) {
             println!("-- around {at:#x} (rva {:#x})", at - exe.start);
@@ -89,9 +92,8 @@ fn something_points_at_a_type_name() {
                 let here = start + i as u64 * 8;
                 let mark = if here == *at { ">" } else { " " };
                 let note = if exe.contains(word) {
-                    text_at(&r, *word).map_or(format!("exe+{:#x}", word - exe.start), |t| {
-                        format!("{t:?}")
-                    })
+                    text_at(&r, *word)
+                        .map_or(format!("exe+{:#x}", word - exe.start), |t| format!("{t:?}"))
                 } else {
                     String::new()
                 };

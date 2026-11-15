@@ -564,9 +564,8 @@ name = "enshrouded-mod"
 version = "0.1.0"
 dependencies = [
  "modforge",
- "object",
- "parking_lot",
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

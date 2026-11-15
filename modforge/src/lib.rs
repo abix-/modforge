@@ -57,6 +57,7 @@ pub mod persona;
 pub mod placement;
 pub mod places;
 pub mod process_memory;
+pub mod process_ops;
 pub mod quality;
 pub mod read_once;
 pub mod reality;

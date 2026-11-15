@@ -3,12 +3,12 @@
 //! next to it there says which version this is.
 //!
 //! ```text
-//! cargo run -p enshrouded-mod        # game running
+//! modforge-inject --process enshrouded.exe --dll target/x86_64-pc-windows-msvc/release/enshrouded.dll
 //! k3sc cargo-lock test -p enshrouded-mod --test research_version -- --nocapture
 //! ```
 //!
-//! SKIPs (prints why and passes) when enshrouded-mod or the game is
-//! not running.
+//! SKIPs (prints why and passes) when the game or the DLL is not
+//! running.
 
 use modforge::memory_research::Remote;
 use serde_json::json;
@@ -36,7 +36,7 @@ fn texts(bytes: &[u8]) -> Vec<String> {
 
 #[test]
 fn build_hash_in_memory_matches_log() {
-    let r = Remote::at(17187);
+    let r = Remote::at(33080);
     let game = match r.op("game", json!({})) {
         Ok(g) => g,
         Err(e) => {
@@ -53,10 +53,16 @@ fn build_hash_in_memory_matches_log() {
 
     let sig: Vec<String> = hash.bytes().map(|b| format!("{b:02x}")).collect();
     let found = r
-        .op("patterns.find", json!({"sig": sig.join(" "), "section": "any"}))
-        .expect("patterns.find");
-    let hits = found["addresses"].as_array().cloned().unwrap_or_default();
-    println!("{} copies of the hash in the exe's memory: {hits:?}", found["count"]);
+        .op(
+            "image.scan",
+            json!({"signature": sig.join(" "), "section": "all"}),
+        )
+        .expect("image.scan");
+    let hits = found["hits"].as_array().cloned().unwrap_or_default();
+    println!(
+        "{} copies of the hash in the exe's memory: {hits:?}",
+        found["total"]
+    );
     assert!(!hits.is_empty(), "hash {hash} not in memory");
 
     let at = u64::from_str_radix(hits[0].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
