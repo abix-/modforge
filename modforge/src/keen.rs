@@ -54,6 +54,81 @@ pub fn describe(reg: &TypeRegistry, name: &str) -> Option<Json> {
     }))
 }
 
+/// One named hole in a Kiln signature (`{name:d32}`, `{name:d8}`,
+/// `{name:rel32}`): where it sits in the match and how to read it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hole {
+    pub name: String,
+    pub offset: usize,
+    pub kind: HoleKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoleKind {
+    /// A 4-byte value (a field offset).
+    D32,
+    /// A 1-byte value (a small field offset).
+    D8,
+    /// A call or jump's 4-byte relative target.
+    Rel32,
+}
+
+impl HoleKind {
+    pub fn len(self) -> usize {
+        match self {
+            HoleKind::D8 => 1,
+            HoleKind::D32 | HoleKind::Rel32 => 4,
+        }
+    }
+}
+
+/// A signature in Kiln's sigdb form (github.com/frostdev-ops/kiln,
+/// `sigdb/symbols`) as a patternsleuth signature with every named hole
+/// open, and the holes.
+pub fn kiln_sig(sig: &str) -> Result<(String, Vec<Hole>), String> {
+    let mut out = Vec::new();
+    let mut holes = Vec::new();
+    let mut offset = 0;
+    for token in sig.split_whitespace() {
+        if let Some(inner) = token.strip_prefix('{').and_then(|t| t.strip_suffix('}')) {
+            let (name, kind) = inner
+                .rsplit_once(':')
+                .ok_or_else(|| format!("hole {token} has no kind"))?;
+            let kind = match kind {
+                "d32" => HoleKind::D32,
+                "d8" => HoleKind::D8,
+                "rel32" => HoleKind::Rel32,
+                _ => return Err(format!("hole {token}: unknown kind {kind}")),
+            };
+            out.extend(std::iter::repeat_n("??", kind.len()));
+            holes.push(Hole {
+                name: name.to_string(),
+                offset,
+                kind,
+            });
+            offset += kind.len();
+        } else {
+            out.push(token);
+            offset += 1;
+        }
+    }
+    Ok((out.join(" "), holes))
+}
+
+/// A hole's value in the bytes of a match at `at`: the number, or for
+/// rel32 the address it points at.
+pub fn hole_value(hole: &Hole, bytes: &[u8], at: u64) -> Option<u64> {
+    let b = bytes.get(hole.offset..hole.offset + hole.kind.len())?;
+    Some(match hole.kind {
+        HoleKind::D8 => u64::from(b[0]),
+        HoleKind::D32 => u64::from(u32::from_le_bytes(b.try_into().ok()?)),
+        HoleKind::Rel32 => {
+            let rel = i32::from_le_bytes(b.try_into().ok()?);
+            (at + hole.offset as u64 + 4).wrapping_add_signed(i64::from(rel))
+        }
+    })
+}
+
 /// `types.find {name}`: one type; `types.search {text, max?}`: the full
 /// names holding `text`.
 pub fn register_ops() {
