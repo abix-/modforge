@@ -60,6 +60,17 @@ fn hits(v: &serde_json::Value) -> Vec<u64> {
         .collect()
 }
 
+/// The DeliverEvents hook: steps seen, loot events seen, faults. The
+/// loot events themselves are in enshrouded-mod.log.
+#[test]
+fn hook_status() {
+    let r = Remote::at(33080);
+    match r.op("events.status", json!({})) {
+        Ok(v) => println!("events.status: {v}"),
+        Err(e) => println!("SKIP: {e}"),
+    }
+}
+
 #[test]
 fn event_functions() {
     let r = Remote::at(33080);
