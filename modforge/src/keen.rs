@@ -74,7 +74,8 @@ pub enum HoleKind {
 }
 
 impl HoleKind {
-    pub fn len(self) -> usize {
+    /// How many bytes the hole covers.
+    pub fn bytes(self) -> usize {
         match self {
             HoleKind::D8 => 1,
             HoleKind::D32 | HoleKind::Rel32 => 4,
@@ -100,13 +101,13 @@ pub fn kiln_sig(sig: &str) -> Result<(String, Vec<Hole>), String> {
                 "rel32" => HoleKind::Rel32,
                 _ => return Err(format!("hole {token}: unknown kind {kind}")),
             };
-            out.extend(std::iter::repeat_n("??", kind.len()));
+            out.extend(std::iter::repeat_n("??", kind.bytes()));
             holes.push(Hole {
                 name: name.to_string(),
                 offset,
                 kind,
             });
-            offset += kind.len();
+            offset += kind.bytes();
         } else {
             out.push(token);
             offset += 1;
@@ -118,7 +119,7 @@ pub fn kiln_sig(sig: &str) -> Result<(String, Vec<Hole>), String> {
 /// A hole's value in the bytes of a match at `at`: the number, or for
 /// rel32 the address it points at.
 pub fn hole_value(hole: &Hole, bytes: &[u8], at: u64) -> Option<u64> {
-    let b = bytes.get(hole.offset..hole.offset + hole.kind.len())?;
+    let b = bytes.get(hole.offset..hole.offset + hole.kind.bytes())?;
     Some(match hole.kind {
         HoleKind::D8 => u64::from(b[0]),
         HoleKind::D32 => u64::from(u32::from_le_bytes(b.try_into().ok()?)),
@@ -127,6 +128,72 @@ pub fn hole_value(hole: &Hole, bytes: &[u8], at: u64) -> Option<u64> {
             (at + hole.offset as u64 + 4).wrapping_add_signed(i64::from(rel))
         }
     })
+}
+
+/// The one match of a Kiln signature in the running exe's code, and
+/// each hole's value by name (rel32 holes as absolute addresses).
+pub fn find_in_exe(sig: &str) -> Result<(usize, Vec<(String, u64)>), String> {
+    let (pattern, holes) = kiln_sig(sig)?;
+    let hits = crate::patterns::sleuth::scan_all_matches(&pattern).map_err(|e| format!("{e:#}"))?;
+    let [at] = hits[..] else {
+        return Err(format!("{} matches for {sig:?}", hits.len()));
+    };
+    let len = pattern.split_whitespace().count();
+    // SAFETY: patternsleuth matched `len` bytes of the loaded exe's
+    // code at `at`; the image stays mapped for the process lifetime.
+    let bytes = unsafe { std::slice::from_raw_parts(at as *const u8, len) };
+    let values = holes
+        .iter()
+        .map(|h| {
+            let v = hole_value(h, bytes, at as u64).ok_or("hole past the match")?;
+            Ok((h.name.clone(), v))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok((at, values))
+}
+
+/// Where a world's events wait between two sim steps: an array of
+/// buffers at `storage + pending`, `count` of them at
+/// `storage + pending_count`, each `stride` bytes, `used` bytes filled
+/// at `buffer + used`. Each record is `{u32 hash; u16 program; u8 size;
+/// u8 0; data[size rounded up to 8]}`, with the size byte at
+/// `record_size`. Kiln, docs/re/gameplay.md section 1.
+#[derive(Debug, Clone, Copy)]
+pub struct PendingEvents {
+    pub pending: usize,
+    pub pending_count: usize,
+    pub stride: usize,
+    pub used: usize,
+    pub record_size: usize,
+}
+
+impl PendingEvents {
+    /// Calls `f(hash, data)` for every event waiting in `storage`.
+    ///
+    /// # Safety
+    /// `storage` must be a live world storage read on the sim thread
+    /// between two steps, so nothing writes the buffers meanwhile.
+    pub unsafe fn each(&self, storage: usize, mut f: impl FnMut(u32, *const u8, usize)) {
+        // SAFETY: the caller hands a live storage; the offsets come
+        // from the game's own DeliverEvents.
+        unsafe {
+            let buffers = *((storage + self.pending) as *const usize);
+            let count = *((storage + self.pending_count) as *const u64) as usize;
+            for i in 0..count {
+                let buf = buffers + i * self.stride;
+                let base = *(buf as *const usize);
+                let used = *((buf + self.used) as *const u32) as usize;
+                let mut off = 0;
+                while off + 8 <= used {
+                    let rec = base + off;
+                    let hash = *(rec as *const u32);
+                    let size = usize::from(*((rec + self.record_size) as *const u8));
+                    f(hash, (rec + 8) as *const u8, size);
+                    off += 8 + size.div_ceil(8) * 8;
+                }
+            }
+        }
+    }
 }
 
 /// `types.find {name}`: one type; `types.search {text, max?}`: the full

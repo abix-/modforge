@@ -2,6 +2,8 @@
 //! enshrouded.exe; it serves the modforge control plane on
 //! 127.0.0.1:33080.
 
+mod events;
+
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 use windows_sys::Win32::Foundation::HINSTANCE;
@@ -38,6 +40,7 @@ fn worker_main() {
     modforge::process_ops::register();
     modforge::inject::register_ops();
     modforge::keen::register_ops();
+    events::register();
     OP_REGISTRY.register(OpDef::new(
         "game",
         "the game's exe: pid, full path, load address, size and PE timestamp",
