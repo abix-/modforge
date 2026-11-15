@@ -37,6 +37,8 @@ pub mod hud;
 pub mod inject;
 pub mod input;
 pub mod item;
+#[cfg(feature = "keen")]
+pub mod keen;
 pub mod learn;
 pub mod log;
 pub mod loot;

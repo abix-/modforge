@@ -73,6 +73,10 @@ object = { version = "0.32", default-features = false, features = ["read"] }
 # the DXGI Present hook, MinHook trampolines, ImGui DX11 init, WndProc
 # subclass, and ResizeBuffers. We re-export its public types so
 # consumers don't need to depend on hudhook directly.
+# Optional, only when feature `keen` is enabled: the type tables of Keen
+# Games' engine (Enshrouded), read from the exe. Brabb3l/kfc-parser,
+# GPL-3.0-or-later like modforge.
+kfc-base = { git = "https://github.com/Brabb3l/kfc-parser", rev = "16708594d686b030d909f2d835b199d879ea9ad8", optional = true }
 hudhook = { version = "=0.9.2", optional = true }
 imgui = { version = "=0.12", optional = true }
 
@@ -104,6 +108,8 @@ path = "src/bin/modforge_inject.rs"
 # consumers (ueforge with its UE4SS-bridge ImGui) pay zero compile cost.
 # See docs/IN-GAME-OVERLAY-PLAN.md.
 overlay-ui = ["dep:hudhook", "dep:imgui"]
+# Keen Games' engine (Enshrouded): type tables by name, see src/keen.rs.
+keen = ["dep:kfc-base"]
 
 [build-dependencies]
 cc = "1"

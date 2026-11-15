@@ -37,6 +37,7 @@ fn worker_main() {
 
     modforge::process_ops::register();
     modforge::inject::register_ops();
+    modforge::keen::register_ops();
     OP_REGISTRY.register(OpDef::new(
         "game",
         "the game's exe: pid, full path, load address, size and PE timestamp",

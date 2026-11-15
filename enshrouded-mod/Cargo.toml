@@ -15,7 +15,7 @@ name = "enshrouded"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-modforge = { path = "../modforge" }
+modforge = { path = "../modforge", features = ["keen"] }
 serde_json = { workspace = true }
 windows-sys = { workspace = true, features = ["Win32_Foundation"] }
 
