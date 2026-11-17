@@ -31,16 +31,11 @@ use godotforge::godot4::{on_main, ops::script_vars, target};
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
-use crate::arrange::{self, BUDGET};
+use crate::arrange;
 use crate::fight::{self, Run};
 use crate::grid::{self, Piece};
 use crate::items::stats_from;
-use crate::read::{self, BAG, EQUIP, FORGE, TRAY};
-
-/// Search steps per set in the first pass over every set; the best
-/// `FINALISTS` are packed again with the full BUDGET. Mine.
-const QUICK: u64 = 20_000;
-const FINALISTS: usize = 8;
+use crate::read::{self, FORGE};
 
 pub fn register_ops() {
     OP_REGISTRY.register_many([OpDef::new(
@@ -140,17 +135,7 @@ fn stats_text(stats: &[(&str, f64)]) -> String {
         .join(", ")
 }
 
-/// The placement row holding the owned item `id`.
-fn row_of(inv: &mut Gd<Object>, id: i64) -> Result<Option<AnyDictionary>, String> {
-    for g in [EQUIP, BAG, TRAY, FORGE] {
-        for p in read::placements(inv, g)? {
-            if read::placed_item(&p).is_some_and(|i| i.instance_id().to_i64() == id) {
-                return Ok(Some(p));
-            }
-        }
-    }
-    Ok(None)
-}
+use read::row_of;
 
 fn moved(
     inv: &mut Gd<Object>,
@@ -407,30 +392,27 @@ fn mega_forge(_args: &Json) -> Result<Json, String> {
         open: seen.open.clone(),
     };
     let owned: Vec<Piece> = list.iter().map(|o| o.piece.clone()).collect();
-    let packed = |set: &[usize], m: Option<&Piece>, budget: u64| {
-        let mut pieces: Vec<Piece> = (0..owned.len())
-            .filter(|i| !set.contains(i))
-            .map(|i| owned[i].clone())
-            .collect();
-        pieces.extend(m.cloned());
-        grid::pack(&g, &pieces, seen.hands, budget).1
-    };
-    let mut scored: Vec<(f64, usize, Made)> = Vec::new();
+    let mut kept: Vec<(usize, Made)> = Vec::new();
     for (k, got) in made.into_iter().enumerate() {
         let Ok(mut m) = got else { continue };
         if m.refusal.starts_with("This class") || m.refusal.starts_with("Requires Level") {
             continue;
         }
         m.piece.value = arrange::value(&bare, base, &squad, &m.stats);
-        scored.push((packed(&sets[k].0, Some(&m.piece), QUICK), k, m));
+        kept.push((k, m));
     }
-    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-    scored.truncate(FINALISTS);
-    for s in scored.iter_mut() {
-        s.0 = packed(&sets[s.1].0, Some(&s.2.piece), BUDGET);
-    }
-    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-    let without = packed(&[], None, BUDGET);
+    let swaps: Vec<arrange::Swap> = kept
+        .iter()
+        .map(|(k, m)| arrange::Swap {
+            remove: sets[*k].0.clone(),
+            add: m.piece.clone(),
+        })
+        .collect();
+    let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps);
+    let scored: Vec<(f64, usize, Made)> = top
+        .into_iter()
+        .map(|(v, s)| (v, kept[s].0, kept[s].1.clone()))
+        .collect();
     lines.push(format!(
         "mega forge: judged against {} (hp {} atk {}); best equipment without forging: value {without:.4}. Best sets:",
         foe.name, foe.max_hp, foe.atk

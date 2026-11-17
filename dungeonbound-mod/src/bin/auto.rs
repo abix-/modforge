@@ -1037,25 +1037,34 @@ impl Game {
     /// (mega.rs); prints its reasoning lines. It previews every set, so
     /// it gets a longer wait than other requests.
     fn mega(&self) -> Result<bool, String> {
-        let api: Api<Value> = Api::at(31330, "/op").with_timeout(Duration::from_secs(180));
-        let r = api.try_op("mega_forge", json!({}))?;
-        if !r.ok {
-            return Err(format!("mega_forge: {:?}", r.error));
-        }
-        for line in r.result["lines"].as_array().into_iter().flatten() {
-            println!("[auto]   {}", line.as_str().unwrap_or(""));
-        }
-        Ok(r.result["acted"] == json!(true))
+        self.mod_step("mega_forge", "acted")
+    }
+
+    /// Gems socketed by the mod inside the game in one request
+    /// (gems.rs); prints its reasoning lines.
+    fn gems(&self) -> Result<bool, String> {
+        self.mod_step("gems", "acted")
     }
 
     /// Equipment by the mod's own packing, done inside the game in one
     /// request (arrange.rs); prints its reasoning lines.
     fn arrange(&self) -> Result<bool, String> {
-        let got = self.op("arrange", json!({}))?;
-        for line in got["lines"].as_array().into_iter().flatten() {
+        self.mod_step("arrange", "changed")
+    }
+
+    /// One of the mod's own steps: prints its reasoning lines and says
+    /// whether it did something (`flag`). They preview and pack inside
+    /// the game, so they get a longer wait than other requests.
+    fn mod_step(&self, op: &str, flag: &str) -> Result<bool, String> {
+        let api: Api<Value> = Api::at(31330, "/op").with_timeout(Duration::from_secs(180));
+        let r = api.try_op(op, json!({}))?;
+        if !r.ok {
+            return Err(format!("{op}: {:?}", r.error));
+        }
+        for line in r.result["lines"].as_array().into_iter().flatten() {
             println!("[auto]   {}", line.as_str().unwrap_or(""));
         }
-        Ok(got["changed"] == json!(true))
+        Ok(r.result[flag] == json!(true))
     }
 
     fn item_name(&self, item: &Value) -> String {
@@ -1411,6 +1420,11 @@ impl Game {
         // Before arrange, so nothing moves pieces while the mega forge
         // has the anvil.
         if self.mega()? {
+            return Ok(());
+        }
+        // Gems before arrange: a socketed piece is packed by its new
+        // value.
+        if self.gems()? {
             return Ok(());
         }
         if self.arrange()? {

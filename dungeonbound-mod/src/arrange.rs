@@ -117,6 +117,48 @@ pub fn value_all(list: &mut [read::Owned], me: &Fighter, squad: &[Fighter]) -> F
     bare
 }
 
+/// Search steps per swap in the first pass over every swap; the best
+/// `FINALISTS` are packed again with the full BUDGET. Mine.
+pub const QUICK: u64 = 20_000;
+pub const FINALISTS: usize = 8;
+
+/// Owned pieces `remove` turned into `add` (a forge, a socketed gem).
+pub struct Swap {
+    pub remove: Vec<usize>,
+    pub add: grid::Piece,
+}
+
+/// The packer's best equipment value with no swap, and the best swaps
+/// by the same value (best first, at most FINALISTS), each as (value,
+/// index into `swaps`). Mine: a swap is worth its packed value.
+pub fn rank(
+    g: &grid::Grid,
+    hands: usize,
+    owned: &[grid::Piece],
+    swaps: &[Swap],
+) -> (f64, Vec<(f64, usize)>) {
+    let packed = |s: Option<&Swap>, budget: u64| {
+        let mut pieces: Vec<grid::Piece> = (0..owned.len())
+            .filter(|i| s.is_none_or(|s| !s.remove.contains(i)))
+            .map(|i| owned[i].clone())
+            .collect();
+        pieces.extend(s.map(|s| s.add.clone()));
+        grid::pack(g, &pieces, hands, budget).1
+    };
+    let mut top: Vec<(f64, usize)> = swaps
+        .iter()
+        .enumerate()
+        .map(|(k, s)| (packed(Some(s), QUICK), k))
+        .collect();
+    top.sort_by(|a, b| b.0.total_cmp(&a.0));
+    top.truncate(FINALISTS);
+    for t in top.iter_mut() {
+        t.0 = packed(Some(&swaps[t.1]), BUDGET);
+    }
+    top.sort_by(|a, b| b.0.total_cmp(&a.0));
+    (packed(None, BUDGET), top)
+}
+
 fn arrange(args: &Json) -> Result<Json, String> {
     let force = args.get("force").and_then(Json::as_bool).unwrap_or(false);
     let bought = on_main("arrange rows", buy_rows)?;

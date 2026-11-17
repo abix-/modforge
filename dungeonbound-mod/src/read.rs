@@ -180,6 +180,8 @@ pub struct Owned {
     /// Potions and the like: the anvil takes none (inventory.gd
     /// can_place).
     pub consumable: bool,
+    /// A gem (equipment_item.gd is_gem): it goes inside other pieces.
+    pub gem: bool,
     pub rarity: i64,
     pub stats: Vec<(&'static str, f64)>,
     pub piece: grid::Piece,
@@ -249,6 +251,18 @@ pub fn placed_item(p: &AnyDictionary) -> Option<Gd<Object>> {
     p.get("item")?.try_to::<Gd<Object>>().ok()
 }
 
+/// The placement row holding the owned item `id`.
+pub fn row_of(inv: &mut Gd<Object>, id: i64) -> Result<Option<AnyDictionary>, String> {
+    for g in [EQUIP, BAG, TRAY, FORGE] {
+        for p in placements(inv, g)? {
+            if placed_item(&p).is_some_and(|i| i.instance_id().to_i64() == id) {
+                return Ok(Some(p));
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// An item's shape and hole cells for turns 0 to 3
 /// (equipment_item.gd shape_cells, hole_cells).
 pub type Cells = [Vec<(i32, i32)>; 4];
@@ -296,6 +310,9 @@ pub fn seen() -> Result<Seen, String> {
                 refusal,
                 // equipment_item.gd ItemType: EQUIPABLE, WEAPON, CONSUMABLE.
                 consumable: int(&item.get("item_type")) == 2,
+                gem: call(&mut item, "is_gem", &[])?
+                    .try_to::<bool>()
+                    .unwrap_or(false),
                 rarity: int(&item.get("rarity")),
                 stats: stats_from(&script_vars(&item, 0)),
                 piece: grid::Piece {

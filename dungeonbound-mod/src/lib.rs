@@ -8,6 +8,7 @@
 
 pub mod arrange;
 pub mod fight;
+pub mod gems;
 pub mod grid;
 pub mod items;
 pub mod mega;
@@ -15,6 +16,7 @@ pub mod read;
 
 fn on_init() {
     arrange::register_ops();
+    gems::register_ops();
     mega::register_ops();
 }
 
