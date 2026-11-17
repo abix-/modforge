@@ -127,6 +127,14 @@ pub struct Result {
     /// Game seconds.
     pub seconds: f64,
     pub hp_left: i64,
+    /// Share of the squad's max hp still standing at the end.
+    pub foes_left: f64,
+}
+
+fn foes_left(foes: &[Live]) -> f64 {
+    let max: i64 = foes.iter().map(|f| f.f.max_hp.max(1)).sum();
+    let left: i64 = foes.iter().map(|f| f.f.hp.max(0)).sum();
+    left as f64 / max.max(1) as f64
 }
 
 /// The game's soft cap (`soft_cap`): straight up to the knee, then
@@ -341,6 +349,7 @@ pub fn fight(player: &Fighter, squad: &[Fighter], run: Run, rng: &mut fastrand::
             outcome,
             seconds: clock,
             hp_left: me.f.hp,
+            foes_left: foes_left(foes),
         })
     };
     loop {
@@ -350,6 +359,7 @@ pub fn fight(player: &Fighter, squad: &[Fighter], run: Run, rng: &mut fastrand::
                 outcome: Outcome::TimedOut,
                 seconds: clock,
                 hp_left: me.f.hp,
+                foes_left: foes_left(&foes),
             };
         }
         if run == Run::Roguelite {
@@ -474,26 +484,48 @@ pub fn best_choice<T>(
     choices: &[T],
     apply: impl Fn(&mut Fighter, &T),
 ) -> (Option<usize>, Vec<f64>) {
-    let scores: Vec<Score> = choices
+    let ranked = rank(player, squad, run, choices, apply);
+    let mut rates = vec![0.0; choices.len()];
+    for (i, s) in &ranked {
+        rates[*i] = s.win;
+    }
+    (ranked.first().map(|r| r.0), rates)
+}
+
+/// Every choice scored, best first. The one judge for every choice
+/// a stop offers (genie wish, dismantle, and the rest): each stop
+/// only says what its choices do to the player.
+pub fn rank<T>(
+    player: &Fighter,
+    squad: &[Fighter],
+    run: Run,
+    choices: &[T],
+    apply: impl Fn(&mut Fighter, &T),
+) -> Vec<(usize, Score)> {
+    let mut scores: Vec<(usize, Score)> = choices
         .iter()
-        .map(|c| {
+        .enumerate()
+        .map(|(i, c)| {
             let mut p = player.clone();
             apply(&mut p, c);
-            score(&p, squad, run)
+            (i, score(&p, squad, run))
         })
         .collect();
-    let best = (0..scores.len()).max_by(|&a, &b| scores[a].cmp(&scores[b]));
-    (best, scores.iter().map(|s| s.win).collect())
+    scores.sort_by(|a, b| b.1.cmp(&a.1));
+    scores
 }
 
 /// How well a player does against a squad: win rate, then the mean
 /// share of max hp left, so of two loadouts that both always win the
-/// one that wins with more hp left is better. Same seed every time,
-/// so two loadouts meet the same rolls.
+/// one that wins with more hp left is better; then the mean share of
+/// the squad's hp left, so of two that both always lose the one that
+/// gets closer is better. Same seed every time, so two loadouts meet
+/// the same rolls.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Score {
     pub win: f64,
     pub hp_left: f64,
+    pub foes_left: f64,
 }
 
 impl Score {
@@ -501,6 +533,7 @@ impl Score {
         self.win
             .total_cmp(&other.win)
             .then(self.hp_left.total_cmp(&other.hp_left))
+            .then(other.foes_left.total_cmp(&self.foes_left))
     }
 }
 
@@ -508,17 +541,20 @@ pub fn score(player: &Fighter, squad: &[Fighter], run: Run) -> Score {
     const TRIALS: u32 = 1000;
     const SEED: u64 = 0x5eed;
     let mut rng = fastrand::Rng::with_seed(SEED);
-    let (mut wins, mut left) = (0u32, 0.0);
+    let (mut wins, mut left, mut foes) = (0u32, 0.0, 0.0);
     for _ in 0..TRIALS {
         let r = fight(player, squad, run, &mut rng);
+        foes += r.foes_left;
         if r.outcome == Outcome::Won {
             wins += 1;
             left += r.hp_left as f64 / player.max_hp.max(1) as f64;
         }
     }
+    let n = f64::from(TRIALS);
     Score {
-        win: f64::from(wins) / f64::from(TRIALS),
-        hp_left: left / f64::from(TRIALS),
+        win: f64::from(wins) / n,
+        hp_left: left / n,
+        foes_left: foes / n,
     }
 }
 

@@ -40,7 +40,8 @@ const BAR: [&str; 2] = ["StartBattleBtn", "EnterDeeperBtn"];
 /// Campsite: it heals on entry, CONTINUE leaves. Genie: CONTINUE
 /// once the wish is chosen. Blessing: granted on entry
 /// (bless_encounter.gd _ready, Global.grant_blessing), no choice.
-const HANDLED: [&str; 4] = [
+const HANDLED: [&str; 5] = [
+    "dismantle_encounter.gd",
     "chest_encounter.gd",
     "campsite_encounter.gd",
     "genie_encounter.gd",
@@ -54,9 +55,12 @@ struct Game {
     waiting: std::cell::RefCell<String>,
     /// The bag and tray already tried on.
     tried: std::cell::RefCell<String>,
+    /// The last guardian and player line printed.
+    judged: std::cell::RefCell<String>,
 }
 
 /// Inventory grids (inventory.gd).
+const EQUIP: i64 = 0;
 const BAG: i64 = 1;
 const TRAY: i64 = 2;
 
@@ -175,12 +179,156 @@ impl Game {
         let mut me = fight::from_vars("Player", &self.vars(&player["id"])?);
         me.hp = me.max_hp;
         me.block = me.block_max;
+        let g = self.guardian(crawl)?;
+        let line = format!(
+            "[auto]   judged against {} hp {} atk {} block {} speed {:.1}; player hp {} atk {} block {} speed {:.1}",
+            g.name,
+            g.max_hp,
+            g.atk,
+            g.block_max,
+            g.speed,
+            me.max_hp,
+            me.atk,
+            me.block_max,
+            me.speed
+        );
+        if *self.judged.borrow() != line {
+            println!("{line}");
+            *self.judged.borrow_mut() = line;
+        }
+        Ok((me, vec![g]))
+    }
+
+    /// The floor's guardian as the game builds it for the fight
+    /// (combat_resolver.gd load_fight, CombatantRuntime.from_enemy),
+    /// campaign only: stats times the floor scale (hp also times the
+    /// dungeon's hp scale), an elite's power norm and attack ease, the
+    /// dungeon's attack scale, block chance 1. Speed is the mean of
+    /// the game's roll (base + randi -3..5). Not yet: the campaign
+    /// magic resist bonus per dungeon.
+    fn guardian(&self, crawl: &Value) -> Result<Fighter, String> {
         let resolver = self
             .find(crawl, "combat_resolver.gd", 1)?
             .ok_or("no combat resolver")?;
-        let guardian = self.prop(&resolver, "_guardian")?;
-        let foe = fight::from_vars("Guardian", &self.vars(&guardian["id"])?);
-        Ok((me, vec![foe]))
+        let data = self.prop(&resolver, "_guardian")?;
+        if data.is_null() || data["id"].is_null() {
+            return Err("no guardian prepared yet".into());
+        }
+        let data = json!({"id": data["id"]});
+        let run = json!({"id": self.prop(&resolver, "run")?["id"]});
+        if self.prop(&run, "is_roguelite")? == json!(true) {
+            return Err("guardian build is campaign only".into());
+        }
+        let floor = self.prop(&run, "floor_number")?.as_i64().unwrap_or(1);
+        let db = json!({"node": "/root/DungeonDB"});
+        let dungeon = json!({"id": self.call(&db, "floor_dungeon", json!([run]))?["id"]});
+        let num = |v: Value| v.as_f64().unwrap_or(1.0);
+        let floor_scale = num(self.call(&resolver, "_floor_scale", json!([dungeon]))?);
+        let hp_scale = num(self.prop(&dungeon, "hp_scale_base")?);
+        let atk_scale = num(self.prop(&dungeon, "atk_scale")?);
+        let stats = json!({"id": self.prop(&data, "stats")?["id"]});
+        let mut vars = self.vars(&stats["id"])?;
+        for (k, v) in self.vars(&data["id"])? {
+            if k == "double_dmg_chance" {
+                vars.insert(k, v);
+            }
+        }
+        let mut g = fight::from_vars(&self.item_name(&data), &vars);
+        g.max_hp = ((g.max_hp as f64 * floor_scale * hp_scale).round() as i64).max(1);
+        g.atk = ((g.atk as f64 * floor_scale).round() as i64).max(1);
+        // EnemyCombatData LootBand: REGULAR 0, ELITE 1, BOSS 2.
+        if self.prop(&data, "loot_band")? == json!(1) {
+            let norm = self.call(&db, "power_norm", json!([data, dungeon]))?;
+            g.max_hp = ((g.max_hp as f64 * num(norm["hp"].clone())).round() as i64).max(1);
+            g.atk = ((g.atk as f64 * num(norm["atk"].clone())).round() as i64).max(1);
+        }
+        if (atk_scale - 1.0).abs() > 1e-9 {
+            g.atk = ((g.atk as f64 * atk_scale).round() as i64).max(1);
+        }
+        if self.prop(&data, "loot_band")? == json!(1) {
+            let ease = self.prop(&dungeon, "elite_atk_ease")?;
+            if let Some(e) = ease.as_array().and_then(|a| a.get(floor as usize - 1)) {
+                g.atk = ((g.atk as f64 * num(e.clone())).round() as i64).max(1);
+            }
+        }
+        g.speed = (g.speed + 1.0).max(1.0);
+        g.block_chance = 1.0;
+        g.hp = g.max_hp;
+        g.block = g.block_max;
+        Ok(g)
+    }
+
+    /// Dismantle: one item ground to dust for 60% of its plain stats,
+    /// permanently (dismantle_encounter.gd absorbed). Operator
+    /// 2026-11-16: "we should do it for the best overall gain /
+    /// whatver the item is". Every item, worn or loose, is a choice;
+    /// the gain is judged by the fight math. The game's own drop
+    /// (item_shrine.gd _on_item_dropped) stages it, DISMANTLE acts.
+    fn dismantle(&self, crawl: &Value) -> Result<bool, String> {
+        let Some(stop) = self.find(&json!({"node": SCENE}), "dismantle_encounter.gd", 4)? else {
+            return Ok(false);
+        };
+        if self.prop(&stop, "_used")? == json!(true) {
+            return Ok(false);
+        }
+        let inv = json!({"id": self.prop(&json!({"node": "/root/Global"}), "inventory")?["id"]});
+        let mut items: Vec<(Value, Value)> = Vec::new();
+        for grid in [EQUIP, BAG, TRAY] {
+            for p in self
+                .call(&inv, "placements_in", json!([grid]))?
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                let item = json!({"id": p["item"]["id"]});
+                if items.iter().any(|(i, _)| *i == item)
+                    || self.call(&item, "is_gem", json!([]))? == json!(true)
+                    || self.call(&item, "is_tome", json!([]))? == json!(true)
+                    // ItemType CONSUMABLE 2 (equipment_item.gd).
+                    || self.prop(&item, "item_type")? == json!(2)
+                {
+                    continue;
+                }
+                let gains = self.call(&stop, "absorbed", json!([item]))?;
+                if gains.as_array().is_some_and(|g| !g.is_empty()) {
+                    items.push((item, gains));
+                }
+            }
+        }
+        let (me, squad) = self.player_and_guardian(crawl)?;
+        let ranked = fight::rank(&me, &squad, Run::Campaign, &items, |p, (_, gains)| {
+            for g in gains.as_array().into_iter().flatten() {
+                apply_bonus(p, g[0].as_str().unwrap_or(""), g[1].as_f64().unwrap_or(0.0));
+            }
+        });
+        for (i, s) in &ranked {
+            let (item, _) = &items[*i];
+            let id = self.prop(item, "id")?;
+            self.call(&stop, "_on_item_dropped", json!([id]))?;
+            let Some(act) = self.named("EncounterContinueBtn")? else {
+                continue;
+            };
+            if !self.pressable(&act) {
+                println!("[auto]   {} refused", self.item_name(item));
+                continue;
+            }
+            println!(
+                "[auto]   dismantle {}: {} -> win {:.1}% hp left {:.0}%",
+                self.item_name(item),
+                items[*i].1,
+                s.win * 100.0,
+                s.hp_left * 100.0
+            );
+            self.press(&act, "DISMANTLE")?;
+            return Ok(true);
+        }
+        println!("[auto]   nothing to dismantle; leaving");
+        if let Some(skip) = self.named("EncounterSkipBtn")?
+            && self.pressable(&skip)
+        {
+            self.press(&skip, "SKIP (nothing to dismantle)")?;
+        }
+        Ok(true)
     }
 
     /// Genie: three permanent stat wishes (genie_encounter.gd). Takes
@@ -443,6 +591,9 @@ impl Game {
         if self.genie(&crawl)? {
             return Ok(());
         }
+        if self.dismantle(&crawl)? {
+            return Ok(());
+        }
         if self.equip(&crawl)? {
             return Ok(());
         }
@@ -500,23 +651,41 @@ impl Game {
 fn apply_wish(p: &mut Fighter, wish: &Value) {
     const GENIE_MULTIPLIER: f64 = 3.0;
     let n = wish["amount"].as_f64().unwrap_or(0.0) * GENIE_MULTIPLIER;
+    apply_bonus(p, wish["stat"].as_str().unwrap_or(""), n);
+}
+
+/// One permanent stat bonus on the player, by the game's stat names
+/// (game_state.gd LEVEL_BONUS_POOL for the genie, dismantle's
+/// ABSORB_STATS). Percent bonuses count on the stat as it is now.
+fn apply_bonus(p: &mut Fighter, stat: &str, n: f64) {
     let pct = |v: i64| (v as f64 * (1.0 + n)).round() as i64;
-    match wish["stat"].as_str().unwrap_or("") {
+    match stat {
         "max_hp_pct" => {
             p.max_hp = pct(p.max_hp);
             p.hp = p.max_hp;
         }
+        "max_hp" => {
+            p.max_hp += n.round() as i64;
+            p.hp = p.max_hp;
+        }
         "atk_pct" => p.atk = pct(p.atk),
+        "atk" => p.atk += n.round() as i64,
         "armor_pct" => {
             p.block_max = pct(p.block_max);
+            p.block = p.block_max;
+        }
+        "armor" => {
+            p.block_max += n.round() as i64;
             p.block = p.block_max;
         }
         "block_chance" => p.block_chance += n,
         "dodge_chance" => p.dodge += n,
         "crit_chance" => p.crit += n,
         "multistrike_chance" => p.multistrike += n,
+        "magic_resist" => p.magic_resist += n,
         "speed" => p.speed += n,
-        // Block regen and mana are not in the fight math yet.
+        // Block regen, luck, thorns and mana are not in the fight
+        // math yet.
         _ => {}
     }
 }
@@ -527,6 +696,7 @@ fn main() {
         start: Instant::now(),
         waiting: std::cell::RefCell::new(String::new()),
         tried: std::cell::RefCell::new(String::new()),
+        judged: std::cell::RefCell::new(String::new()),
     };
     println!("[auto] playing; Ctrl+C stops");
     let mut last_err = String::new();
