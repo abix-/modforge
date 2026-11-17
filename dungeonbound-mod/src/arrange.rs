@@ -28,13 +28,13 @@ use godotforge::godot4::on_main;
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
-use crate::fight::{self, Run};
+use crate::fight::{self, Fighter, Run};
 use crate::grid;
 use crate::items::wear;
 use crate::read::{self, BAG, EQUIP, TRAY};
 
 /// Search steps before the packer keeps the best layout found.
-const BUDGET: u64 = 2_000_000;
+pub const BUDGET: u64 = 2_000_000;
 
 /// The owned items of the last arrange, so the same set is not
 /// planned again.
@@ -89,6 +89,34 @@ fn buy_rows() -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// The hero with nothing worn: the hero's stats less every worn
+/// piece's.
+pub fn bare(list: &[read::Owned], me: &Fighter) -> Fighter {
+    let mut bare = me.clone();
+    for o in list.iter().filter(|o| o.grid == EQUIP) {
+        wear(&mut bare, &o.stats, -1.0);
+    }
+    bare
+}
+
+/// What wearing a piece with these stats is worth: the fight margin
+/// they add to the bare hero (mine: at least a tiny value).
+pub fn value(bare: &Fighter, base: f64, squad: &[Fighter], stats: &[(&'static str, f64)]) -> f64 {
+    let mut p = bare.clone();
+    wear(&mut p, stats, 1.0);
+    (fight::score(&p, squad, Run::Campaign).margin - base).max(1e-6)
+}
+
+/// Every piece valued by the one judge; returns the bare hero.
+pub fn value_all(list: &mut [read::Owned], me: &Fighter, squad: &[Fighter]) -> Fighter {
+    let bare = bare(list, me);
+    let base = fight::score(&bare, squad, Run::Campaign).margin;
+    for o in list.iter_mut() {
+        o.piece.value = value(&bare, base, squad, &o.stats);
+    }
+    bare
+}
+
 fn arrange(args: &Json) -> Result<Json, String> {
     let force = args.get("force").and_then(Json::as_bool).unwrap_or(false);
     let bought = on_main("arrange rows", buy_rows)?;
@@ -116,18 +144,7 @@ fn arrange(args: &Json) -> Result<Json, String> {
     };
     let squad = vec![foe.clone()];
     let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    // The hero with nothing worn.
-    let mut bare = me.clone();
-    for o in list.iter().filter(|o| o.grid == EQUIP) {
-        wear(&mut bare, &o.stats, -1.0);
-    }
-    let base = fight::score(&bare, &squad, Run::Campaign).margin;
-    for o in &mut list {
-        let mut p = bare.clone();
-        wear(&mut p, &o.stats, 1.0);
-        let gain = fight::score(&p, &squad, Run::Campaign).margin - base;
-        o.piece.value = gain.max(1e-6);
-    }
+    let bare = value_all(&mut list, &me, &squad);
     lines.push(format!(
         "packing: read and valued {} pieces in {:.2}s against {} (hp {} atk {} block {} speed {:.1}); \
          each by the fight margin it adds to the hero with nothing worn:",

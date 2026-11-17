@@ -10,10 +10,12 @@ pub mod arrange;
 pub mod fight;
 pub mod grid;
 pub mod items;
+pub mod mega;
 pub mod read;
 
 fn on_init() {
     arrange::register_ops();
+    mega::register_ops();
 }
 
 static MOD_INFO: godotforge::ModDef = godotforge::ModDef {

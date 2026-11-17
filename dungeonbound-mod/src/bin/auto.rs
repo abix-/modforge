@@ -41,7 +41,8 @@ const BAR: [&str; 2] = ["StartBattleBtn", "EnterDeeperBtn"];
 /// Campsite: it heals on entry, CONTINUE leaves. Genie: CONTINUE
 /// once the wish is chosen. Blessing: granted on entry
 /// (bless_encounter.gd _ready, Global.grant_blessing), no choice.
-const HANDLED: [&str; 7] = [
+const HANDLED: [&str; 8] = [
+    "mega_forge_encounter.gd",
     "slot_bless_encounter.gd",
     "shop_encounter.gd",
     "dismantle_encounter.gd",
@@ -1032,6 +1033,21 @@ impl Game {
         Ok(true)
     }
 
+    /// The mega forge stop, played inside the game in one request
+    /// (mega.rs); prints its reasoning lines. It previews every set, so
+    /// it gets a longer wait than other requests.
+    fn mega(&self) -> Result<bool, String> {
+        let api: Api<Value> = Api::at(31330, "/op").with_timeout(Duration::from_secs(180));
+        let r = api.try_op("mega_forge", json!({}))?;
+        if !r.ok {
+            return Err(format!("mega_forge: {:?}", r.error));
+        }
+        for line in r.result["lines"].as_array().into_iter().flatten() {
+            println!("[auto]   {}", line.as_str().unwrap_or(""));
+        }
+        Ok(r.result["acted"] == json!(true))
+    }
+
     /// Equipment by the mod's own packing, done inside the game in one
     /// request (arrange.rs); prints its reasoning lines.
     fn arrange(&self) -> Result<bool, String> {
@@ -1390,6 +1406,11 @@ impl Game {
             return Ok(());
         }
         if self.rune(&crawl)? {
+            return Ok(());
+        }
+        // Before arrange, so nothing moves pieces while the mega forge
+        // has the anvil.
+        if self.mega()? {
             return Ok(());
         }
         if self.arrange()? {

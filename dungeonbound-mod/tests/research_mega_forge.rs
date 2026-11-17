@@ -99,70 +99,28 @@ fn cells_of(v: &Value) -> Vec<(i64, i64)> {
         .collect()
 }
 
-/// A spot and turn on the 6x5 anvil for each piece of `set`, in
-/// order, by the game's rules (inventory.gd fits: shape cells inside
-/// and free, no shape in another piece's holes, no hole on another
-/// piece), every piece touching one already placed (game_state.gd
-/// mega_forge_block_reason, "Every piece must touch another"). Mine:
-/// the first layout found.
+/// A spot and turn on the 6x5 anvil for each piece of `set`, by the
+/// mod's own layout (mega.rs).
 fn layout(pieces: &[Piece], set: &[usize]) -> Option<Vec<(i64, i64, i64)>> {
-    fn go(
-        pieces: &[Piece],
-        set: &[usize],
-        taken: &mut Vec<(i64, i64)>,
-        body: &mut Vec<(i64, i64)>,
-        out: &mut Vec<(i64, i64, i64)>,
-    ) -> bool {
-        let Some(&i) = set.get(out.len()) else {
-            return true;
-        };
-        let p = &pieces[i];
-        for rot in 0..4usize {
-            if p.shapes[..rot].contains(&p.shapes[rot]) {
-                continue;
-            }
-            for oy in -5..5i64 {
-                for ox in -6..6i64 {
-                    let shape: Vec<(i64, i64)> = p.shapes[rot]
-                        .iter()
-                        .map(|&(x, y)| (ox + x, oy + y))
-                        .collect();
-                    let holes: Vec<(i64, i64)> = p.holes[rot]
-                        .iter()
-                        .map(|&(x, y)| (ox + x, oy + y))
-                        .collect();
-                    let inside = shape
-                        .iter()
-                        .all(|&(x, y)| (0..6).contains(&x) && (0..5).contains(&y));
-                    if !inside || shape.iter().chain(&holes).any(|c| taken.contains(c)) {
-                        continue;
-                    }
-                    let touches = body.is_empty()
-                        || shape.iter().any(|&(x, y)| {
-                            [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-                                .iter()
-                                .any(|n| body.contains(n))
-                        });
-                    if !touches {
-                        continue;
-                    }
-                    let (t, b) = (taken.len(), body.len());
-                    taken.extend(shape.iter().chain(&holes));
-                    body.extend(&shape);
-                    out.push((ox, oy, rot as i64));
-                    if go(pieces, set, taken, body, out) {
-                        return true;
-                    }
-                    out.pop();
-                    taken.truncate(t);
-                    body.truncate(b);
-                }
-            }
-        }
-        false
-    }
-    let mut out = Vec::new();
-    go(pieces, set, &mut Vec::new(), &mut Vec::new(), &mut out).then_some(out)
+    let to = |v: &Vec<Vec<(i64, i64)>>| -> [Vec<(i32, i32)>; 4] {
+        std::array::from_fn(|r| v[r].iter().map(|&(x, y)| (x as i32, y as i32)).collect())
+    };
+    let owned: Vec<dungeonbound_mod::grid::Piece> = set
+        .iter()
+        .map(|&i| dungeonbound_mod::grid::Piece {
+            value: 0.0,
+            shapes: to(&pieces[i].shapes),
+            holes: to(&pieces[i].holes),
+            family: String::new(),
+            weapon: false,
+        })
+        .collect();
+    let refs: Vec<&dungeonbound_mod::grid::Piece> = owned.iter().collect();
+    dungeonbound_mod::mega::layout(&refs, 6, 5, &[true; 30]).map(|s| {
+        s.into_iter()
+            .map(|(x, y, r)| (x as i64, y as i64, r as i64))
+            .collect()
+    })
 }
 
 fn stats_text(stats: &[(String, f64)]) -> String {

@@ -20,9 +20,11 @@ use crate::items::stats_from;
 pub const EQUIP: i64 = 0;
 pub const BAG: i64 = 1;
 pub const TRAY: i64 = 2;
+/// The mega forge's anvil.
+pub const FORGE: i64 = 3;
 
 /// The scene the game swaps its screens under.
-const SCENE: &str = "/root/@Control@65/CurrentScene";
+pub const SCENE: &str = "/root/@Control@65/CurrentScene";
 
 pub fn call(o: &mut Gd<Object>, method: &str, args: &[Variant]) -> Result<Variant, String> {
     o.try_call(method, args)
@@ -175,6 +177,10 @@ pub struct Owned {
     pub at: (i32, i32, i32),
     /// Why the game would refuse to wear it ("" when it would not).
     pub refusal: String,
+    /// Potions and the like: the anvil takes none (inventory.gd
+    /// can_place).
+    pub consumable: bool,
+    pub rarity: i64,
     pub stats: Vec<(&'static str, f64)>,
     pub piece: grid::Piece,
 }
@@ -243,6 +249,20 @@ pub fn placed_item(p: &AnyDictionary) -> Option<Gd<Object>> {
     p.get("item")?.try_to::<Gd<Object>>().ok()
 }
 
+/// An item's shape and hole cells for turns 0 to 3
+/// (equipment_item.gd shape_cells, hole_cells).
+pub type Cells = [Vec<(i32, i32)>; 4];
+
+pub fn shapes_of(item: &mut Gd<Object>) -> Result<(Cells, Cells), String> {
+    let mut shapes: Cells = Default::default();
+    let mut holes: Cells = Default::default();
+    for r in 0..4 {
+        shapes[r] = cells(&call(item, "shape_cells", &[(r as i64).to_variant()])?);
+        holes[r] = cells(&call(item, "hole_cells", &[(r as i64).to_variant()])?);
+    }
+    Ok((shapes, holes))
+}
+
 pub fn seen() -> Result<Seen, String> {
     let mut global = node("/root/Global")?;
     let mut inv = inventory()?;
@@ -253,12 +273,7 @@ pub fn seen() -> Result<Seen, String> {
                 continue;
             };
             let at = |k: &str| p.get(k).map_or(0, |v| int(&v)) as i32;
-            let mut shapes: [Vec<(i32, i32)>; 4] = Default::default();
-            let mut holes: [Vec<(i32, i32)>; 4] = Default::default();
-            for r in 0..4 {
-                shapes[r] = cells(&call(&mut item, "shape_cells", &[(r as i64).to_variant()])?);
-                holes[r] = cells(&call(&mut item, "hole_cells", &[(r as i64).to_variant()])?);
-            }
+            let (shapes, holes) = shapes_of(&mut item)?;
             let iv = item.to_variant();
             let refusal = call(
                 &mut inv,
@@ -279,6 +294,9 @@ pub fn seen() -> Result<Seen, String> {
                 grid: g,
                 at: (at("x"), at("y"), at("rot")),
                 refusal,
+                // equipment_item.gd ItemType: EQUIPABLE, WEAPON, CONSUMABLE.
+                consumable: int(&item.get("item_type")) == 2,
+                rarity: int(&item.get("rarity")),
                 stats: stats_from(&script_vars(&item, 0)),
                 piece: grid::Piece {
                     value: 0.0,
