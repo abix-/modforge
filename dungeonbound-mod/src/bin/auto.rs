@@ -40,7 +40,8 @@ const BAR: [&str; 2] = ["StartBattleBtn", "EnterDeeperBtn"];
 /// Campsite: it heals on entry, CONTINUE leaves. Genie: CONTINUE
 /// once the wish is chosen. Blessing: granted on entry
 /// (bless_encounter.gd _ready, Global.grant_blessing), no choice.
-const HANDLED: [&str; 5] = [
+const HANDLED: [&str; 6] = [
+    "shop_encounter.gd",
     "dismantle_encounter.gd",
     "chest_encounter.gd",
     "campsite_encounter.gd",
@@ -57,6 +58,8 @@ struct Game {
     tried: std::cell::RefCell<String>,
     /// The last guardian and player line printed.
     judged: std::cell::RefCell<String>,
+    /// The shop already bought from.
+    shop_done: std::cell::RefCell<Value>,
 }
 
 /// Inventory grids (inventory.gd).
@@ -577,6 +580,82 @@ impl Game {
         Ok(false)
     }
 
+    /// Shop: every ware not sold and affordable (shop_encounter.gd
+    /// can_afford) is judged as if worn, by its plain stats. The best
+    /// that beats the loadout now is bought through the shop's own
+    /// buy, the same as the game's QA player; one per step, so gold
+    /// is read again. None better: done, CONTINUE leaves (crawl.gd
+    /// _run_encounter). What is bought is tried on by `equip`.
+    fn shop(&self, crawl: &Value) -> Result<bool, String> {
+        let Some(shop) = self.find(&json!({"node": SCENE}), "shop_encounter.gd", 4)? else {
+            return Ok(false);
+        };
+        if *self.shop_done.borrow() == shop {
+            return Ok(false);
+        }
+        let mut s = shop.clone();
+        s["property"] = json!("_cards");
+        s["depth"] = json!(1);
+        let cards = self.op("get_property", s)?["value"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let mut wares: Vec<(Value, Value, Vec<(&str, f64)>)> = Vec::new();
+        for c in cards {
+            let ware = json!({"id": c["id"]});
+            if self.prop(&ware, "sold")? == json!(true) {
+                continue;
+            }
+            let price = self.prop(&ware, "price")?;
+            if self.call(&shop, "can_afford", json!([price]))? != json!(true) {
+                continue;
+            }
+            let item = json!({"id": self.prop(&ware, "item")?["id"]});
+            if item["id"].is_null() {
+                continue;
+            }
+            let vars = self.vars(&item["id"])?;
+            let stats: Vec<(&str, f64)> = ITEM_STATS
+                .iter()
+                .filter_map(|(field, stat)| {
+                    let v = vars.get(*field)?.as_f64()?;
+                    (v != 0.0).then_some((*stat, v))
+                })
+                .collect();
+            if !stats.is_empty() {
+                wares.push((ware, item, stats));
+            }
+        }
+        let (me, squad) = self.player_and_guardian(crawl)?;
+        let now = fight::score(&me, &squad, Run::Campaign);
+        let ranked = fight::rank(&me, &squad, Run::Campaign, &wares, |p, (_, _, stats)| {
+            for (stat, v) in stats {
+                apply_bonus(p, stat, *v);
+            }
+        });
+        if let Some((i, s)) = ranked.first()
+            && s.cmp(&now).is_gt()
+        {
+            let (ware, item, stats) = &wares[*i];
+            println!(
+                "[auto]   buy {} {:?}: win {:.1}% hp left {:.0}% foe left {:.0}% (now {:.1}% {:.0}% {:.0}%)",
+                self.item_name(item),
+                stats,
+                s.win * 100.0,
+                s.hp_left * 100.0,
+                s.foes_left * 100.0,
+                now.win * 100.0,
+                now.hp_left * 100.0,
+                now.foes_left * 100.0
+            );
+            self.call(&shop, "buy", json!([ware]))?;
+            return Ok(true);
+        }
+        println!("[auto]   shop: nothing affordable beats the loadout");
+        *self.shop_done.borrow_mut() = shop;
+        Ok(false)
+    }
+
     fn step(&self) -> Result<(), String> {
         if self.between_runs()? {
             return Ok(());
@@ -592,6 +671,9 @@ impl Game {
             return Ok(());
         }
         if self.dismantle(&crawl)? {
+            return Ok(());
+        }
+        if self.shop(&crawl)? {
             return Ok(());
         }
         if self.equip(&crawl)? {
@@ -648,6 +730,21 @@ impl Game {
 /// A genie wish on the player: its stat times the genie's 3
 /// (game_state.gd LEVEL_BONUS_POOL, genie_encounter.gd
 /// GENIE_MULTIPLIER). Percent wishes count on the stat as it is now.
+/// An item's plain stats and the player stat each adds to (the
+/// names of dismantle_encounter.gd ABSORB_STATS). Not yet: triggers,
+/// abilities, percent bonuses.
+const ITEM_STATS: [(&str, &str); 9] = [
+    ("bonus_hp", "max_hp"),
+    ("bonus_atk", "atk"),
+    ("bonus_armor", "armor"),
+    ("bonus_speed", "speed"),
+    ("bonus_dodge", "dodge_chance"),
+    ("bonus_crit", "crit_chance"),
+    ("bonus_multistrike", "multistrike_chance"),
+    ("bonus_magic_resist", "magic_resist"),
+    ("bonus_block_chance", "block_chance"),
+];
+
 fn apply_wish(p: &mut Fighter, wish: &Value) {
     const GENIE_MULTIPLIER: f64 = 3.0;
     let n = wish["amount"].as_f64().unwrap_or(0.0) * GENIE_MULTIPLIER;
@@ -697,6 +794,7 @@ fn main() {
         waiting: std::cell::RefCell::new(String::new()),
         tried: std::cell::RefCell::new(String::new()),
         judged: std::cell::RefCell::new(String::new()),
+        shop_done: std::cell::RefCell::new(Value::Null),
     };
     println!("[auto] playing; Ctrl+C stops");
     let mut last_err = String::new();
