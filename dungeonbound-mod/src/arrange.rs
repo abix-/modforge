@@ -88,8 +88,19 @@ fn buy_rows() -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// The hero with nothing worn: the hero's stats less every worn
-/// piece's.
+/// Piece values already worked out, by judge and piece: a piece's value
+/// stays the same until the hero or the foe changes, so a step only
+/// values pieces it has not seen. Operator 2026-11-17: "we want this
+/// fast bro".
+static VALUES: Mutex<Vec<(u64, f64)>> = Mutex::new(Vec::new());
+
+fn hash_of(parts: &impl std::hash::Hash) -> u64 {
+    use std::hash::Hasher;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    parts.hash(&mut h);
+    h.finish()
+}
+
 /// The one judge of pieces and sets of pieces: the hero as the game
 /// folds them (read::fold) plus what the run adds (read::Hero), in the
 /// mod's fight math against `squad`.
@@ -100,6 +111,8 @@ pub struct Judge {
     run: read::Fold,
     /// Fight margin with nothing worn.
     pub base: f64,
+    /// What the judge's values depend on besides the piece.
+    key: u64,
 }
 
 impl Judge {
@@ -112,14 +125,44 @@ impl Judge {
                 Some((k.clone(), Json::from(d)))
             })
             .collect();
+        let key = hash_of(&(
+            Json::Object(hero.now.clone()).to_string(),
+            Json::Object(hero.worn.clone()).to_string(),
+            Json::Object(hero.empty.clone()).to_string(),
+            format!("{squad:?}"),
+        ));
         let mut j = Judge {
             squad,
             now: hero.now.clone(),
             run,
             base: 0.0,
+            key,
         };
         j.base = j.score(&hero.empty).margin;
         j
+    }
+
+    fn value_key(&self, alone: &read::Fold) -> u64 {
+        hash_of(&(self.key, Json::Object(alone.clone()).to_string()))
+    }
+
+    fn cached(&self, alone: &read::Fold) -> Option<f64> {
+        let k = self.value_key(alone);
+        VALUES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|(c, _)| *c == k)
+            .map(|&(_, v)| v)
+    }
+
+    fn remember(&self, alone: &read::Fold, v: f64) {
+        let k = self.value_key(alone);
+        let mut c = VALUES.lock().unwrap_or_else(|e| e.into_inner());
+        if c.len() >= 4096 {
+            c.drain(..1024);
+        }
+        c.push((k, v));
     }
 
     /// The hero with a fold's pieces worn, at full hp.
@@ -144,13 +187,39 @@ impl Judge {
     /// What wearing a piece is worth: the fight margin it adds to the
     /// hero with nothing worn (mine: at least a tiny value).
     pub fn value(&self, alone: &read::Fold) -> f64 {
-        (self.score(alone).margin - self.base).max(1e-6)
+        if let Some(v) = self.cached(alone) {
+            return v;
+        }
+        let v = (self.score(alone).margin - self.base).max(1e-6);
+        self.remember(alone, v);
+        v
     }
 
-    /// Every piece valued.
+    /// Every piece valued: from what is remembered, the rest at once on
+    /// every core.
     pub fn value_all(&self, list: &mut [read::Owned]) {
-        for o in list.iter_mut() {
-            o.piece.value = self.value(&o.alone);
+        let new: Vec<usize> = (0..list.len())
+            .filter(|&i| match self.cached(&list[i].alone) {
+                Some(v) => {
+                    list[i].piece.value = v;
+                    false
+                }
+                None => true,
+            })
+            .collect();
+        let got: Vec<(usize, f64)> = std::thread::scope(|s| {
+            let list = &*list;
+            let jobs: Vec<_> = new
+                .iter()
+                .map(|&i| {
+                    s.spawn(move || (i, (self.score(&list[i].alone).margin - self.base).max(1e-6)))
+                })
+                .collect();
+            jobs.into_iter().filter_map(|j| j.join().ok()).collect()
+        });
+        for (i, v) in got {
+            self.remember(&list[i].alone, v);
+            list[i].piece.value = v;
         }
     }
 }
@@ -269,14 +338,16 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
             return Ok(json!({"changed": false, "lines": lines}));
         }
     };
+    let read_s = read_at.elapsed().as_secs_f64();
+    let value_at = Instant::now();
     let judge = Judge::new(&seen.hero, vec![foe.clone()]);
     let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
     judge.value_all(&mut list);
     lines.push(format!(
-        "packing: read and valued {} pieces in {:.2}s against {} (hp {} atk {} block {} speed {:.1}); \
+        "packing: read {} pieces in {read_s:.2}s, valued in {:.2}s, against {} (hp {} atk {} block {} speed {:.1}); \
          each by the fight margin it adds to the hero with nothing worn:",
         list.len(),
-        read_at.elapsed().as_secs_f64(),
+        value_at.elapsed().as_secs_f64(),
         foe.name,
         foe.max_hp,
         foe.atk,
