@@ -558,7 +558,7 @@ fn loot() -> Result<bool, String> {
             let judge = arrange::Judge::new(&seen.hero, vec![foe()?]);
             let mut valued: Vec<read::Owned> =
                 seen.list.iter().filter(|o| o.wearable()).cloned().collect();
-            judge.value_all(&mut valued);
+            judge.value_all(&mut valued, &seen.board);
             // Worn, bag and the loot itself, all by worth per square
             // (operator 2026-11-17). When the loot is worth least, the
             // loot goes.

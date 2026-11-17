@@ -241,7 +241,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
     };
     let judge = arrange::Judge::new(&seen.hero, vec![foe.clone()]);
     let mut list: Vec<read::Owned> = seen.list.iter().filter(|o| o.wearable()).cloned().collect();
-    judge.value_all(&mut list);
+    judge.value_all(&mut list, &seen.board);
     let owned: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
     // Wares that can be paid for (keeping a quarter) and worn.
     let mut asks: Vec<(usize, arrange::Swap)> = Vec::new();
@@ -255,7 +255,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
                     continue;
                 };
                 let mut add = list[t].piece.clone();
-                add.value = judge.value(&up.alone);
+                judge.price(&mut add, &up.alone, &seen.board);
                 arrange::Swap {
                     remove: vec![t],
                     add,
@@ -263,7 +263,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
             }
             None => {
                 let mut add = w.item.piece.clone();
-                add.value = judge.value(&w.item.alone);
+                judge.price(&mut add, &w.item.alone, &seen.board);
                 arrange::Swap {
                     remove: vec![],
                     add,
@@ -272,11 +272,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
         };
         asks.push((k, swap));
     }
-    let g = grid::Grid {
-        w: seen.w,
-        h: seen.h,
-        open: seen.open.clone(),
-    };
+    let g = seen.grid();
     let swaps: Vec<arrange::Swap> = asks
         .iter()
         .map(|(_, s)| arrange::Swap {

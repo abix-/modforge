@@ -15,6 +15,7 @@ use godotforge::godot4::{ops::script_vars, target};
 use crate::fight::{self, Fighter};
 use crate::grid;
 use crate::items::stats_from;
+use crate::placement;
 
 /// inventory.gd grids.
 pub const EQUIP: i64 = 0;
@@ -214,9 +215,20 @@ pub struct Seen {
     /// usize::MAX in a roguelite run (no limit).
     pub hands: usize,
     pub hero: Hero,
+    pub board: placement::Board,
 }
 
 impl Seen {
+    /// The equipment grid as the packer sees it.
+    pub fn grid(&self) -> grid::Grid {
+        grid::Grid {
+            w: self.w,
+            h: self.h,
+            open: self.open.clone(),
+            board: self.board.clone(),
+        }
+    }
+
     /// The owned items' ids, sorted, each once.
     pub fn ids(&self) -> Vec<i64> {
         let mut ids: Vec<i64> = self.list.iter().map(|o| o.id).collect();
@@ -367,6 +379,7 @@ pub fn item_of(
     let weapon = call(item, "is_weapon", &[])?
         .try_to::<bool>()
         .unwrap_or(false);
+    let place = place_of(item)?;
     Ok(Owned {
         id: item.instance_id().to_i64(),
         name: item.get("display_name").stringify().to_string(),
@@ -388,7 +401,103 @@ pub fn item_of(
             holes,
             family,
             weapon,
+            place: std::sync::Arc::new(place),
         },
+    })
+}
+
+/// slot_bonus.gd MELEE_CLASSES.
+const MELEE_CLASSES: &[&str] = &["sword", "axe", "mace", "dagger", "spear", "claw"];
+
+/// An item's placement rules and what other rules see of it
+/// (equipment_item.gd adjacent_*, edge_*, tags, matches_rule).
+pub fn place_of(item: &mut Gd<Object>) -> Result<placement::Place, String> {
+    let weapon = call(item, "is_weapon", &[])?
+        .try_to::<bool>()
+        .unwrap_or(false);
+    let s = |item: &Gd<Object>, k: &str| item.get(k).stringify().to_string();
+    let f = |item: &Gd<Object>, k: &str| num_or(&item.get(k), 0.0);
+    let tags = item
+        .get("tags")
+        .try_to::<AnyArray>()
+        .map(|a| a.iter_shared().map(|t| t.stringify().to_string()).collect())
+        .unwrap_or_default();
+    let weapon_class = s(item, "weapon_class");
+    let traits = placement::Traits {
+        tags,
+        weapon,
+        weapon_class: weapon_class.clone(),
+        consumable: int(&item.get("item_type")) == 2,
+        cursed: call(item, "is_cursed", &[])?
+            .try_to::<bool>()
+            .unwrap_or(false),
+        slot: call(item, "slot_name", &[])?.stringify().to_string(),
+        rarity: int(&item.get("rarity")),
+    };
+    let tag = s(item, "adjacent_tag");
+    let adjacent = (!tag.is_empty()).then(|| placement::Adjacent {
+        tag,
+        side: s(item, "adjacent_side"),
+        min: int(&item.get("adjacent_min")),
+        also_tag: s(item, "adjacent_also_tag"),
+        also_side: s(item, "adjacent_also_side"),
+        stat: s(item, "adjacent_stat"),
+        amount: f(item, "adjacent_amount"),
+        stat_2: s(item, "adjacent_stat_2"),
+        amount_2: f(item, "adjacent_amount_2"),
+    });
+    let edge_stat = s(item, "edge_stat");
+    let edge = (!edge_stat.is_empty()).then(|| placement::Edge {
+        stat: edge_stat,
+        amount: f(item, "edge_amount"),
+        mode: s(item, "edge_mode"),
+    });
+    let trigger_bow = weapon_class == "bow" && int(&item.get("ammo")) > 0;
+    let brawler_atk = if weapon && MELEE_CLASSES.contains(&weapon_class.as_str()) && !trigger_bow {
+        int(&item.get("bonus_atk"))
+    } else {
+        0
+    };
+    Ok(placement::Place {
+        traits,
+        adjacent,
+        edge,
+        brawler_atk,
+        gain: placement::Gain::default(),
+    })
+}
+
+/// The equipment board's edges and runes (inventory.gd open_size,
+/// game_state.gd get_slot_bonuses: "cX_Y" keys, "id" or "id:arg"
+/// values, slot_bonus.gd key_cell, base_id).
+fn board(global: &mut Gd<Object>, inv: &mut Gd<Object>) -> Result<placement::Board, String> {
+    let size = call(inv, "open_size", &[EQUIP.to_variant()])?
+        .try_to::<Vector2i>()
+        .map_err(|e| e.to_string())?;
+    let id = global.get("selected_character_id");
+    let map = call(global, "get_slot_bonuses", &[id])?
+        .try_to::<AnyDictionary>()
+        .map_err(|e| format!("slot bonuses: {e}"))?;
+    let mut runes = Vec::new();
+    for (k, v) in map.iter_shared() {
+        let k = k.stringify().to_string();
+        let Some((x, y)) = k
+            .strip_prefix('c')
+            .and_then(|r| r.split_once('_'))
+            .and_then(|(x, y)| Some((x.parse::<i32>().ok()?, y.parse::<i32>().ok()?)))
+        else {
+            continue;
+        };
+        let v = v.stringify().to_string();
+        let base = v.split(':').next().unwrap_or("").to_string();
+        if x >= 0 && y >= 0 && !base.is_empty() {
+            runes.push(((x, y), base));
+        }
+    }
+    runes.sort();
+    Ok(placement::Board {
+        size: (size.x, size.y),
+        runes,
     })
 }
 
@@ -441,5 +550,6 @@ pub fn seen() -> Result<Seen, String> {
         open,
         hands,
         hero: hero()?,
+        board: board(&mut global, &mut inv)?,
     })
 }

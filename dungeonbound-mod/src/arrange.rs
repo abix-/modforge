@@ -30,6 +30,7 @@ use serde_json::{Value as Json, json};
 
 use crate::fight::{self, Fighter, Run};
 use crate::grid;
+use crate::placement;
 use crate::read::{self, BAG, EQUIP, TRAY};
 
 /// Search steps before the packer keeps the best layout found.
@@ -195,31 +196,103 @@ impl Judge {
         v
     }
 
-    /// Every piece valued: from what is remembered, the rest at once on
-    /// every core.
-    pub fn value_all(&self, list: &mut [read::Owned]) {
-        let new: Vec<usize> = (0..list.len())
-            .filter(|&i| match self.cached(&list[i].alone) {
-                Some(v) => {
-                    list[i].piece.value = v;
-                    false
+    /// What a piece's spot bonuses are worth for it: each by the fight
+    /// margin its stats add to the piece worn alone (placement.rs).
+    /// Mine: an adjacency bonus is worth the same for each match.
+    pub fn gains(&self, piece: &grid::Piece, alone: &read::Fold, board: &placement::Board) -> placement::Gain {
+        let p = &piece.place;
+        let worth = |f: read::Fold| self.value(&f) - piece.value;
+        let mut g = placement::Gain::default();
+        if let Some(a) = &p.adjacent
+            && a.amount != 0.0
+        {
+            let mut f = alone.clone();
+            placement::grant(&mut f, &a.stat, a.amount, &self.now);
+            if !a.stat_2.is_empty() {
+                placement::grant(&mut f, &a.stat_2, a.amount_2, &self.now);
+            }
+            g.per_match = worth(f);
+        }
+        if let Some(e) = &p.edge
+            && e.amount != 0.0
+        {
+            let mut f = alone.clone();
+            placement::grant(&mut f, &e.stat, e.amount, &self.now);
+            g.edge = worth(f);
+        }
+        let mut ids: Vec<&String> = board.runes.iter().map(|(_, r)| r).collect();
+        ids.sort();
+        ids.dedup();
+        for id in ids {
+            let mut f = alone.clone();
+            if placement::rune_onto(&mut f, id, p) {
+                g.runes.push((id.clone(), worth(f)));
+            }
+        }
+        g
+    }
+
+    /// A fold of worn pieces with what their spots add
+    /// (combatant_runtime.gd from_player with the grid: adjacency
+    /// amount times matches, edge, runes).
+    pub fn spotted(
+        &self,
+        fold: &read::Fold,
+        grid: &grid::Grid,
+        pieces: &[grid::Piece],
+        layout: &[grid::Spot],
+    ) -> read::Fold {
+        let all = grid::worn_of(pieces, layout);
+        let mut f = fold.clone();
+        for (w, (m, e, runes)) in all.iter().zip(placement::earned(&grid.board, &all)) {
+            let p = w.place;
+            if let Some(a) = &p.adjacent
+                && m > 0
+            {
+                placement::grant(&mut f, &a.stat, a.amount * m as f64, &self.now);
+                if !a.stat_2.is_empty() {
+                    placement::grant(&mut f, &a.stat_2, a.amount_2 * m as f64, &self.now);
                 }
-                None => true,
-            })
-            .collect();
-        let got: Vec<(usize, f64)> = std::thread::scope(|s| {
+            }
+            if let Some(ed) = &p.edge
+                && e
+            {
+                placement::grant(&mut f, &ed.stat, ed.amount, &self.now);
+            }
+            for r in &runes {
+                placement::rune_onto(&mut f, r, p);
+            }
+        }
+        f
+    }
+
+    /// A piece's value and what its spot bonuses are worth.
+    pub fn price(&self, piece: &mut grid::Piece, alone: &read::Fold, board: &placement::Board) {
+        piece.value = self.value(alone);
+        let g = self.gains(piece, alone, board);
+        if g != std::sync::Arc::as_ref(&piece.place).gain {
+            std::sync::Arc::make_mut(&mut piece.place).gain = g;
+        }
+    }
+
+    /// Every piece valued, with its spot bonuses, at once on every core
+    /// (values already worked out come from what is remembered).
+    pub fn value_all(&self, list: &mut [read::Owned], board: &placement::Board) {
+        let got: Vec<(usize, grid::Piece)> = std::thread::scope(|s| {
             let list = &*list;
-            let jobs: Vec<_> = new
-                .iter()
-                .map(|&i| {
-                    s.spawn(move || (i, (self.score(&list[i].alone).margin - self.base).max(1e-6)))
+            let jobs: Vec<_> = (0..list.len())
+                .map(|i| {
+                    s.spawn(move || {
+                        let mut piece = list[i].piece.clone();
+                        self.price(&mut piece, &list[i].alone, board);
+                        (i, piece)
+                    })
                 })
                 .collect();
             jobs.into_iter().filter_map(|j| j.join().ok()).collect()
         });
-        for (i, v) in got {
-            self.remember(&list[i].alone, v);
-            list[i].piece.value = v;
+        for (i, p) in got {
+            list[i].piece = p;
         }
     }
 }
@@ -270,8 +343,10 @@ fn pack_key(g: &grid::Grid, pieces: &[grid::Piece], hands: usize, budget: u64) -
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (g.w, g.h, &g.open, hands, budget).hash(&mut h);
+    (g.board.size, &g.board.runes).hash(&mut h);
     for p in pieces {
         (p.value.to_bits(), &p.shapes, &p.holes, &p.family, p.weapon).hash(&mut h);
+        format!("{:?}", p.place).hash(&mut h);
     }
     h.finish()
 }
@@ -355,8 +430,8 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let read_s = read_at.elapsed().as_secs_f64();
     let value_at = Instant::now();
     let judge = Judge::new(&seen.hero, vec![foe.clone()]);
-    let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    judge.value_all(&mut list);
+    let mut list: Vec<read::Owned> = seen.list.iter().filter(|o| o.wearable()).cloned().collect();
+    judge.value_all(&mut list, &seen.board);
     lines.push(format!(
         "packing: read {} pieces in {read_s:.2}s, valued in {:.2}s, against {} (hp {} atk {} block {} speed {:.1}); \
          each by the fight margin it adds to the hero with nothing worn:",
@@ -389,16 +464,33 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let open_cells = seen.open.iter().filter(|&&o| o).count();
     let only: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
     let packed_at = Instant::now();
-    let g = grid::Grid {
-        w: seen.w,
-        h: seen.h,
-        open: seen.open,
-    };
+    let g = seen.grid();
     let (plan, value, done) = grid::pack(&g, &only, seen.hands, BUDGET);
     // Both by the same judge: the plan and what is worn, each folded by
-    // the game.
-    let now = judge.score(&seen.hero.worn);
-    let then = judge.score(&fold_of(plan.iter().map(|s| list[s.piece].id).collect())?);
+    // the game, with what their spots add.
+    let worn_layout: Vec<grid::Spot> = list
+        .iter()
+        .enumerate()
+        .filter(|(_, o)| o.grid == EQUIP)
+        .map(|(i, o)| grid::Spot {
+            piece: i,
+            x: o.at.0,
+            y: o.at.1,
+            rot: o.at.2,
+        })
+        .collect();
+    let now = judge.score(&judge.spotted(&seen.hero.worn, &g, &only, &worn_layout));
+    let then = judge.score(&judge.spotted(
+        &fold_of(plan.iter().map(|s| list[s.piece].id).collect())?,
+        &g,
+        &only,
+        &plan,
+    ));
+    let spot_worth = grid::spot_values(&g, &only, &plan);
+    let spot_got = {
+        let all = grid::worn_of(&only, &plan);
+        placement::earned(&g.board, &all)
+    };
     let stays =
         |s: &grid::Spot| list[s.piece].grid == EQUIP && list[s.piece].at == (s.x, s.y, s.rot);
     let worn_now = list.iter().filter(|o| o.grid == EQUIP).count();
@@ -417,14 +509,30 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         now.win * 100.0,
         now.hp_left * 100.0
     ));
-    for s in &plan {
+    for (k, s) in plan.iter().enumerate() {
         let o = &list[s.piece];
+        let (m, e, runes) = &spot_got[k];
+        let mut spot = Vec::new();
+        if *m > 0 {
+            spot.push(format!("{m} matching beside it"));
+        }
+        if *e {
+            spot.push("its edge bonus".to_string());
+        }
+        for r in runes {
+            spot.push(format!("rune {r}"));
+        }
         lines.push(format!(
-            "  {:<24} to ({}, {}) turn {}{}",
+            "  {:<24} to ({}, {}) turn {}{}{}",
             o.name,
             s.x,
             s.y,
             s.rot,
+            if spot.is_empty() {
+                String::new()
+            } else {
+                format!("  spot: {} (worth {:.4})", spot.join(", "), spot_worth[k])
+            },
             if stays(s) {
                 "  (stays)".to_string()
             } else {

@@ -32,7 +32,7 @@ use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
 use crate::arrange;
-use crate::grid::{self, Piece};
+use crate::grid::Piece;
 use crate::items::stats_from;
 use crate::read::{self, FORGE};
 
@@ -226,6 +226,7 @@ fn preview(global: &mut Gd<Object>, inv: &mut Gd<Object>) -> Result<Result<Made,
             weapon: read::call(&mut item, "is_weapon", &[])?
                 .try_to::<bool>()
                 .unwrap_or(false),
+            place: std::sync::Arc::new(read::place_of(&mut item)?),
         },
         refusal: read::call(inv, "equip_block_reason", &[iv])?.to_string(),
     }))
@@ -337,8 +338,8 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         }
     };
     let judge = arrange::Judge::new(&seen.hero, vec![foe.clone()]);
-    let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    judge.value_all(&mut list);
+    let mut list: Vec<read::Owned> = seen.list.iter().filter(|o| o.wearable()).cloned().collect();
+    judge.value_all(&mut list, &seen.board);
     // Every set of 2 to 4 pieces the anvil takes that lays out, biggest
     // piece first.
     let forgeable: Vec<usize> = (0..list.len()).filter(|&i| !list[i].consumable).collect();
@@ -418,11 +419,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
     ));
     // Judge: the packer's best equipment value with the made piece in
     // place of its parts.
-    let g = grid::Grid {
-        w: seen.w,
-        h: seen.h,
-        open: seen.open.clone(),
-    };
+    let g = seen.grid();
     let owned: Vec<Piece> = list.iter().map(|o| o.piece.clone()).collect();
     let mut kept: Vec<(usize, Made)> = Vec::new();
     for (k, got) in made.into_iter().enumerate() {
@@ -430,7 +427,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         if m.refusal.starts_with("This class") || m.refusal.starts_with("Requires Level") {
             continue;
         }
-        m.piece.value = judge.value(&m.alone);
+        judge.price(&mut m.piece, &m.alone, &seen.board);
         kept.push((k, m));
     }
     let swaps: Vec<arrange::Swap> = kept
@@ -561,6 +558,7 @@ mod tests {
             holes: std::array::from_fn(|_| holes.to_vec()),
             family: String::new(),
             weapon: false,
+            place: Default::default(),
         }
     }
 

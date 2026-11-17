@@ -13,10 +13,14 @@
 //!
 //! The search fills the first free cell in reading order each step:
 //! some piece covers it with its first cell, or it stays empty. A
-//! bound (the best value the free cells could still hold, by value per
-//! cell) cuts branches that cannot win. Prior art: exact cover by the
-//! first empty cell (Knuth, Algorithm X), with branch and bound for
+//! layout is worth its pieces plus what their spots add (placement.rs:
+//! adjacency, edge, runes). A bound (the best value the free cells
+//! could still hold, by value per cell, with each piece's most its spot
+//! could add) cuts branches that cannot win. Prior art: exact cover by
+//! the first empty cell (Knuth, Algorithm X), with branch and bound for
 //! the value.
+
+use crate::placement::{self, Board, Shared, Worn};
 
 /// One piece that may be worn.
 #[derive(Debug, Clone)]
@@ -30,6 +34,33 @@ pub struct Piece {
     /// The game's equip family (one worn per family).
     pub family: String,
     pub weapon: bool,
+    /// What its spot can add, and what that is worth.
+    pub place: Shared,
+}
+
+/// The pieces of a layout as the placement rules see them.
+pub fn worn_of<'a>(pieces: &'a [Piece], layout: &[Spot]) -> Vec<Worn<'a>> {
+    layout
+        .iter()
+        .map(|s| {
+            let p = &pieces[s.piece];
+            Worn {
+                place: &p.place,
+                cells: p.shapes[s.rot as usize]
+                    .iter()
+                    .map(|&(dx, dy)| (s.x + dx, s.y + dy))
+                    .collect(),
+                rot: s.rot,
+                at: (s.x, s.y),
+            }
+        })
+        .collect()
+}
+
+/// What each spot of a layout adds, in layout order.
+pub fn spot_values(grid: &Grid, pieces: &[Piece], layout: &[Spot]) -> Vec<f64> {
+    let all = worn_of(pieces, layout);
+    placement::worth(&all, &placement::earned(&grid.board, &all))
 }
 
 /// Where a piece goes.
@@ -46,6 +77,8 @@ pub struct Grid {
     pub h: i32,
     /// Row-major, w * h.
     pub open: Vec<bool>,
+    /// Edges and runes for the placement bonuses.
+    pub board: Board,
 }
 
 /// The best layout found, and whether the search ran to the end
@@ -63,21 +96,36 @@ pub fn pack(grid: &Grid, pieces: &[Piece], hands: usize, budget: u64) -> (Vec<Sp
         weapons: 0,
         layout: Vec::new(),
         value: 0.0,
+        extra: 0.0,
         best: Vec::new(),
         best_value: 0.0,
         steps: 0,
         budget,
         order: Vec::new(),
+        most: Vec::new(),
     };
+    // The most each piece's spot could add, from the pieces it could
+    // sit beside.
+    s.most = (0..pieces.len())
+        .map(|i| {
+            let others: Vec<&placement::Place> = (0..pieces.len())
+                .filter(|&o| o != i)
+                .map(|o| &*pieces[o].place)
+                .collect();
+            placement::most(
+                &pieces[i].place,
+                pieces[i].shapes[0].len(),
+                &others,
+                grid.board.runes.len(),
+            )
+        })
+        .collect();
+    let top = |i: usize| (pieces[i].value + s.most[i]) / pieces[i].shapes[0].len().max(1) as f64;
     // Turns that give the same cells are tried once.
     let mut order: Vec<usize> = (0..pieces.len())
-        .filter(|&i| pieces[i].value > 0.0)
+        .filter(|&i| pieces[i].value + s.most[i] > 0.0)
         .collect();
-    order.sort_by(|&a, &b| {
-        let pa = pieces[a].value / pieces[a].shapes[0].len().max(1) as f64;
-        let pb = pieces[b].value / pieces[b].shapes[0].len().max(1) as f64;
-        pb.total_cmp(&pa)
-    });
+    order.sort_by(|&a, &b| top(b).total_cmp(&top(a)));
     s.order = order;
     s.go(0);
     let done = s.steps < s.budget;
@@ -94,13 +142,18 @@ struct Search<'a> {
     families: Vec<String>,
     weapons: usize,
     layout: Vec<Spot>,
+    /// The placed pieces' own values.
     value: f64,
+    /// The most the placed pieces' spots could still add.
+    extra: f64,
     best: Vec<Spot>,
     best_value: f64,
     steps: u64,
     budget: u64,
-    /// Pieces with value, best value per cell first.
+    /// Pieces with value, best value per cell first (with the most
+    /// their spot could add).
     order: Vec<usize>,
+    most: Vec<f64>,
 }
 
 impl Search<'_> {
@@ -121,15 +174,27 @@ impl Search<'_> {
                 continue;
             }
             let cells = self.pieces[i].shapes[0].len().max(1) as f64;
+            let v = self.pieces[i].value + self.most[i];
             if cells <= free {
-                add += self.pieces[i].value;
+                add += v;
                 free -= cells;
             } else {
-                add += self.pieces[i].value * free / cells;
+                add += v * free / cells;
                 free = 0.0;
             }
         }
-        self.value + add
+        self.value + self.extra + add
+    }
+
+    /// The layout so far with what its spots add.
+    fn worth(&self) -> f64 {
+        if self.extra <= 0.0 {
+            return self.value;
+        }
+        self.value
+            + spot_values(self.grid, self.pieces, &self.layout)
+                .iter()
+                .sum::<f64>()
     }
 
     fn fits(&self, p: &Piece, rot: usize, ox: i32, oy: i32) -> bool {
@@ -158,9 +223,13 @@ impl Search<'_> {
 
     fn go(&mut self, from: usize) {
         self.steps += 1;
-        if self.value > self.best_value {
-            self.best_value = self.value;
-            self.best = self.layout.clone();
+        // Spots are worked out only when the layout could beat the best.
+        if self.value + self.extra > self.best_value {
+            let v = self.worth();
+            if v > self.best_value {
+                self.best_value = v;
+                self.best = self.layout.clone();
+            }
         }
         if self.steps >= self.budget || self.bound(from) <= self.best_value + 1e-12 {
             return;
@@ -206,7 +275,9 @@ impl Search<'_> {
                     rot: rot as i32,
                 });
                 self.value += p.value;
+                self.extra += self.most[i];
                 self.go(cell + 1);
+                self.extra -= self.most[i];
                 self.value -= p.value;
                 self.layout.pop();
                 self.weapons -= usize::from(p.weapon);
@@ -247,6 +318,7 @@ mod tests {
             holes: [vec![], vec![], vec![], vec![]],
             family: family.into(),
             weapon,
+            place: Default::default(),
         }
     }
 
@@ -255,7 +327,38 @@ mod tests {
             w,
             h,
             open: vec![true; (w * h) as usize],
+            board: Board {
+                size: (w, h),
+                runes: Vec::new(),
+            },
         }
+    }
+
+    /// A piece that wants a neighbour pulls one beside it: on a 3x1
+    /// grid the two dots sit together and the bonus counts.
+    #[test]
+    fn adjacency_counts_in_the_value() {
+        let g = grid(3, 1);
+        let mut wants = piece(1.0, &[(0, 0)], "wants", false);
+        wants.place = std::sync::Arc::new(placement::Place {
+            adjacent: Some(placement::Adjacent {
+                tag: "any".into(),
+                side: "".into(),
+                min: 1,
+                amount: 1.0,
+                ..Default::default()
+            }),
+            gain: placement::Gain {
+                per_match: 0.5,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let pieces = [wants, piece(1.0, &[(0, 0)], "dot", false)];
+        let (layout, value, done) = pack(&g, &pieces, 1, 1_000_000);
+        assert!(done);
+        assert_eq!(layout.len(), 2);
+        assert!((value - 2.5).abs() < 1e-9, "{value}");
     }
 
     /// First fit would put the long piece flat on row 0 and leave no

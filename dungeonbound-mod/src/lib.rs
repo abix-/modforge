@@ -14,6 +14,7 @@ pub mod gems;
 pub mod grid;
 pub mod items;
 pub mod mega;
+pub mod placement;
 pub mod read;
 pub mod shop;
 

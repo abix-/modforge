@@ -135,8 +135,8 @@ pub fn gems(args: &Json) -> Result<Json, String> {
             .find(|(i, _)| *i == id)
             .map_or_else(|| id.to_string(), |(_, n)| n.clone())
     };
-    let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    judge.value_all(&mut list);
+    let mut list: Vec<read::Owned> = seen.list.iter().filter(|o| o.wearable()).cloned().collect();
+    judge.value_all(&mut list, &seen.board);
     // Every gem into every wearable piece, previewed by the game in
     // short main-thread passes so the game keeps running.
     let targets: Vec<i64> = list.iter().map(|o| o.id).collect();
@@ -168,29 +168,28 @@ pub fn gems(args: &Json) -> Result<Json, String> {
     })?;
     // Judge: the packer's best equipment value with the socketed piece
     // in place of the plain one.
-    let g = grid::Grid {
-        w: seen.w,
-        h: seen.h,
-        open: seen.open.clone(),
-    };
+    let g = seen.grid();
     let owned: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
     let mut kept: Vec<(usize, Vec<(&'static str, f64)>, f64)> = Vec::new();
     let mut refused: Vec<(i64, String)> = Vec::new();
+    let mut priced: Vec<grid::Piece> = Vec::new();
     for (k, got) in made.into_iter().enumerate() {
         match got {
             Ok((stats, alone)) => {
-                let v = judge.value(&alone);
-                kept.push((k, stats, v));
+                let t = targets.iter().position(|&t| t == asks[k].1).unwrap_or(0);
+                let mut p = owned[t].clone();
+                judge.price(&mut p, &alone, &seen.board);
+                kept.push((k, stats, p.value));
+                priced.push(p);
             }
             Err(why) => refused.push((asks[k].0, why)),
         }
     }
     let swaps: Vec<arrange::Swap> = kept
         .iter()
-        .map(|(k, _, v)| {
+        .zip(priced)
+        .map(|((k, _, _), add)| {
             let t = targets.iter().position(|&t| t == asks[*k].1).unwrap_or(0);
-            let mut add = owned[t].clone();
-            add.value = *v;
             arrange::Swap {
                 remove: vec![t],
                 add,
