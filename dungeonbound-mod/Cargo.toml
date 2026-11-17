@@ -20,16 +20,19 @@ crate-type = ["cdylib", "rlib"]
 name = "dungeonbound-deploy"
 path = "src/bin/deploy.rs"
 
+[[bin]]
+name = "dungeonbound-auto"
+path = "src/bin/auto.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 fastrand = { workspace = true }
 modforge = { path = "../modforge" }
+serde_json = { workspace = true }
 # Features come from godotforge's godot4.
 godot = "0.5.5"
 godotforge = { path = "../godotforge", features = ["godot4"] }
 
-[dev-dependencies]
-serde_json = { workspace = true }
 
 [lints]
 workspace = true
