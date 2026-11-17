@@ -30,7 +30,6 @@ use serde_json::{Value as Json, json};
 
 use crate::fight::{self, Fighter, Run};
 use crate::grid;
-use crate::items::wear;
 use crate::read::{self, BAG, EQUIP, TRAY};
 
 /// Search steps before the packer keeps the best layout found.
@@ -91,30 +90,81 @@ fn buy_rows() -> Result<Vec<String>, String> {
 
 /// The hero with nothing worn: the hero's stats less every worn
 /// piece's.
-pub fn bare(list: &[read::Owned], me: &Fighter) -> Fighter {
-    let mut bare = me.clone();
-    for o in list.iter().filter(|o| o.grid == EQUIP) {
-        wear(&mut bare, &o.stats, -1.0);
-    }
-    bare
+/// The one judge of pieces and sets of pieces: the hero as the game
+/// folds them (read::fold) plus what the run adds (read::Hero), in the
+/// mod's fight math against `squad`.
+pub struct Judge {
+    pub squad: Vec<Fighter>,
+    now: read::Fold,
+    /// The hero now less the fold of what is worn now.
+    run: read::Fold,
+    /// Fight margin with nothing worn.
+    pub base: f64,
 }
 
-/// What wearing a piece with these stats is worth: the fight margin
-/// they add to the bare hero (mine: at least a tiny value).
-pub fn value(bare: &Fighter, base: f64, squad: &[Fighter], stats: &[(&'static str, f64)]) -> f64 {
-    let mut p = bare.clone();
-    wear(&mut p, stats, 1.0);
-    (fight::score(&p, squad, Run::Campaign).margin - base).max(1e-6)
+impl Judge {
+    pub fn new(hero: &read::Hero, squad: Vec<Fighter>) -> Judge {
+        let run = hero
+            .now
+            .iter()
+            .filter_map(|(k, v)| {
+                let d = v.as_f64()? - hero.worn.get(k)?.as_f64()?;
+                Some((k.clone(), Json::from(d)))
+            })
+            .collect();
+        let mut j = Judge {
+            squad,
+            now: hero.now.clone(),
+            run,
+            base: 0.0,
+        };
+        j.base = j.score(&hero.empty).margin;
+        j
+    }
+
+    /// The hero with a fold's pieces worn, at full hp.
+    pub fn hero(&self, fold: &read::Fold) -> Fighter {
+        let mut vars = self.now.clone();
+        for (k, v) in fold {
+            if let Some(n) = v.as_f64() {
+                let d = self.run.get(k).and_then(Json::as_f64).unwrap_or(0.0);
+                vars.insert(k.clone(), Json::from(n + d));
+            }
+        }
+        let mut p = fight::from_vars("Player", &vars);
+        p.hp = p.max_hp;
+        p.block = p.block_max;
+        p
+    }
+
+    pub fn score(&self, fold: &read::Fold) -> fight::Score {
+        fight::score(&self.hero(fold), &self.squad, Run::Campaign)
+    }
+
+    /// What wearing a piece is worth: the fight margin it adds to the
+    /// hero with nothing worn (mine: at least a tiny value).
+    pub fn value(&self, alone: &read::Fold) -> f64 {
+        (self.score(alone).margin - self.base).max(1e-6)
+    }
+
+    /// Every piece valued.
+    pub fn value_all(&self, list: &mut [read::Owned]) {
+        for o in list.iter_mut() {
+            o.piece.value = self.value(&o.alone);
+        }
+    }
 }
 
-/// Every piece valued by the one judge; returns the bare hero.
-pub fn value_all(list: &mut [read::Owned], me: &Fighter, squad: &[Fighter]) -> Fighter {
-    let bare = bare(list, me);
-    let base = fight::score(&bare, squad, Run::Campaign).margin;
-    for o in list.iter_mut() {
-        o.piece.value = value(&bare, base, squad, &o.stats);
-    }
-    bare
+/// The game's fold of the pieces with these object ids, on the main
+/// thread.
+pub fn fold_of(ids: Vec<i64>) -> Result<read::Fold, String> {
+    on_main("fold", move || {
+        let items: Vec<godot::obj::Gd<godot::classes::Object>> = ids
+            .iter()
+            .filter_map(|&id| godotforge::godot4::target::object_by_id(id).ok())
+            .collect();
+        read::fold(&items)
+    })
 }
 
 /// Search steps per swap in the first pass over every swap; the best
@@ -126,6 +176,42 @@ pub const FINALISTS: usize = 8;
 pub struct Swap {
     pub remove: Vec<usize>,
     pub add: grid::Piece,
+}
+
+/// Full packs already done, by what was packed: the same pieces on the
+/// same grid pack to the same value, so a step that looks again (the
+/// shop after a buy is refused, the next ware) does not pack again.
+static PACKED: Mutex<Vec<(u64, f64)>> = Mutex::new(Vec::new());
+
+fn pack_key(g: &grid::Grid, pieces: &[grid::Piece], hands: usize, budget: u64) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (g.w, g.h, &g.open, hands, budget).hash(&mut h);
+    for p in pieces {
+        (p.value.to_bits(), &p.shapes, &p.holes, &p.family, p.weapon).hash(&mut h);
+    }
+    h.finish()
+}
+
+/// The packer's best equipment value, from the cache when packed
+/// before.
+pub fn packed_value(g: &grid::Grid, pieces: &[grid::Piece], hands: usize, budget: u64) -> f64 {
+    let key = pack_key(g, pieces, hands, budget);
+    if let Some(&(_, v)) = PACKED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(k, _)| *k == key)
+    {
+        return v;
+    }
+    let v = grid::pack(g, pieces, hands, budget).1;
+    let mut c = PACKED.lock().unwrap_or_else(|e| e.into_inner());
+    if c.len() >= 256 {
+        c.remove(0);
+    }
+    c.push((key, v));
+    v
 }
 
 /// The packer's best equipment value with no swap, and the best swaps
@@ -144,7 +230,7 @@ pub fn rank(
             .map(|i| owned[i].clone())
             .collect();
         pieces.extend(s.map(|s| s.add.clone()));
-        grid::pack(g, &pieces, hands, budget).1
+        packed_value(g, &pieces, hands, budget)
     };
     let mut top: Vec<(f64, usize)> = swaps
         .iter()
@@ -164,9 +250,7 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let force = args.get("force").and_then(Json::as_bool).unwrap_or(false);
     let bought = on_main("arrange rows", buy_rows)?;
     let read_at = Instant::now();
-    let (seen, me, foe) = on_main("arrange read", || {
-        Ok((read::seen()?, read::player()?, read::guardian()))
-    })?;
+    let (seen, foe) = on_main("arrange read", || Ok((read::seen()?, read::guardian())))?;
     let ids = seen.ids();
     {
         let mut tried = TRIED.lock().unwrap_or_else(|e| e.into_inner());
@@ -185,9 +269,9 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
             return Ok(json!({"changed": false, "lines": lines}));
         }
     };
-    let squad = vec![foe.clone()];
+    let judge = Judge::new(&seen.hero, vec![foe.clone()]);
     let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    let bare = value_all(&mut list, &me, &squad);
+    judge.value_all(&mut list);
     lines.push(format!(
         "packing: read and valued {} pieces in {:.2}s against {} (hp {} atk {} block {} speed {:.1}); \
          each by the fight margin it adds to the hero with nothing worn:",
@@ -226,12 +310,10 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         open: seen.open,
     };
     let (plan, value, done) = grid::pack(&g, &only, seen.hands, BUDGET);
-    let mut planned = bare.clone();
-    for s in &plan {
-        wear(&mut planned, &list[s.piece].stats, 1.0);
-    }
-    let now = fight::score(&me, &squad, Run::Campaign);
-    let then = fight::score(&planned, &squad, Run::Campaign);
+    // Both by the same judge: the plan and what is worn, each folded by
+    // the game.
+    let now = judge.score(&seen.hero.worn);
+    let then = judge.score(&fold_of(plan.iter().map(|s| list[s.piece].id).collect())?);
     let stays =
         |s: &grid::Spot| list[s.piece].grid == EQUIP && list[s.piece].at == (s.x, s.y, s.rot);
     let worn_now = list.iter().filter(|o| o.grid == EQUIP).count();

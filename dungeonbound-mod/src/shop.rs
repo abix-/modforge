@@ -189,16 +189,9 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
                 bag_spot,
             });
         }
-        Ok(Some((
-            sid,
-            gold,
-            wares,
-            seen,
-            read::player()?,
-            read::guardian(),
-        )))
+        Ok(Some((sid, gold, wares, seen, read::guardian())))
     })?;
-    let Some((sid, gold, wares, seen, me, foe)) = read_all else {
+    let Some((sid, gold, wares, seen, foe)) = read_all else {
         return Ok(json!({"acted": false, "lines": []}));
     };
     let entry = {
@@ -224,10 +217,9 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
             return Ok(json!({"acted": false, "lines": lines}));
         }
     };
-    let squad = vec![foe.clone()];
+    let judge = arrange::Judge::new(&seen.hero, vec![foe.clone()]);
     let mut list: Vec<read::Owned> = seen.list.iter().filter(|o| o.wearable()).cloned().collect();
-    let bare = arrange::value_all(&mut list, &me, &squad);
-    let base = crate::fight::score(&bare, &squad, crate::fight::Run::Campaign).margin;
+    judge.value_all(&mut list);
     let owned: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
     // Wares that can be paid for (keeping a quarter) and worn.
     let mut asks: Vec<(usize, arrange::Swap)> = Vec::new();
@@ -241,7 +233,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
                     continue;
                 };
                 let mut add = list[t].piece.clone();
-                add.value = arrange::value(&bare, base, &squad, &up.stats);
+                add.value = judge.value(&up.alone);
                 arrange::Swap {
                     remove: vec![t],
                     add,
@@ -249,7 +241,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
             }
             None => {
                 let mut add = w.item.piece.clone();
-                add.value = arrange::value(&bare, base, &squad, &w.item.stats);
+                add.value = judge.value(&w.item.alone);
                 arrange::Swap {
                     remove: vec![],
                     add,

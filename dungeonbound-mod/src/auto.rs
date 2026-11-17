@@ -555,10 +555,10 @@ fn loot() -> Result<bool, String> {
         Look::Off => Ok(false),
         Look::Done => Ok(true),
         Look::Sell(seen) => {
-            let (me, squad) = player_and_foe()?;
+            let judge = arrange::Judge::new(&seen.hero, vec![foe()?]);
             let mut valued: Vec<read::Owned> =
                 seen.list.iter().filter(|o| o.wearable()).cloned().collect();
-            arrange::value_all(&mut valued, &me, &squad);
+            judge.value_all(&mut valued);
             if let Some(o) = shop::weakest(&valued, &seen, &[BAG, TRAY]) {
                 let ok = shop::sell(o.id)?;
                 say(&format!(

@@ -32,7 +32,6 @@ use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
 use crate::arrange;
-use crate::fight::{self, Run};
 use crate::grid::{self, Piece};
 use crate::items::stats_from;
 use crate::read::{self, FORGE};
@@ -123,6 +122,7 @@ pub fn layout(pieces: &[&Piece], w: i32, h: i32, open: &[bool]) -> Option<Vec<(i
 struct Made {
     name: String,
     stats: Vec<(&'static str, f64)>,
+    alone: read::Fold,
     piece: Piece,
     refusal: String,
 }
@@ -217,6 +217,7 @@ fn preview(global: &mut Gd<Object>, inv: &mut Gd<Object>) -> Result<Result<Made,
     Ok(Ok(Made {
         name: item.get("display_name").to_string(),
         stats: stats_from(&script_vars(&item, 0)),
+        alone: read::fold(std::slice::from_ref(&item))?,
         piece: Piece {
             value: 0.0,
             shapes,
@@ -298,7 +299,6 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
             cleared,
             Some(Some((
                 read::seen()?,
-                read::player()?,
                 read::guardian(),
                 size.x,
                 size.y,
@@ -311,7 +311,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
     let Some(found) = found else {
         return Ok(json!({"acted": !lines.is_empty(), "lines": lines}));
     };
-    let Some((seen, me, foe, w, h, anvil)) = found else {
+    let Some((seen, foe, w, h, anvil)) = found else {
         lines.push("mega forge: took the forged piece and left".into());
         return Ok(json!({"acted": true, "lines": lines}));
     };
@@ -324,10 +324,9 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
             return Ok(json!({"acted": false, "lines": lines}));
         }
     };
-    let squad = vec![foe.clone()];
+    let judge = arrange::Judge::new(&seen.hero, vec![foe.clone()]);
     let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    let bare = arrange::value_all(&mut list, &me, &squad);
-    let base = fight::score(&bare, &squad, Run::Campaign).margin;
+    judge.value_all(&mut list);
     // Every set of 2 to 4 pieces the anvil takes that lays out, biggest
     // piece first.
     let forgeable: Vec<usize> = (0..list.len()).filter(|&i| !list[i].consumable).collect();
@@ -398,7 +397,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         if m.refusal.starts_with("This class") || m.refusal.starts_with("Requires Level") {
             continue;
         }
-        m.piece.value = arrange::value(&bare, base, &squad, &m.stats);
+        m.piece.value = judge.value(&m.alone);
         kept.push((k, m));
     }
     let swaps: Vec<arrange::Swap> = kept

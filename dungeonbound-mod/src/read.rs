@@ -184,6 +184,8 @@ pub struct Owned {
     pub gem: bool,
     pub rarity: i64,
     pub stats: Vec<(&'static str, f64)>,
+    /// The hero with only this piece worn, by the game's fold.
+    pub alone: Fold,
     pub piece: grid::Piece,
 }
 
@@ -208,6 +210,7 @@ pub struct Seen {
     pub open: Vec<bool>,
     /// usize::MAX in a roguelite run (no limit).
     pub hands: usize,
+    pub hero: Hero,
 }
 
 impl Seen {
@@ -277,6 +280,70 @@ pub fn shapes_of(item: &mut Gd<Object>) -> Result<(Cells, Cells), String> {
     Ok((shapes, holes))
 }
 
+/// A hero's stats as script variables, as the game folds them.
+pub type Fold = serde_json::Map<String, serde_json::Value>;
+
+/// The hero with only `items` worn, as the game builds the player for
+/// a fight: CombatantRuntime.from_player on the hero's base stats
+/// (combat_resolver.gd _rebuild_loadout). Battle gains and run bonuses
+/// are not in it; `Hero` carries them.
+pub fn fold(items: &[Gd<Object>]) -> Result<Fold, String> {
+    let mut global = node("/root/Global")?;
+    let id = global.get("selected_character_id");
+    let base = call(&mut global, "get_effective_base_stats", &[id])?;
+    let run = held(&global, "current_run")?;
+    let mut script = held(&held(&run, "player")?, "script")?;
+    // from_player takes a typed Array[EquipmentItem]; the inventory's
+    // own list is one (inventory.gd get_equipped_list).
+    let mut inv = inventory()?;
+    let list = call(&mut inv, "get_equipped_list", &[])?;
+    list.call("clear", &[]);
+    for i in items {
+        list.call("append", &[i.to_variant()]);
+    }
+    let made = call(
+        &mut script,
+        "from_player",
+        &[
+            base,
+            list,
+            godot::builtin::VarArray::new().to_variant(),
+            true.to_variant(),
+            godot::builtin::VarDictionary::new().to_variant(),
+        ],
+    )?
+    .try_to::<Gd<Object>>()
+    .map_err(|_| "the game made no player".to_string())?;
+    Ok(script_vars(&made, 0))
+}
+
+/// The hero now, the game's fold with nothing worn, and with what is
+/// worn now. The difference between the hero now and the fold of what
+/// is worn is what the run adds (genie wishes, dismantle, blessings);
+/// it is added to every fold, so any set of pieces is judged the same
+/// way and a piece is worth the same worn or in the bag.
+#[derive(Debug, Clone)]
+pub struct Hero {
+    pub now: Fold,
+    pub empty: Fold,
+    pub worn: Fold,
+}
+
+pub fn hero() -> Result<Hero, String> {
+    let run = held(&node("/root/Global")?, "current_run")?;
+    let now = script_vars(&held(&run, "player")?, 0);
+    let mut inv = inventory()?;
+    let worn: Vec<Gd<Object>> = placements(&mut inv, EQUIP)?
+        .iter()
+        .filter_map(placed_item)
+        .collect();
+    Ok(Hero {
+        now,
+        empty: fold(&[])?,
+        worn: fold(&worn)?,
+    })
+}
+
 /// Any item as the mod judges it: owned (`placement`, on grid `g`) or
 /// not (a shop ware, a loot drop: `placement` None, grid -1).
 pub fn item_of(
@@ -308,6 +375,7 @@ pub fn item_of(
         gem: call(item, "is_gem", &[])?.try_to::<bool>().unwrap_or(false),
         rarity: int(&item.get("rarity")),
         stats: stats_from(&script_vars(item, 0)),
+        alone: fold(std::slice::from_ref(item))?,
         piece: grid::Piece {
             value: 0.0,
             shapes,
@@ -366,5 +434,6 @@ pub fn seen() -> Result<Seen, String> {
         h: size.y,
         open,
         hands,
+        hero: hero()?,
     })
 }

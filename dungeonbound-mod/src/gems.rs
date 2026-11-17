@@ -34,7 +34,6 @@ use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
 use crate::arrange;
-use crate::fight::{self, Run};
 use crate::grid;
 use crate::items::stats_from;
 use crate::read;
@@ -57,7 +56,7 @@ pub fn register_ops() {
 fn socketed(
     gem: &mut Gd<Object>,
     target: &mut Gd<Object>,
-) -> Result<Result<Vec<(&'static str, f64)>, String>, String> {
+) -> Result<Result<(Vec<(&'static str, f64)>, read::Fold), String>, String> {
     let mut db: Gd<Object> = read::held(&read::node("/root/LootDB")?, "GemDB")?;
     let (g, t) = (gem.to_variant(), target.to_variant());
     let why = read::call(&mut db, "refusal", &[g.clone(), t.clone()])?.to_string();
@@ -92,7 +91,10 @@ fn socketed(
     let Ok(item) = made.try_to::<Gd<Object>>() else {
         return Ok(Err("the game made no piece".into()));
     };
-    Ok(Ok(stats_from(&script_vars(&item, 0))))
+    Ok(Ok((
+        stats_from(&script_vars(&item, 0)),
+        read::fold(std::slice::from_ref(&item))?,
+    )))
 }
 
 fn stats_text(stats: &[(&str, f64)]) -> String {
@@ -106,9 +108,7 @@ fn stats_text(stats: &[(&str, f64)]) -> String {
 pub fn gems(args: &Json) -> Result<Json, String> {
     let force = args.get("force").and_then(Json::as_bool).unwrap_or(false);
     let at = Instant::now();
-    let (seen, me, foe) = on_main("gems read", || {
-        Ok((read::seen()?, read::player()?, read::guardian()))
-    })?;
+    let (seen, foe) = on_main("gems read", || Ok((read::seen()?, read::guardian())))?;
     let gem_ids: Vec<i64> = seen.list.iter().filter(|o| o.gem).map(|o| o.id).collect();
     if gem_ids.is_empty() {
         return Ok(json!({"acted": false, "lines": []}));
@@ -127,7 +127,7 @@ pub fn gems(args: &Json) -> Result<Json, String> {
             return Ok(json!({"acted": false, "lines": lines}));
         }
     };
-    let squad = vec![foe.clone()];
+    let judge = arrange::Judge::new(&seen.hero, vec![foe.clone()]);
     let names: Vec<(i64, String)> = seen.list.iter().map(|o| (o.id, o.name.clone())).collect();
     let name = |id: i64| {
         names
@@ -136,8 +136,7 @@ pub fn gems(args: &Json) -> Result<Json, String> {
             .map_or_else(|| id.to_string(), |(_, n)| n.clone())
     };
     let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
-    let bare = arrange::value_all(&mut list, &me, &squad);
-    let base = fight::score(&bare, &squad, Run::Campaign).margin;
+    judge.value_all(&mut list);
     // Every gem into every wearable piece, previewed by the game in one
     // main-thread pass.
     let targets: Vec<i64> = list.iter().map(|o| o.id).collect();
@@ -176,8 +175,8 @@ pub fn gems(args: &Json) -> Result<Json, String> {
     let mut refused: Vec<(i64, String)> = Vec::new();
     for (k, got) in made.into_iter().enumerate() {
         match got {
-            Ok(stats) => {
-                let v = arrange::value(&bare, base, &squad, &stats);
+            Ok((stats, alone)) => {
+                let v = judge.value(&alone);
                 kept.push((k, stats, v));
             }
             Err(why) => refused.push((asks[k].0, why)),
