@@ -89,14 +89,32 @@ fn research_enemy_squad() {
 
     for (i, m) in members.iter().enumerate() {
         let vars = print_set_vars(&api, &format!("enemy {i}"), &m["id"]);
-        for name in ["source_data", "monster_loadout", "rival_loadout"] {
+        for name in ["source_data", "monster_loadout", "rival_loadout", "stats"] {
             let obj = vars
                 .iter()
                 .find(|v| v["name"] == json!(name))
                 .and_then(|v| v["value"]["id"].as_i64());
             if let Some(id) = obj {
-                print_set_vars(&api, &format!("enemy {i} {name}"), &json!(id));
+                let inner = print_set_vars(&api, &format!("enemy {i} {name}"), &json!(id));
+                // source_data.stats: the enemy kind's base stats.
+                if let Some(stats) = inner
+                    .iter()
+                    .find(|v| v["name"] == json!("stats"))
+                    .and_then(|v| v["value"]["id"].as_i64())
+                {
+                    print_set_vars(&api, &format!("enemy {i} {name}.stats"), &json!(stats));
+                }
             }
+        }
+    }
+
+    // What the enemy display shows, to check the numbers above.
+    let screen = common::op(&api, "screen", json!({"text_only": true}));
+    println!("enemy hud text:");
+    for n in screen["nodes"].as_array().into_iter().flatten() {
+        let path = n["path"].as_str().unwrap_or("");
+        if path.contains("Enemy3DHudLayer") || path.contains("EnemyHud") {
+            println!("  {:?} {}", n["text"].as_str().unwrap_or(""), path);
         }
     }
 }
