@@ -6,15 +6,22 @@
 //! name and starts the real GodotSteam, renamed beside it. Every op is
 //! godotforge's; the control plane is on 127.0.0.1:31330/op.
 
+pub mod arrange;
 pub mod fight;
 pub mod grid;
+pub mod items;
+pub mod read;
+
+fn on_init() {
+    arrange::register_ops();
+}
 
 static MOD_INFO: godotforge::ModDef = godotforge::ModDef {
     name: "dungeonbound-mod",
     version: "0.1.0",
     http_port: 31330,
     log_file: "dungeonbound-mod.log",
-    on_init: None,
+    on_init: Some(on_init),
     on_tick: None,
     on_shutdown: None,
 };

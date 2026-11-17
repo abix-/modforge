@@ -10,11 +10,11 @@
 //! - START BATTLE, then ENTER DEEPER, when shown
 //! - genie: the wish that most raises the chance to beat the floor's
 //!   guardian, by the mod's own fight math (src/fight.rs)
-//! - equipment: each bag item tried on (or in place of a worn one),
-//!   kept when the fight math says it beats the guardian more often.
+//! - equipment: rows bought and pieces packed inside the game by the
+//!   mod's arrange step (src/arrange.rs), which returns its reasoning.
 //!   Operator 2026-11-16: "when we loot stuff we also have to move it
 //!   into equipment", "that includes placment which might mean
-//!   rotation". Placement is the game's own first fit for now.
+//!   rotation".
 //! - chest: open it; campsite: continue
 //! - any other stop: wait for the operator. Operator 2026-11-16: "we
 //!   shouldnt skip over stuff unless there'a a reason"
@@ -28,7 +28,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use dungeonbound_mod::fight::{self, Fighter, Run};
-use dungeonbound_mod::grid;
+use dungeonbound_mod::items::{ITEM_STATS, apply_bonus, stats_from};
 use modforge::client::Api;
 use serde_json::{Value, json};
 
@@ -56,8 +56,6 @@ struct Game {
     start: Instant,
     /// The unhandled stop already announced.
     waiting: std::cell::RefCell<String>,
-    /// The bag and tray already tried on.
-    tried: std::cell::RefCell<String>,
     /// The last guardian and player line printed.
     judged: std::cell::RefCell<String>,
     /// The shop already bought from.
@@ -1034,276 +1032,14 @@ impl Game {
         Ok(true)
     }
 
-    /// The player's score against the guardian with what is equipped now.
-    /// Every piece on the equipment, bag and tray grids as the packer
-    /// sees it: the game's item, where it is now, its shapes and holes
-    /// for each turn, family and weapon flag. Pieces the game will not
-    /// let this hero wear (gems, other classes, level) are left out.
-    fn pieces(
-        &self,
-        inv: &Value,
-    ) -> Result<Vec<(Value, i64, (i32, i32, i32), grid::Piece)>, String> {
-        let cells = |v: &Value| -> Vec<(i32, i32)> {
-            v.as_array()
-                .into_iter()
-                .flatten()
-                .map(|c| match c {
-                    Value::Array(a) => (
-                        a[0].as_i64().unwrap_or(0) as i32,
-                        a[1].as_i64().unwrap_or(0) as i32,
-                    ),
-                    _ => (
-                        c["x"].as_i64().unwrap_or(0) as i32,
-                        c["y"].as_i64().unwrap_or(0) as i32,
-                    ),
-                })
-                .collect()
-        };
-        let mut out = Vec::new();
-        for g in [EQUIP, BAG, TRAY] {
-            for p in self
-                .call(inv, "placements_in", json!([g]))?
-                .as_array()
-                .into_iter()
-                .flatten()
-            {
-                let item = json!({"id": p["item"]["id"]});
-                let at = (
-                    p["x"].as_i64().unwrap_or(0) as i32,
-                    p["y"].as_i64().unwrap_or(0) as i32,
-                    p["rot"].as_i64().unwrap_or(0) as i32,
-                );
-                let mut shapes: [Vec<(i32, i32)>; 4] = Default::default();
-                let mut holes: [Vec<(i32, i32)>; 4] = Default::default();
-                for r in 0..4 {
-                    shapes[r] = cells(&self.call(&item, "shape_cells", json!([r]))?);
-                    holes[r] = cells(&self.call(&item, "hole_cells", json!([r]))?);
-                }
-                let first = shapes[at.2 as usize]
-                    .iter()
-                    .min_by_key(|&&(x, y)| (y, x))
-                    .copied()
-                    .unwrap_or((0, 0));
-                let me = json!({"call": {"id": inv["id"], "method": "placement_at",
-                    "args": [g, {"vector2i": [at.0 + first.0, at.1 + first.1]}]}});
-                let why = self.call(inv, "equip_block_reason", json!([item, me]))?;
-                let why = why.as_str().unwrap_or("");
-                if why.starts_with("Drag a gem")
-                    || why.starts_with("This class")
-                    || why.starts_with("Requires Level")
-                {
-                    continue;
-                }
-                let family = self
-                    .call(inv, "equip_family_id", json!([item]))?
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
-                let weapon = self.call(&item, "is_weapon", json!([]))? == json!(true);
-                out.push((
-                    item,
-                    g,
-                    at,
-                    grid::Piece {
-                        value: 0.0,
-                        shapes,
-                        holes,
-                        family,
-                        weapon,
-                    },
-                ));
-            }
+    /// Equipment by the mod's own packing, done inside the game in one
+    /// request (arrange.rs); prints its reasoning lines.
+    fn arrange(&self) -> Result<bool, String> {
+        let got = self.op("arrange", json!({}))?;
+        for line in got["lines"].as_array().into_iter().flatten() {
+            println!("[auto]   {}", line.as_str().unwrap_or(""));
         }
-        Ok(out)
-    }
-
-    /// The game's own placement of a piece, passed as itself (not a
-    /// copy) to inventory.gd move and stow.
-    fn placement_ref(inv: &Value, g: i64, at: (i32, i32, i32), piece: &grid::Piece) -> Value {
-        let first = piece.shapes[at.2 as usize]
-            .iter()
-            .min_by_key(|&&(x, y)| (y, x))
-            .copied()
-            .unwrap_or((0, 0));
-        json!({"call": {"id": inv["id"], "method": "placement_at",
-            "args": [g, {"vector2i": [at.0 + first.0, at.1 + first.1]}]}})
-    }
-
-    /// Equipment by the mod's own packing (grid.rs). Operator
-    /// 2026-11-16: "look at how euipmne and invetory grid works",
-    /// "items take up strange placemnt", "we gotta do the math
-    /// properly on how its all arrange", "DRY!!". Every piece owned is
-    /// valued once by the one judge (the fight margin its stats add to
-    /// the player with nothing worn); the packer finds the layout of
-    /// the open equipment cells with the most value under the game's
-    /// rules; it is used only when the fight score with it beats the
-    /// score now. Pieces leave through the game's stow and go to their
-    /// spot through the game's move. Mine: a piece the math values at
-    /// 0 (its effects are not modeled) is kept at a tiny value, so it
-    /// fills room nothing else wants.
-    fn arrange(&self, crawl: &Value) -> Result<bool, String> {
-        let global = json!({"node": "/root/Global"});
-        let inv = json!({"id": self.prop(&global, "inventory")?["id"]});
-        let mut all = self.owned(&inv, &[EQUIP, BAG, TRAY])?;
-        all.sort_by_key(|v| v["id"].as_i64());
-        let key = format!("{all:?}");
-        if *self.tried.borrow() == key {
-            return Ok(false);
-        }
-        *self.tried.borrow_mut() = key;
-        let mut pieces = self.pieces(&inv)?;
-        // The player with nothing worn.
-        let (me, squad) = self.player_and_guardian(crawl)?;
-        let mut bare = me.clone();
-        for (item, g, _, _) in &pieces {
-            if *g == EQUIP {
-                for (stat, v) in self.item_stats(item)? {
-                    apply_bonus(&mut bare, stat, -v);
-                }
-            }
-        }
-        let base = fight::score(&bare, &squad, Run::Campaign).margin;
-        for (item, _, _, piece) in pieces.iter_mut() {
-            let mut p = bare.clone();
-            for (stat, v) in self.item_stats(item)? {
-                apply_bonus(&mut p, stat, v);
-            }
-            let gain = fight::score(&p, &squad, Run::Campaign).margin - base;
-            piece.value = gain.max(1e-6);
-        }
-        let size = self.call(&inv, "grid_size", json!([EQUIP]))?;
-        let (w, h) = match &size {
-            Value::Array(a) => (
-                a[0].as_i64().unwrap_or(0) as i32,
-                a[1].as_i64().unwrap_or(0) as i32,
-            ),
-            _ => (
-                size["x"].as_i64().unwrap_or(0) as i32,
-                size["y"].as_i64().unwrap_or(0) as i32,
-            ),
-        };
-        let mut open = Vec::new();
-        for y in 0..h {
-            for x in 0..w {
-                open.push(self.call(&inv, "cell_open", json!([EQUIP, [x, y]]))? == json!(true));
-            }
-        }
-        let hands = if self.call(&global, "in_roguelite_run", json!([]))? == json!(true) {
-            usize::MAX
-        } else {
-            let id = self.prop(&global, "selected_character_id")?;
-            self.call(&global, "get_weapon_slot_count", json!([id]))?
-                .as_i64()
-                .unwrap_or(1)
-                .max(1) as usize
-        };
-        let open_cells = open.iter().filter(|&&o| o).count();
-        let only: Vec<grid::Piece> = pieces.iter().map(|p| p.3.clone()).collect();
-        let started = Instant::now();
-        let (plan, value, done) = grid::pack(&grid::Grid { w, h, open }, &only, hands, 2_000_000);
-        // The fight score of the plan against the score now.
-        let mut planned = bare.clone();
-        for s in &plan {
-            for (stat, v) in self.item_stats(&pieces[s.piece].0)? {
-                apply_bonus(&mut planned, stat, v);
-            }
-        }
-        let now = fight::score(&me, &squad, Run::Campaign);
-        let then = fight::score(&planned, &squad, Run::Campaign);
-        let worn_now = pieces.iter().filter(|p| p.1 == EQUIP).count();
-        let same = plan.len() == worn_now
-            && plan
-                .iter()
-                .all(|s| pieces[s.piece].1 == EQUIP && pieces[s.piece].2 == (s.x, s.y, s.rot));
-        println!(
-            "[auto]   packing {} pieces into {w}x{h} ({} open cells): {} worn, value {value:.4}, {} in {:.1}s; win {:.1}% hp left {:.0}% (now {:.1}% {:.0}%)",
-            pieces.len(),
-            open_cells,
-            plan.len(),
-            if done { "best" } else { "best found" },
-            started.elapsed().as_secs_f64(),
-            then.win * 100.0,
-            then.hp_left * 100.0,
-            now.win * 100.0,
-            now.hp_left * 100.0
-        );
-        if same || !then.cmp(&now).is_gt() {
-            return Ok(false);
-        }
-        // Off: worn pieces not in the plan where they are now.
-        let keep: Vec<usize> = plan
-            .iter()
-            .filter(|s| pieces[s.piece].1 == EQUIP && pieces[s.piece].2 == (s.x, s.y, s.rot))
-            .map(|s| s.piece)
-            .collect();
-        for (i, (item, g, at, piece)) in pieces.iter().enumerate() {
-            if *g == EQUIP && !keep.contains(&i) {
-                let ok = self.call(
-                    &inv,
-                    "stow",
-                    json!([Self::placement_ref(&inv, EQUIP, *at, piece)]),
-                )?;
-                if ok != json!(true) {
-                    println!("[auto]     could not take off {}", self.item_name(item));
-                }
-            }
-        }
-        // On: each planned piece from where it is now to its spot.
-        let now_pieces = self.pieces(&inv)?;
-        let mut taken: Vec<usize> = Vec::new();
-        for s in &plan {
-            if keep.contains(&s.piece) {
-                continue;
-            }
-            let item = &pieces[s.piece].0;
-            let Some((j, (_, g, at, piece))) = now_pieces
-                .iter()
-                .enumerate()
-                .find(|(j, p)| p.0 == *item && p.1 != EQUIP && !taken.contains(j))
-            else {
-                println!("[auto]     {} is gone", self.item_name(item));
-                continue;
-            };
-            taken.push(j);
-            let ok = self.call(
-                &inv,
-                "move",
-                json!([
-                    Self::placement_ref(&inv, *g, *at, piece),
-                    EQUIP,
-                    [s.x, s.y],
-                    s.rot
-                ]),
-            )?;
-            println!(
-                "[auto]     {} to ({}, {}) turn {}: {}",
-                self.item_name(item),
-                s.x,
-                s.y,
-                s.rot,
-                if ok == json!(true) {
-                    "placed"
-                } else {
-                    "refused"
-                }
-            );
-        }
-        self.changed()?;
-        self.call(&global, "save_game", json!([]))?;
-        *self.tried.borrow_mut() = String::new();
-        Ok(true)
-    }
-
-    /// The game's own steps after a move (qa_driver.gd
-    /// _equip_like_a_player): equipment_changed refolds the player's
-    /// stats (crawl.gd _reapply_loadout).
-    fn changed(&self) -> Result<(), String> {
-        self.call(
-            &json!({"node": "/root/EventBus"}),
-            "emit_signal",
-            json!(["equipment_changed", -1]),
-        )?;
-        Ok(())
+        Ok(got["changed"] == json!(true))
     }
 
     fn item_name(&self, item: &Value) -> String {
@@ -1656,7 +1392,7 @@ impl Game {
         if self.rune(&crawl)? {
             return Ok(());
         }
-        if self.arrange(&crawl)? {
+        if self.arrange()? {
             return Ok(());
         }
         let mut c = crawl.clone();
@@ -1710,72 +1446,10 @@ impl Game {
 /// A genie wish on the player: its stat times the genie's 3
 /// (game_state.gd LEVEL_BONUS_POOL, genie_encounter.gd
 /// GENIE_MULTIPLIER). Percent wishes count on the stat as it is now.
-/// An item's plain stats and the player stat each adds to (the
-/// names of dismantle_encounter.gd ABSORB_STATS). Not yet: triggers,
-/// abilities, percent bonuses.
-const ITEM_STATS: [(&str, &str); 9] = [
-    ("bonus_hp", "max_hp"),
-    ("bonus_atk", "atk"),
-    ("bonus_armor", "armor"),
-    ("bonus_speed", "speed"),
-    ("bonus_dodge", "dodge_chance"),
-    ("bonus_crit", "crit_chance"),
-    ("bonus_multistrike", "multistrike_chance"),
-    ("bonus_magic_resist", "magic_resist"),
-    ("bonus_block_chance", "block_chance"),
-];
-
 fn apply_wish(p: &mut Fighter, wish: &Value) {
     const GENIE_MULTIPLIER: f64 = 3.0;
     let n = wish["amount"].as_f64().unwrap_or(0.0) * GENIE_MULTIPLIER;
     apply_bonus(p, wish["stat"].as_str().unwrap_or(""), n);
-}
-
-/// One permanent stat bonus on the player, by the game's stat names
-/// (game_state.gd LEVEL_BONUS_POOL for the genie, dismantle's
-/// ABSORB_STATS). Percent bonuses count on the stat as it is now.
-/// An item's plain stats (ITEM_STATS fields) as player stat bonuses.
-fn stats_from(vars: &serde_json::Map<String, Value>) -> Vec<(&'static str, f64)> {
-    ITEM_STATS
-        .iter()
-        .filter_map(|(field, stat)| {
-            let v = vars.get(*field)?.as_f64()?;
-            (v != 0.0).then_some((*stat, v))
-        })
-        .collect()
-}
-
-fn apply_bonus(p: &mut Fighter, stat: &str, n: f64) {
-    let pct = |v: i64| (v as f64 * (1.0 + n)).round() as i64;
-    match stat {
-        "max_hp_pct" => {
-            p.max_hp = pct(p.max_hp);
-            p.hp = p.max_hp;
-        }
-        "max_hp" => {
-            p.max_hp += n.round() as i64;
-            p.hp = p.max_hp;
-        }
-        "atk_pct" => p.atk = pct(p.atk),
-        "atk" => p.atk += n.round() as i64,
-        "armor_pct" => {
-            p.block_max = pct(p.block_max);
-            p.block = p.block_max;
-        }
-        "armor" => {
-            p.block_max += n.round() as i64;
-            p.block = p.block_max;
-        }
-        "block_chance" => p.block_chance += n,
-        "dodge_chance" => p.dodge += n,
-        "crit_chance" => p.crit += n,
-        "multistrike_chance" => p.multistrike += n,
-        "magic_resist" => p.magic_resist += n,
-        "speed" => p.speed += n,
-        // Block regen, luck, thorns and mana are not in the fight
-        // math yet.
-        _ => {}
-    }
 }
 
 fn main() {
@@ -1783,7 +1457,6 @@ fn main() {
         api: Api::at(31330, "/op").with_timeout(Duration::from_secs(10)),
         start: Instant::now(),
         waiting: std::cell::RefCell::new(String::new()),
-        tried: std::cell::RefCell::new(String::new()),
         judged: std::cell::RefCell::new(String::new()),
         shop_done: std::cell::RefCell::new(Value::Null),
         shrine_done: std::cell::RefCell::new(Value::Null),

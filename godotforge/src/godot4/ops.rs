@@ -269,6 +269,26 @@ fn field(d: &godot::builtin::VarDictionary, key: &str) -> Variant {
     d.get(&key.to_variant()).unwrap_or_default()
 }
 
+/// An object's script variables by name, as `inspect` shows them
+/// (`depth` levels of nesting). For a mod's own reads on the main
+/// thread.
+pub fn script_vars(o: &Gd<Object>, depth: u32) -> Map<String, Json> {
+    let mut out = Map::new();
+    for p in o.get_property_list().iter_shared() {
+        let usage = field(&p, "usage").try_to::<i64>().unwrap_or(0);
+        if usage & USAGE_SCRIPT_VARIABLE == 0 || usage & USAGE_HEADING != 0 {
+            continue;
+        }
+        let name = field(&p, "name").to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let v = o.get(&StringName::from(name.as_str()));
+        out.insert(name, value::to_json(&v, depth));
+    }
+    out
+}
+
 fn inspect(args: &Json) -> Result<Json, String> {
     let args = args.clone();
     on_main("inspect", move || {
