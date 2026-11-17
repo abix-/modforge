@@ -40,7 +40,8 @@ const BAR: [&str; 2] = ["StartBattleBtn", "EnterDeeperBtn"];
 /// Campsite: it heals on entry, CONTINUE leaves. Genie: CONTINUE
 /// once the wish is chosen. Blessing: granted on entry
 /// (bless_encounter.gd _ready, Global.grant_blessing), no choice.
-const HANDLED: [&str; 6] = [
+const HANDLED: [&str; 7] = [
+    "slot_bless_encounter.gd",
     "shop_encounter.gd",
     "dismantle_encounter.gd",
     "chest_encounter.gd",
@@ -64,6 +65,8 @@ struct Game {
     shrine_done: std::cell::RefCell<Value>,
     /// The shop on screen and the gold held when it opened.
     shop_entry: std::cell::RefCell<(Value, i64)>,
+    /// The fight on now was predicted.
+    predicted: std::cell::RefCell<bool>,
 }
 
 /// Share of the gold held on entering a shop that is kept.
@@ -374,8 +377,33 @@ impl Game {
     /// gfives most stats possible". Every item, worn or loose, ranked
     /// by gain per cell (`per_cell`). Free uses only; one spin per
     /// stop, then leave.
-    fn gamble(&self, crawl: &Value) -> Result<bool, String> {
-        let Some(stop) = self.find(&json!({"node": SCENE}), "gamble_encounter.gd", 4)? else {
+    ///
+    /// The same flow serves every item stop (item_shrine.gd): stage
+    /// an item with the game's own drop, act, then CONTINUE or the
+    /// stop's own finish. Each stop only says which items, best first:
+    /// - gamble, altar (UPGRADE: the item a level up), sanctify (a
+    ///   blessing on the item): every item by gain per cell
+    /// - curse: the offer's boon and bane judged on the player; taken
+    ///   on a worn item only when the fight margin goes up
+    /// - attune (needs a tag choice) and unsocket (takes gems off):
+    ///   not judged yet, left with the reason
+    fn item_stop(&self, crawl: &Value) -> Result<bool, String> {
+        let scene = json!({"node": SCENE});
+        let mut found = None;
+        for (script, label) in [
+            ("gamble_encounter.gd", "GAMBLE"),
+            ("altar_encounter.gd", "UPGRADE"),
+            ("sanctify_encounter.gd", "SANCTIFY"),
+            ("curse_encounter.gd", "CURSE"),
+            ("attune_encounter.gd", "ATTUNE"),
+            ("unsocket_encounter.gd", "UNSOCKET"),
+        ] {
+            if let Some(stop) = self.find(&scene, script, 4)? {
+                found = Some((stop, label));
+                break;
+            }
+        }
+        let Some((stop, label)) = found else {
             return Ok(false);
         };
         if self.prop(&stop, "_spinning")? == json!(true) {
@@ -390,7 +418,7 @@ impl Game {
                 && used
                 && self.pressable(&b)
             {
-                self.press(&b, "CONTINUE (gamble)")?;
+                self.press(&b, &format!("CONTINUE ({label})"))?;
             } else if used && !self.prop(&stop, "_held")?.is_null() {
                 // The result waits on the stop to be dragged back and
                 // CONTINUE stays off until then (item_shrine.gd _act).
@@ -398,12 +426,16 @@ impl Game {
                 // (hand_back), as CONTINUE would.
                 self.call(&stop, "finish", json!([]))?;
                 println!(
-                    "[auto] {:7.1}s closed the gamble; result handed back",
+                    "[auto] {:7.1}s closed {label}; result handed back",
                     self.start.elapsed().as_secs_f64()
                 );
             } else {
-                self.leave("spun once")?;
+                self.leave("used once")?;
             }
+            return Ok(true);
+        }
+        if label == "ATTUNE" || label == "UNSOCKET" {
+            self.leave(&format!("{label} is not judged yet"))?;
             return Ok(true);
         }
         let inv = json!({"id": self.prop(&json!({"node": "/root/Global"}), "inventory")?["id"]});
@@ -421,7 +453,40 @@ impl Game {
                 }
             }
         }
-        let ranked = self.per_cell(crawl, &items)?;
+        let mut ranked = self.per_cell(crawl, &items)?;
+        if label == "CURSE" {
+            let mut o = stop.clone();
+            o["property"] = json!("_offer");
+            o["depth"] = json!(4);
+            let offer = self.op("get_property", o)?["value"].clone();
+            let (me, squad) = self.player_and_guardian(crawl)?;
+            let base = fight::score(&me, &squad, Run::Campaign).margin;
+            let mut p = me.clone();
+            for side in ["boon", "bane"] {
+                let stat = offer[side]["stat"].as_str().unwrap_or("");
+                if let Some((_, to)) = ITEM_STATS.iter().find(|(f, _)| *f == stat) {
+                    apply_bonus(&mut p, to, offer[side]["amount"].as_f64().unwrap_or(0.0));
+                }
+            }
+            let gain = fight::score(&p, &squad, Run::Campaign).margin - base;
+            println!(
+                "[auto]   curse offer boon {} bane {}: margin change {gain:.4}",
+                offer["boon"], offer["bane"]
+            );
+            if gain <= 0.0 {
+                self.leave("the curse loses more than it gives")?;
+                return Ok(true);
+            }
+            // On a worn item, so it counts now.
+            let worn = self.call(&inv, "get_equipped_list", json!([]))?;
+            let worn: Vec<Value> = worn
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|w| json!({"id": w["id"]}))
+                .collect();
+            ranked.retain(|(i, _)| worn.contains(&items[*i]));
+        }
         for (i, gain) in &ranked {
             let item = &items[*i];
             println!("[auto]   {}: gain per cell {gain:.4}", self.item_name(item));
@@ -431,11 +496,129 @@ impl Game {
             if let Some(act) = self.stage(&stop, item)? {
                 *self.shrine_done.borrow_mut() = stop.clone();
                 return self
-                    .press(&act, &format!("GAMBLE {}", self.item_name(item)))
+                    .press(&act, &format!("{label} {}", self.item_name(item)))
                     .map(|()| true);
             }
         }
-        self.leave("no loose item to gamble; worn items risk a break")?;
+        self.leave(&format!("no item {label} takes for free"))?;
+        Ok(true)
+    }
+
+    /// Rune stone (slot_bless_encounter.gd): a 2x2 rune set on the
+    /// equipment grid works on the worn item covering most of it
+    /// (slot_bonus.gd active_placement). It goes on the worn item that
+    /// adds the most to the fight, at a spot the game allows
+    /// (slot_bonus.gd fits: 4 open cells, no other rune), through the
+    /// stop's own placement step. Not yet: which items a rune kind
+    /// helps (slot_bonus.gd benefits).
+    fn rune(&self, crawl: &Value) -> Result<bool, String> {
+        let Some(stop) = self.find(&json!({"node": SCENE}), "slot_bless_encounter.gd", 4)? else {
+            return Ok(false);
+        };
+        if self.prop(&stop, "_used")? == json!(true) || self.prop(&stop, "_full")? == json!(true) {
+            return Ok(false);
+        }
+        let global = json!({"node": "/root/Global"});
+        let inv = json!({"id": self.prop(&global, "inventory")?["id"]});
+        let size = self.call(&inv, "grid_size", json!([EQUIP]))?;
+        let xy = |v: &Value| -> (i64, i64) {
+            match v {
+                Value::Array(a) => (a[0].as_i64().unwrap_or(0), a[1].as_i64().unwrap_or(0)),
+                _ => (v["x"].as_i64().unwrap_or(0), v["y"].as_i64().unwrap_or(0)),
+            }
+        };
+        let (w, h) = xy(&size);
+        // Cells under runes already set (keys "c{x}_{y}" are origins).
+        let mut runed: Vec<(i64, i64)> = Vec::new();
+        let map = self.call(&global, "get_slot_bonuses", json!([]))?;
+        for key in map.as_object().into_iter().flatten().map(|(k, _)| k) {
+            let parts: Vec<i64> = key[1..].split('_').filter_map(|p| p.parse().ok()).collect();
+            if let [x, y] = parts[..] {
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    runed.push((x + dx, y + dy));
+                }
+            }
+        }
+        // Worn pieces: item, cells, and the game's tie order.
+        let mut worn: Vec<(Value, Vec<(i64, i64)>, Vec<i64>)> = Vec::new();
+        for p in self
+            .call(&inv, "placements_in", json!([EQUIP]))?
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let item = json!({"id": p["item"]["id"]});
+            let (px, py) = (p["x"].as_i64().unwrap_or(0), p["y"].as_i64().unwrap_or(0));
+            let rot = p["rot"].as_i64().unwrap_or(0);
+            let cells: Vec<(i64, i64)> = self
+                .call(&item, "shape_cells", json!([rot]))?
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|c| {
+                    let (cx, cy) = xy(c);
+                    (px + cx, py + cy)
+                })
+                .collect();
+            let rarity = self.prop(&item, "rarity")?.as_i64().unwrap_or(0);
+            let weapon = i64::from(self.call(&item, "is_weapon", json!([]))? == json!(true));
+            worn.push((
+                item,
+                cells.clone(),
+                vec![rarity, weapon, cells.len() as i64, -py, -px],
+            ));
+        }
+        let mut spots: Vec<((i64, i64), usize, i64)> = Vec::new();
+        for y in 0..h - 1 {
+            for x in 0..w - 1 {
+                let square = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+                let mut ok = true;
+                for c in square {
+                    if runed.contains(&c)
+                        || self.call(&inv, "cell_open", json!([EQUIP, [c.0, c.1]]))? != json!(true)
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    continue;
+                }
+                // slot_bonus.gd active_placement: most cells covered,
+                // then rarity, weapon, size, top, left.
+                let active = worn
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, (_, cells, tie))| {
+                        let covered = cells.iter().filter(|c| square.contains(c)).count() as i64;
+                        (covered > 0).then(|| {
+                            let mut key = vec![covered];
+                            key.extend(tie);
+                            (i, key)
+                        })
+                    })
+                    .max_by(|a, b| a.1.cmp(&b.1));
+                if let Some((i, key)) = active {
+                    spots.push(((x, y), i, key[0]));
+                }
+            }
+        }
+        let items: Vec<Value> = worn.iter().map(|(i, _, _)| i.clone()).collect();
+        let ranked = self.per_cell(crawl, &items)?;
+        for (i, _) in &ranked {
+            if let Some((origin, _, covered)) =
+                spots.iter().filter(|s| s.1 == *i).max_by_key(|s| s.2)
+            {
+                println!(
+                    "[auto]   rune on {} at {:?} ({covered} cells under it)",
+                    self.item_name(&items[*i]),
+                    origin
+                );
+                self.call(&stop, "_on_rune_placed", json!([[origin.0, origin.1]]))?;
+                return Ok(true);
+            }
+        }
+        self.leave("no spot puts the rune on a worn item")?;
         Ok(true)
     }
 
@@ -799,13 +982,78 @@ impl Game {
         Ok(false)
     }
 
+    /// At the start of a fight: the foes the game built (the
+    /// resolver's squad, live CombatantRuntime) and the player as they
+    /// stand, through the mod's fight math. Logged beside the result
+    /// to check the math against the game.
+    fn predict(&self, crawl: &Value) -> Result<(), String> {
+        let resolver = self
+            .find(crawl, "combat_resolver.gd", 1)?
+            .ok_or("no combat resolver")?;
+        let mut r = resolver.clone();
+        r["property"] = json!("squad");
+        r["depth"] = json!(1);
+        let squad: Vec<Fighter> = self.op("get_property", r)?["value"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|f| {
+                let vars = self.vars(&f["id"])?;
+                let name = vars
+                    .get("display_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("foe")
+                    .to_string();
+                Ok(fight::from_vars(&name, &vars))
+            })
+            .collect::<Result<_, String>>()?;
+        let run = self.prop(&json!({"node": "/root/Global"}), "current_run")?;
+        let player = self.prop(&json!({"id": run["id"]}), "player")?;
+        let me = fight::from_vars("Player", &self.vars(&player["id"])?);
+        let s = fight::score(&me, &squad, Run::Campaign);
+        let foes: Vec<String> = squad
+            .iter()
+            .map(|f| {
+                format!(
+                    "{} hp {}/{} atk {} block {} speed {:.1}",
+                    f.name, f.hp, f.max_hp, f.atk, f.block_max, f.speed
+                )
+            })
+            .collect();
+        println!(
+            "[auto]   fight: player hp {}/{} atk {} block {} speed {:.1} vs {}",
+            me.hp,
+            me.max_hp,
+            me.atk,
+            me.block_max,
+            me.speed,
+            foes.join("; ")
+        );
+        println!(
+            "[auto]   predicted win {:.1}% hp left {:.0}%",
+            s.win * 100.0,
+            s.hp_left * 100.0
+        );
+        Ok(())
+    }
+
     fn step(&self) -> Result<(), String> {
         if self.between_runs()? {
             return Ok(());
         }
         let crawl = self.crawl()?;
         if self.prop(&crawl, "_fighting")? == json!(true) {
+            if !*self.predicted.borrow() {
+                *self.predicted.borrow_mut() = true;
+                self.predict(&crawl)?;
+            }
             return Ok(());
+        }
+        if std::mem::take(&mut *self.predicted.borrow_mut()) {
+            let run = self.prop(&json!({"node": "/root/Global"}), "current_run")?;
+            let player = self.prop(&json!({"id": run["id"]}), "player")?;
+            let hp = self.prop(&json!({"id": player["id"]}), "current_hp")?;
+            println!("[auto]   fight over: player hp {hp}");
         }
         if self.loot(&crawl)? {
             return Ok(());
@@ -819,7 +1067,10 @@ impl Game {
         if self.shop(&crawl)? {
             return Ok(());
         }
-        if self.gamble(&crawl)? {
+        if self.item_stop(&crawl)? {
+            return Ok(());
+        }
+        if self.rune(&crawl)? {
             return Ok(());
         }
         if self.equip(&crawl)? {
@@ -943,6 +1194,7 @@ fn main() {
         shop_done: std::cell::RefCell::new(Value::Null),
         shrine_done: std::cell::RefCell::new(Value::Null),
         shop_entry: std::cell::RefCell::new((Value::Null, 0)),
+        predicted: std::cell::RefCell::new(false),
     };
     println!("[auto] playing; Ctrl+C stops");
     let mut last_err = String::new();
