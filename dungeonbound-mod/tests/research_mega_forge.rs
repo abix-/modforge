@@ -313,10 +313,32 @@ fn research_mega_forge_sets() {
          previewing the {PREVIEWS} that save the most cells (ties: most hp + armor + atk)",
         laid.len()
     );
-    let sets: Vec<(usize, Vec<usize>, Vec<(i64, i64, i64)>)> = laid
+    let mut sets: Vec<(usize, Vec<usize>, Vec<(i64, i64, i64)>)> = laid
         .into_iter()
         .map(|(s, set, spots, _)| (s, set, spots))
         .collect();
+    // MEGA_FORGE="grid:name,..." forges that one set (operator's go,
+    // 2026-11-16) after the game's preview; otherwise nothing is forged.
+    let forge: Option<Vec<String>> = std::env::var("MEGA_FORGE").ok().map(|w| {
+        let mut w: Vec<String> = w.split(',').map(|s| s.trim().to_string()).collect();
+        w.sort();
+        w
+    });
+    if let Some(want) = &forge {
+        sets.retain(|(_, set, _)| {
+            let mut got: Vec<String> = set
+                .iter()
+                .map(|&i| format!("{}:{}", pieces[i].grid, pieces[i].name))
+                .collect();
+            got.sort();
+            got == *want
+        });
+        assert_eq!(sets.len().min(1), 1, "no set matches MEGA_FORGE {want:?}");
+        sets.truncate(1);
+    }
+    let stop = common::node_with_script(&api, SCENE, "mega_forge_encounter.gd", 8)
+        .expect("mega forge stop");
+    let stop = json!({"node": stop["path"]});
     let mut read: Vec<Value> = SUMMED.iter().map(|k| json!(k)).collect();
     read.push(json!("display_name"));
     read.push(json!({"method": "shape_cells", "args": [0]}));
@@ -348,6 +370,48 @@ fn research_mega_forge_sets() {
         } else {
             Value::Null
         };
+        if forge.is_some() && !got.is_null() {
+            println!(
+                "-- {names:?} -> {}  {}; forging",
+                got["display_name"].as_str().unwrap_or("?"),
+                stats_text(
+                    &SUMMED
+                        .iter()
+                        .filter_map(|k| {
+                            let v = got[*k].as_f64()?;
+                            (v != 0.0).then(|| (k.to_string(), v))
+                        })
+                        .collect::<Vec<_>>()
+                )
+            );
+            // The FORGE button, then CONTINUE (mega_forge_encounter.gd
+            // _forge, finish: the made piece goes to the bag through
+            // Global.acquire_item).
+            call(&api, &stop, "_forge", json!([]));
+            let held = common::op(
+                &api,
+                "get_property",
+                json!({"node": stop["node"], "property": "_held", "depth": 0}),
+            );
+            println!("   forged, held: {}", held["value"]);
+            call(&api, &stop, "finish", json!([]));
+            for grid in [0, 1, 2] {
+                for p in call(&api, &inv, "placements_in", json!([grid]))
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                {
+                    let name = common::op(
+                        &api,
+                        "get_property",
+                        json!({"id": p["item"]["id"], "property": "display_name", "depth": 0}),
+                    )["value"]
+                        .clone();
+                    println!("   grid {grid} at ({}, {}): {name}", p["x"], p["y"]);
+                }
+            }
+            return;
+        }
         // Each piece back where it was.
         for &i in &moved {
             let p = &pieces[i];
