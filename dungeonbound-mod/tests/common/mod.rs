@@ -27,6 +27,44 @@ pub fn api_or_skip() -> Option<Api<Value>> {
     }
 }
 
+/// The first node under `under` whose script path ends with `script`.
+pub fn node_with_script(api: &Api<Value>, under: &str, script: &str, depth: u32) -> Option<Value> {
+    let tree = op(api, "tree", json!({"node": under, "depth": depth}));
+    tree["nodes"]
+        .as_array()?
+        .iter()
+        .find(|n| n["script"].as_str().is_some_and(|s| s.ends_with(script)))
+        .cloned()
+}
+
+/// An object's script variables (`inspect` rows marked `script`).
+pub fn script_vars(api: &Api<Value>, id: &Value, depth: u32) -> Vec<Value> {
+    let inspected = op(api, "inspect", json!({"id": id, "depth": depth}));
+    inspected["properties"]
+        .as_array()
+        .map(|p| {
+            p.iter()
+                .filter(|p| p["script"] == json!(true))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// True for a zero, empty or null value.
+pub fn is_default(v: &Value) -> bool {
+    match v {
+        Value::Null => true,
+        Value::Bool(b) => !b,
+        Value::Number(n) => n.as_f64() == Some(0.0),
+        Value::String(s) => s.is_empty() || s == "[]",
+        Value::Array(a) => a.is_empty(),
+        Value::Object(m) => {
+            m.is_empty() || m.get("items") == Some(&json!(0)) || m.get("entries") == Some(&json!(0))
+        }
+    }
+}
+
 /// Run an op and return its result, failing the test on an error.
 pub fn op(api: &Api<Value>, name: &str, args: Value) -> Value {
     let r = api

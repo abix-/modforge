@@ -14,8 +14,8 @@ use anyhow::{Context, bail};
 const DEFAULT_GAME_DIR: &str = r"C:\Games\Steam\steamapps\common\Dungeonbound";
 const GODOTSTEAM: &str = "libgodotsteam.windows.template_release.x86_64.dll";
 const GODOTSTEAM_ORIGINAL: &str = "libgodotsteam.windows.template_release.x86_64.original.dll";
-/// Only our DLL exports this.
-const OUR_EXPORT: &[u8] = b"dungeonbound_gdext_init";
+/// Only our DLL exports this: godotforge's `godot4_mod!` entry.
+const OUR_EXPORT: &[u8] = b"__godotforge_gdext_init";
 
 fn main() -> anyhow::Result<()> {
     let game = std::env::args()

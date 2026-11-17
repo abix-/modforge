@@ -12,10 +12,10 @@
 //! elsewhere. `{"id": n}` and `{"node": "/root/..."}` become objects.
 
 use godot::builtin::{
-    Color, GString, NodePath, PackedByteArray, PackedFloat32Array, PackedFloat64Array,
-    PackedInt32Array, PackedInt64Array, PackedStringArray, PackedVector2Array, Rect2, Rect2i,
-    StringName, VarArray, VarDictionary, Variant, VariantType, Vector2, Vector2i, Vector3,
-    Vector3i,
+    AnyArray, AnyDictionary, Color, GString, NodePath, PackedByteArray, PackedFloat32Array,
+    PackedFloat64Array, PackedInt32Array, PackedInt64Array, PackedStringArray, PackedVector2Array,
+    Rect2, Rect2i, StringName, VarArray, VarDictionary, Variant, VariantType, Vector2, Vector2i,
+    Vector3, Vector3i,
 };
 use godot::classes::{Node, Object};
 use godot::meta::ToGodot;
@@ -74,11 +74,13 @@ fn convert(v: &Variant, depth: u32) -> Option<Json> {
             Ok(None) => Json::Null,
             Err(_) => json!({"freed": true}),
         },
+        // Any-typed forms: a typed array or dictionary (Array[Resource])
+        // does not convert to the untyped one.
         VariantType::ARRAY => {
-            let a = v.try_to::<VarArray>().ok()?;
+            let a = v.try_to::<AnyArray>().ok()?;
             array(a.iter_shared(), a.len(), depth)
         }
-        VariantType::DICTIONARY => dictionary(&v.try_to::<VarDictionary>().ok()?, depth),
+        VariantType::DICTIONARY => dictionary(&v.try_to::<AnyDictionary>().ok()?, depth),
         VariantType::PACKED_STRING_ARRAY => {
             let a = v.try_to::<PackedStringArray>().ok()?;
             let items: Vec<Variant> = a.as_slice().iter().map(|s| s.to_variant()).collect();
@@ -163,7 +165,7 @@ fn packed<T>(items: &[T], f: impl Fn(&T) -> Json) -> Json {
     Json::Array(out)
 }
 
-fn dictionary(d: &VarDictionary, depth: u32) -> Json {
+fn dictionary(d: &AnyDictionary, depth: u32) -> Json {
     if depth == 0 {
         return json!({"entries": d.len()});
     }

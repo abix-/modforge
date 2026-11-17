@@ -346,12 +346,19 @@ fn method_entry(o: &Gd<Object>, method: &str) -> Option<godot::builtin::VarDicti
         .find(|m| field(m, "name").to_string() == method)
 }
 
-fn arg_types(entry: &godot::builtin::VarDictionary) -> Vec<VariantType> {
-    let Ok(args) = field(entry, "args").try_to::<godot::builtin::VarArray>() else {
+/// A method entry's `args`: a typed array, so read as the any-typed one.
+fn entry_args(entry: &godot::builtin::VarDictionary) -> Vec<godot::builtin::VarDictionary> {
+    let Ok(args) = field(entry, "args").try_to::<godot::builtin::AnyArray>() else {
         return Vec::new();
     };
     args.iter_shared()
         .filter_map(|a| a.try_to::<godot::builtin::VarDictionary>().ok())
+        .collect()
+}
+
+fn arg_types(entry: &godot::builtin::VarDictionary) -> Vec<VariantType> {
+    entry_args(entry)
+        .into_iter()
         .map(|a| VariantType {
             ord: field(&a, "type").try_to::<i32>().unwrap_or(0),
         })
@@ -389,11 +396,8 @@ fn call_method(args: &Json) -> Result<Json, String> {
 }
 
 fn args_json(entry: &godot::builtin::VarDictionary) -> Vec<Json> {
-    let Ok(args) = field(entry, "args").try_to::<godot::builtin::VarArray>() else {
-        return Vec::new();
-    };
-    args.iter_shared()
-        .filter_map(|a| a.try_to::<godot::builtin::VarDictionary>().ok())
+    entry_args(entry)
+        .into_iter()
         .map(|a| {
             json!({
                 "name": field(&a, "name").to_string(),
@@ -403,6 +407,22 @@ fn args_json(entry: &godot::builtin::VarDictionary) -> Vec<Json> {
             })
         })
         .collect()
+}
+
+/// A method entry's return type, with the class name for an object.
+fn return_type(entry: &godot::builtin::VarDictionary) -> Json {
+    let Ok(r) = field(entry, "return").try_to::<godot::builtin::VarDictionary>() else {
+        return Json::Null;
+    };
+    let t = value::type_name(VariantType {
+        ord: field(&r, "type").try_to::<i32>().unwrap_or(0),
+    });
+    let class = field(&r, "class_name").to_string();
+    if class.is_empty() {
+        json!(t)
+    } else {
+        json!(format!("{t} {class}"))
+    }
 }
 
 fn list_methods(args: &Json) -> Result<Json, String> {
@@ -430,8 +450,17 @@ fn list_methods(args: &Json) -> Result<Json, String> {
             .filter_map(|m| {
                 let name = field(&m, "name").to_string();
                 let script = script_names.contains(&name);
-                (!script_only || script)
-                    .then(|| json!({"name": name, "args": args_json(&m), "script": script}))
+                (!script_only || script).then(|| {
+                    json!({
+                        "name": name,
+                        "args": args_json(&m),
+                        "defaults": field(&m, "default_args")
+                            .try_to::<godot::builtin::AnyArray>()
+                            .map_or(0, |a| a.len()),
+                        "return": return_type(&m),
+                        "script": script,
+                    })
+                })
             })
             .collect();
         Ok(json!({"methods": rows}))
