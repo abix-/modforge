@@ -1,0 +1,33 @@
+[package]
+name = "dungeonbound-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Dungeonbound mod. Godot 4.7.1 (custom build, encrypted pack).
+# The game already loads the GodotSteam GDExtension; this DLL takes
+# its file name, loads the real GodotSteam renamed beside it, starts
+# it, and registers the mod's own extension through godot-rust.
+
+[lib]
+name = "dungeonbound_mod"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "dungeonbound-deploy"
+path = "src/bin/deploy.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+# api-4-7 matches the game's engine. Lazy function tables load a
+# class's methods on first use, so a method the custom build lacks
+# fails only if called, not at startup.
+godot = { version = "0.5.5", features = ["api-4-7", "lazy-function-tables"] }
+modforge = { path = "../modforge" }
+serde_json = { workspace = true }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+
+[lints]
+workspace = true
