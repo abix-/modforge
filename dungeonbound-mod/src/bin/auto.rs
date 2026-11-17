@@ -378,15 +378,32 @@ impl Game {
         let Some(stop) = self.find(&json!({"node": SCENE}), "gamble_encounter.gd", 4)? else {
             return Ok(false);
         };
-        if *self.shrine_done.borrow() == stop {
-            if self.prop(&stop, "_used")? != json!(true) {
-                self.leave("spun once")?;
-            }
+        if self.prop(&stop, "_spinning")? == json!(true) {
             return Ok(true);
         }
-        if self.prop(&stop, "_used")? == json!(true)
-            || self.prop(&stop, "_spinning")? == json!(true)
-        {
+        if *self.shrine_done.borrow() == stop || self.prop(&stop, "_used")? == json!(true) {
+            // After the spin the act button is CONTINUE (item_shrine.gd
+            // _act_consume / _act); when a paid reuse is offered
+            // instead, SKIP reads LEAVE.
+            let used = self.prop(&stop, "_used")? == json!(true);
+            if let Some(b) = self.named("EncounterContinueBtn")?
+                && used
+                && self.pressable(&b)
+            {
+                self.press(&b, "CONTINUE (gamble)")?;
+            } else if used && !self.prop(&stop, "_held")?.is_null() {
+                // The result waits on the stop to be dragged back and
+                // CONTINUE stays off until then (item_shrine.gd _act).
+                // The stop's own finish hands it back to the inventory
+                // (hand_back), as CONTINUE would.
+                self.call(&stop, "finish", json!([]))?;
+                println!(
+                    "[auto] {:7.1}s closed the gamble; result handed back",
+                    self.start.elapsed().as_secs_f64()
+                );
+            } else {
+                self.leave("spun once")?;
+            }
             return Ok(true);
         }
         let inv = json!({"id": self.prop(&json!({"node": "/root/Global"}), "inventory")?["id"]});
