@@ -303,6 +303,13 @@ pub type Fold = serde_json::Map<String, serde_json::Value>;
 /// (combat_resolver.gd _rebuild_loadout). Battle gains and run bonuses
 /// are not in it; `Hero` carries them.
 pub fn fold(items: &[Gd<Object>]) -> Result<Fold, String> {
+    fold_in(items, godot::builtin::VarArray::new().to_variant())
+}
+
+/// The fold with the pieces' placements, as the game builds the hero
+/// now (game_state.gd: from_player with placements_in(EQUIP)); it adds
+/// what the spots give and the pieces' grown stats.
+pub fn fold_in(items: &[Gd<Object>], placements: Variant) -> Result<Fold, String> {
     let mut global = node("/root/Global")?;
     let id = global.get("selected_character_id");
     let base = call(&mut global, "get_effective_base_stats", &[id])?;
@@ -322,7 +329,7 @@ pub fn fold(items: &[Gd<Object>]) -> Result<Fold, String> {
         &[
             base,
             list,
-            godot::builtin::VarArray::new().to_variant(),
+            placements,
             true.to_variant(),
             godot::builtin::VarDictionary::new().to_variant(),
         ],
@@ -333,21 +340,24 @@ pub fn fold(items: &[Gd<Object>]) -> Result<Fold, String> {
 }
 
 /// The hero now, the game's fold with nothing worn, and with what is
-/// worn now. The difference between the hero now and the fold of what
-/// is worn is what the run adds (genie wishes, dismantle, blessings);
-/// it is added to every fold, so any set of pieces is judged the same
-/// way and a piece is worth the same worn or in the bag.
+/// worn now, without and with its placements. The difference between
+/// the hero now and the fold of what is worn with its placements is
+/// what the run adds (genie wishes, dismantle, blessings); it is added
+/// to every fold, so any set of pieces is judged the same way and a
+/// piece is worth the same worn or in the bag.
 #[derive(Debug, Clone)]
 pub struct Hero {
     pub now: Fold,
     pub empty: Fold,
     pub worn: Fold,
+    pub placed: Fold,
 }
 
 pub fn hero() -> Result<Hero, String> {
     let run = held(&node("/root/Global")?, "current_run")?;
     let now = script_vars(&held(&run, "player")?, 0);
     let mut inv = inventory()?;
+    let rows = call(&mut inv, "placements_in", &[EQUIP.to_variant()])?;
     let worn: Vec<Gd<Object>> = placements(&mut inv, EQUIP)?
         .iter()
         .filter_map(placed_item)
@@ -356,6 +366,7 @@ pub fn hero() -> Result<Hero, String> {
         now,
         empty: fold(&[])?,
         worn: fold(&worn)?,
+        placed: fold_in(&worn, rows)?,
     })
 }
 

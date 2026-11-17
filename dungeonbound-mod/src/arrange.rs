@@ -41,13 +41,22 @@ pub const BUDGET: u64 = 2_000_000;
 static TRIED: Mutex<Vec<i64>> = Mutex::new(Vec::new());
 
 pub fn register_ops() {
-    OP_REGISTRY.register_many([OpDef::new(
-        "arrange",
-        "Pack the equipment by the mod's own math and place it with the game's own moves; \
-         returns the reasoning lines. Skipped when the owned items are the same as last time",
-        "{force?: false}",
-        arrange,
-    )]);
+    OP_REGISTRY.register_many([
+        OpDef::new(
+            "arrange",
+            "Pack the equipment by the mod's own math and place it with the game's own moves; \
+             returns the reasoning lines. Skipped when the owned items are the same as last time",
+            "{force?: false}",
+            arrange,
+        ),
+        OpDef::new(
+            "spots",
+            "What the spots of the worn pieces add (adjacency, edge, runes), by the game's fold \
+             and by the mod's placement rules, field by field",
+            "{}",
+            spots,
+        ),
+    ]);
 }
 
 fn grid_name(g: i64) -> &'static str {
@@ -108,7 +117,8 @@ fn hash_of(parts: &impl std::hash::Hash) -> u64 {
 pub struct Judge {
     pub squad: Vec<Fighter>,
     now: read::Fold,
-    /// The hero now less the fold of what is worn now.
+    /// The hero now less the fold of what is worn now with its
+    /// placements.
     run: read::Fold,
     /// Fight margin with nothing worn.
     pub base: f64,
@@ -122,13 +132,13 @@ impl Judge {
             .now
             .iter()
             .filter_map(|(k, v)| {
-                let d = v.as_f64()? - hero.worn.get(k)?.as_f64()?;
+                let d = v.as_f64()? - hero.placed.get(k)?.as_f64()?;
                 Some((k.clone(), Json::from(d)))
             })
             .collect();
         let key = hash_of(&(
             Json::Object(hero.now.clone()).to_string(),
-            Json::Object(hero.worn.clone()).to_string(),
+            Json::Object(hero.placed.clone()).to_string(),
             Json::Object(hero.empty.clone()).to_string(),
             format!("{squad:?}"),
         ));
@@ -242,28 +252,7 @@ impl Judge {
         pieces: &[grid::Piece],
         layout: &[grid::Spot],
     ) -> read::Fold {
-        let all = grid::worn_of(pieces, layout);
-        let mut f = fold.clone();
-        for (w, (m, e, runes)) in all.iter().zip(placement::earned(&grid.board, &all)) {
-            let p = w.place;
-            if let Some(a) = &p.adjacent
-                && m > 0
-            {
-                placement::grant(&mut f, &a.stat, a.amount * m as f64, &self.now);
-                if !a.stat_2.is_empty() {
-                    placement::grant(&mut f, &a.stat_2, a.amount_2 * m as f64, &self.now);
-                }
-            }
-            if let Some(ed) = &p.edge
-                && e
-            {
-                placement::grant(&mut f, &ed.stat, ed.amount, &self.now);
-            }
-            for r in &runes {
-                placement::rune_onto(&mut f, r, p);
-            }
-        }
-        f
+        spotted(fold, &self.now, grid, pieces, layout)
     }
 
     /// A piece's value and what its spot bonuses are worth.
@@ -338,6 +327,94 @@ pub struct Swap {
 /// same grid pack to the same value, so a step that looks again (the
 /// shop after a buy is refused, the next ware) does not pack again.
 static PACKED: Mutex<Vec<(u64, f64)>> = Mutex::new(Vec::new());
+
+/// A fold of worn pieces with what their spots add, the percent ones
+/// taken of `now` (Judge::spotted).
+pub fn spotted(
+    fold: &read::Fold,
+    now: &read::Fold,
+    grid: &grid::Grid,
+    pieces: &[grid::Piece],
+    layout: &[grid::Spot],
+) -> read::Fold {
+    let all = grid::worn_of(pieces, layout);
+    let mut f = fold.clone();
+    for (w, (m, e, runes)) in all.iter().zip(placement::earned(&grid.board, &all)) {
+        let p = w.place;
+        if let Some(a) = &p.adjacent
+            && m > 0
+        {
+            placement::grant(&mut f, &a.stat, a.amount * m as f64, now);
+            if !a.stat_2.is_empty() {
+                placement::grant(&mut f, &a.stat_2, a.amount_2 * m as f64, now);
+            }
+        }
+        if let Some(ed) = &p.edge
+            && e
+        {
+            placement::grant(&mut f, &ed.stat, ed.amount, now);
+        }
+        for r in &runes {
+            placement::rune_onto(&mut f, r, p);
+        }
+    }
+    f
+}
+
+/// The worn pieces as a layout of `list`.
+pub fn worn_layout(list: &[read::Owned]) -> Vec<grid::Spot> {
+    list.iter()
+        .enumerate()
+        .filter(|(_, o)| o.grid == EQUIP)
+        .map(|(i, o)| grid::Spot {
+            piece: i,
+            x: o.at.0,
+            y: o.at.1,
+            rot: o.at.2,
+        })
+        .collect()
+}
+
+/// What the spots of what is worn add, by the game (its fold with the
+/// placements less without) and by the mod, field by field; for
+/// research_placement.
+fn spots(_: &Json) -> Result<Json, String> {
+    on_main("spots", || {
+        let seen = read::seen()?;
+        let list: Vec<read::Owned> = seen.list.iter().filter(|o| o.wearable()).cloned().collect();
+        let pieces: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
+        let layout = worn_layout(&list);
+        let g = seen.grid();
+        let h = &seen.hero;
+        let ours = spotted(&h.worn, &h.now, &g, &pieces, &layout);
+        let diff = |a: &read::Fold| -> serde_json::Map<String, Json> {
+            a.iter()
+                .filter_map(|(k, v)| {
+                    let d = v.as_f64()? - h.worn.get(k)?.as_f64()?;
+                    (d.abs() > 1e-9).then(|| (k.clone(), Json::from(d)))
+                })
+                .collect()
+        };
+        let all = grid::worn_of(&pieces, &layout);
+        let earned = placement::earned(&g.board, &all);
+        let worn: Vec<Json> = layout
+            .iter()
+            .zip(&earned)
+            .map(|(s, (m, e, r))| {
+                let o = &list[s.piece];
+                json!({"name": o.name, "at": [s.x, s.y, s.rot], "matches": m, "edge": e,
+                       "runes": r, "adjacent": format!("{:?}", o.piece.place.adjacent),
+                       "edge_rule": format!("{:?}", o.piece.place.edge)})
+            })
+            .collect();
+        Ok(json!({
+            "game": diff(&h.placed),
+            "mod": diff(&ours),
+            "board": format!("{:?}", g.board),
+            "worn": worn,
+        }))
+    })
+}
 
 fn pack_key(g: &grid::Grid, pieces: &[grid::Piece], hands: usize, budget: u64) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -468,18 +545,7 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let (plan, value, done) = grid::pack(&g, &only, seen.hands, BUDGET);
     // Both by the same judge: the plan and what is worn, each folded by
     // the game, with what their spots add.
-    let worn_layout: Vec<grid::Spot> = list
-        .iter()
-        .enumerate()
-        .filter(|(_, o)| o.grid == EQUIP)
-        .map(|(i, o)| grid::Spot {
-            piece: i,
-            x: o.at.0,
-            y: o.at.1,
-            rot: o.at.2,
-        })
-        .collect();
-    let now = judge.score(&judge.spotted(&seen.hero.worn, &g, &only, &worn_layout));
+    let now = judge.score(&judge.spotted(&seen.hero.worn, &g, &only, &worn_layout(&list)));
     let then = judge.score(&judge.spotted(
         &fold_of(plan.iter().map(|s| list[s.piece].id).collect())?,
         &g,
