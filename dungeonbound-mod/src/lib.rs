@@ -7,6 +7,7 @@
 //! godotforge's; the control plane is on 127.0.0.1:31330/op.
 
 pub mod fight;
+pub mod grid;
 
 static MOD_INFO: godotforge::ModDef = godotforge::ModDef {
     name: "dungeonbound-mod",

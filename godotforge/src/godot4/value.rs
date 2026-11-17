@@ -223,6 +223,28 @@ pub fn from_json(v: &Json, want: Option<VariantType>) -> Result<Variant, String>
             }
         },
         Json::Object(m) => {
+            // {"call": {id|node, method, args}}: the value a method
+            // returns, passed on as it is. A dictionary or array stays
+            // the game's own (shared), not a copy through JSON.
+            // {"vector2i": [x, y]}: a typed cell where no declared type
+            // says so (inside a "call").
+            if let Some(Json::Array(n)) = m.get("vector2i") {
+                return vector(n, VariantType::VECTOR2I);
+            }
+            if let Some(c) = m.get("call") {
+                let mut o = super::target::object(c)?;
+                let method = c
+                    .get("method")
+                    .and_then(Json::as_str)
+                    .ok_or("call wants a method")?;
+                let mut args = Vec::new();
+                for a in c.get("args").and_then(Json::as_array).into_iter().flatten() {
+                    args.push(from_json(a, None)?);
+                }
+                return o
+                    .try_call(method, &args)
+                    .map_err(|e| format!("{method}: {e}"));
+            }
             if let Some(id) = m.get("id").and_then(Json::as_i64) {
                 return super::target::object_by_id(id).map(|o| o.to_variant());
             }
