@@ -11,6 +11,25 @@ const TRAY: i64 = 2;
 const PICK_A: i64 = 4;
 const PICK_B: i64 = 5;
 
+/// Nodes anywhere in the game whose path or script names loot or a
+/// choice, to find the screen the choice is shown on.
+#[test]
+fn research_loot_screen() {
+    let Some(api) = common::api_or_skip() else {
+        return;
+    };
+    let tree = common::op(&api, "tree", json!({"node": "/root", "depth": 12}));
+    let words = [
+        "loot", "pick", "relic", "reward", "card", "choice", "choose", "dice", "drop",
+    ];
+    for n in tree["nodes"].as_array().expect("nodes") {
+        let text = format!("{} {}", n["path"], n["script"]).to_lowercase();
+        if words.iter().any(|w| text.contains(w)) {
+            println!("{} [{}] {}", n["path"], n["class"], n["script"]);
+        }
+    }
+}
+
 #[test]
 fn research_loot_choice() {
     let Some(api) = common::api_or_skip() else {
