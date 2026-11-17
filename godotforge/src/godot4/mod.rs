@@ -115,7 +115,9 @@ pub const PASS: Duration = Duration::from_millis(200);
 /// work over frames). `f(from, deadline)` does units from `from` on,
 /// one result each, and stops once `deadline` has passed. One long pass
 /// froze Dungeonbound at its forges (2026-11-17). Returns the results
-/// and the passes taken.
+/// and the passes taken. Logs the start, progress every
+/// [`PROGRESS_EVERY`], and the end with the time each unit took
+/// (operator 2026-11-17: "i want logs to tell us wtf itsd doing").
 pub fn on_main_passes<T, F>(label: &str, total: usize, f: F) -> Result<(Vec<T>, usize), String>
 where
     T: Send + 'static,
@@ -124,21 +126,49 @@ where
     let f = std::sync::Arc::new(f);
     let mut out: Vec<T> = Vec::with_capacity(total);
     let mut passes = 0;
+    let started = Instant::now();
+    let mut main_time = Duration::ZERO;
+    let mut told = started;
+    modforge::log!(
+        "{label}: {total} to do, in passes of {} ms",
+        PASS.as_millis()
+    );
     while out.len() < total {
         let from = out.len();
         let f = f.clone();
-        let got = on_main(label, move || f(from, Instant::now() + PASS))?;
+        let (got, took) = on_main(label, move || {
+            let at = Instant::now();
+            let got = f(from, at + PASS)?;
+            Ok((got, at.elapsed()))
+        })?;
         passes += 1;
+        main_time += took;
         if got.is_empty() {
             return Err(format!(
                 "{label}: a pass did no work at unit {from} of {total}"
             ));
         }
         out.extend(got);
+        if told.elapsed() >= PROGRESS_EVERY {
+            told = Instant::now();
+            modforge::log!(
+                "{label}: {} of {total} done, {:.1}s so far",
+                out.len().min(total),
+                started.elapsed().as_secs_f64()
+            );
+        }
     }
     out.truncate(total);
+    modforge::log!(
+        "{label}: {total} done in {:.1}s over {passes} passes, {:.1} ms of main-thread time each",
+        started.elapsed().as_secs_f64(),
+        main_time.as_secs_f64() * 1000.0 / total.max(1) as f64
+    );
     Ok((out, passes))
 }
+
+/// How often [`on_main_passes`] logs its progress. Mine.
+pub const PROGRESS_EVERY: Duration = Duration::from_secs(3);
 
 /// Declare a Godot 4 mod that stands in for a GDExtension the game
 /// already loads.
