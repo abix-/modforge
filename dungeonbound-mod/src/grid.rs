@@ -59,6 +59,10 @@ pub fn worn_of<'a>(pieces: &'a [Piece], layout: &[Spot]) -> Vec<Worn<'a>> {
                     .collect(),
                 rot: s.rot,
                 at: (s.x, s.y),
+                holes: p.holes[s.rot as usize]
+                    .iter()
+                    .map(|&(dx, dy)| (s.x + dx, s.y + dy))
+                    .collect(),
             }
         })
         .collect()
@@ -67,7 +71,16 @@ pub fn worn_of<'a>(pieces: &'a [Piece], layout: &[Spot]) -> Vec<Worn<'a>> {
 /// What each spot of a layout adds, in layout order.
 pub fn spot_values(grid: &Grid, pieces: &[Piece], layout: &[Spot]) -> Vec<f64> {
     let all = worn_of(pieces, layout);
-    placement::worth(&all, &placement::earned(&grid.board, &all))
+    placement::worth(&grid.board, &all, &placement::earned(&grid.board, &all))
+}
+
+/// Whether a piece's spot can change what it is worth.
+fn has_spot(p: &Piece, board: &Board) -> bool {
+    let p = &p.place;
+    p.adjacent.is_some()
+        || p.edge.is_some()
+        || p.atk_per_empty != 0
+        || (!board.runes.is_empty() && !p.gain.runes.is_empty())
 }
 
 /// Where a piece goes.
@@ -113,6 +126,7 @@ pub fn pack(grid: &Grid, pieces: &[Piece], hands: usize, budget: u64) -> (Vec<Sp
         order: Vec::new(),
         most: Vec::new(),
         sets_most: 0.0,
+        spots: pieces.iter().any(|p| has_spot(p, &grid.board)),
     };
     // The most sets could add with every piece worn.
     let all: Vec<&placement::Place> = pieces.iter().map(|p| &*p.place).collect();
@@ -169,6 +183,8 @@ struct Search<'a> {
     most: Vec<f64>,
     /// The most sets could add.
     sets_most: f64,
+    /// Some piece's spot changes what it is worth.
+    spots: bool,
 }
 
 impl Search<'_> {
@@ -204,7 +220,7 @@ impl Search<'_> {
     /// The layout so far with what its spots and sets add.
     fn worth(&self) -> f64 {
         let mut v = self.value;
-        if self.extra > 0.0 {
+        if self.spots {
             v += spot_values(self.grid, self.pieces, &self.layout)
                 .iter()
                 .sum::<f64>();
@@ -348,6 +364,7 @@ mod tests {
             board: Board {
                 size: (w, h),
                 runes: Vec::new(),
+                base: Vec::new(),
             },
             sets: sets::Table::default(),
         }

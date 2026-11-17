@@ -477,6 +477,7 @@ pub fn place_of(item: &mut Gd<Object>) -> Result<placement::Place, String> {
         brawler_atk,
         set_count_bonus: int(&item.get("set_count_bonus")),
         set_bonus_mult: num_or(&item.get("set_bonus_mult"), 0.0),
+        atk_per_empty: int(&item.get("atk_per_empty_cell")),
         gain: placement::Gain::default(),
     })
 }
@@ -509,9 +510,22 @@ fn board(global: &mut Gd<Object>, inv: &mut Gd<Object>) -> Result<placement::Boa
         }
     }
     runes.sort();
+    let mut base = Vec::new();
+    for y in 0..placement::EQUIP_BASE_ROWS {
+        for x in 0..placement::EQUIP_COLUMNS {
+            let c = Vector2i::new(x, y).to_variant();
+            if call(inv, "cell_open", &[EQUIP.to_variant(), c])?
+                .try_to::<bool>()
+                .unwrap_or(false)
+            {
+                base.push((x, y));
+            }
+        }
+    }
     Ok(placement::Board {
         size: (size.x, size.y),
         runes,
+        base,
     })
 }
 

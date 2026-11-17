@@ -58,6 +58,8 @@ pub struct Gain {
     pub edge: f64,
     /// Rune id and what holding it is worth.
     pub runes: Vec<(String, f64)>,
+    /// One empty equipment cell (atk_per_empty_cell).
+    pub per_empty: f64,
 }
 
 /// A piece's placement data.
@@ -72,6 +74,12 @@ pub struct Place {
     /// equipment_item.gd set_count_bonus and set_bonus_mult (sets.rs).
     pub set_count_bonus: i64,
     pub set_bonus_mult: f64,
+    /// equipment_item.gd atk_per_empty_cell: atk for each empty cell
+    /// of the base equipment grid (combatant_runtime.gd
+    /// _empty_equip_cells). With no placements the game counts every
+    /// open base cell as empty, so the mod's own fold of the piece has
+    /// that many; the layout's real count replaces it.
+    pub atk_per_empty: i64,
     pub gain: Gain,
 }
 
@@ -159,6 +167,8 @@ pub struct Worn<'a> {
     pub cells: Vec<(i32, i32)>,
     pub rot: i32,
     pub at: (i32, i32),
+    /// Hole cells on the grid (they are not empty cells either).
+    pub holes: Vec<(i32, i32)>,
 }
 
 /// The board the bonuses read: the open size for edges and the runes.
@@ -168,6 +178,32 @@ pub struct Board {
     pub size: (i32, i32),
     /// Each rune square's top-left cell and rune id.
     pub runes: Vec<((i32, i32), String)>,
+    /// The open cells of the base equipment grid (inventory.gd
+    /// EQUIP_COLUMNS by EQUIP_BASE_ROWS), for atk_per_empty_cell.
+    pub base: Vec<(i32, i32)>,
+}
+
+pub const EQUIP_COLUMNS: i32 = 8;
+pub const EQUIP_BASE_ROWS: i32 = 9;
+
+/// combatant_runtime.gd _empty_equip_cells: open base cells no worn
+/// piece or hole covers.
+pub fn empty_cells(board: &Board, all: &[Worn]) -> i64 {
+    board
+        .base
+        .iter()
+        .filter(|c| {
+            !all.iter()
+                .any(|w| w.cells.contains(c) || w.holes.contains(c))
+        })
+        .count() as i64
+}
+
+/// The atk the layout's empty cells give each atk_per_empty_cell
+/// piece, less what the mod's own fold of the piece already has (every
+/// open base cell empty): zero or less.
+pub fn empty_change(board: &Board, all: &[Worn]) -> i64 {
+    empty_cells(board, all) - board.base.len() as i64
 }
 
 /// inventory.gd neighbour_placements: the other pieces touching `me`
@@ -300,8 +336,14 @@ pub fn earned(board: &Board, all: &[Worn]) -> Vec<(i64, bool, Vec<String>)> {
 }
 
 /// What the spots are worth: each piece's matches times its value per
-/// match, its edge value when on, and the value of each rune it holds.
-pub fn worth(all: &[Worn], got: &[(i64, bool, Vec<String>)]) -> Vec<f64> {
+/// match, its edge value when on, the value of each rune it holds, and
+/// for atk_per_empty_cell pieces the cells the layout fills.
+pub fn worth(board: &Board, all: &[Worn], got: &[(i64, bool, Vec<String>)]) -> Vec<f64> {
+    let change = if all.iter().any(|w| w.place.atk_per_empty != 0) {
+        empty_change(board, all) as f64
+    } else {
+        0.0
+    };
     all.iter()
         .zip(got)
         .map(|(w, (m, e, runes))| {
@@ -315,7 +357,7 @@ pub fn worth(all: &[Worn], got: &[(i64, bool, Vec<String>)]) -> Vec<f64> {
                         .map_or(0.0, |(_, v)| *v)
                 })
                 .sum();
-            g.per_match * *m as f64 + if *e { g.edge } else { 0.0 } + rune
+            g.per_match * *m as f64 + if *e { g.edge } else { 0.0 } + rune + g.per_empty * change
         })
         .collect()
 }
@@ -434,7 +476,21 @@ mod tests {
             cells: cells.to_vec(),
             rot,
             at: cells[0],
+            holes: Vec::new(),
         }
+    }
+
+    /// Cells a piece or its holes cover are not empty.
+    #[test]
+    fn empty_cells_less_covered() {
+        let board = Board {
+            base: vec![(0, 0), (1, 0), (2, 0)],
+            ..Board::default()
+        };
+        let p = Place::default();
+        let mut w = worn(&p, &[(0, 0)], 0);
+        w.holes = vec![(1, 0)];
+        assert_eq!(empty_cells(&board, &[w]), 1);
     }
 
     /// A "right" rule turned once looks below (inventory.gd

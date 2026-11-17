@@ -234,6 +234,12 @@ impl Judge {
             placement::grant(&mut f, &e.stat, e.amount, &self.now);
             g.edge = worth(f);
         }
+        // Mine: one empty cell is worth the same at every count.
+        if p.atk_per_empty != 0 {
+            let mut f = alone.clone();
+            placement::add(&mut f, "atk", p.atk_per_empty as f64);
+            g.per_empty = worth(f);
+        }
         let mut ids: Vec<&String> = board.runes.iter().map(|(_, r)| r).collect();
         ids.sort();
         ids.dedup();
@@ -378,6 +384,12 @@ pub fn spotted(
 ) -> read::Fold {
     let all = grid::worn_of(pieces, layout);
     let mut f = fold.clone();
+    let per_empty: i64 = all.iter().map(|w| w.place.atk_per_empty).sum();
+    if per_empty != 0 {
+        let change = placement::empty_change(&grid.board, &all);
+        placement::add(&mut f, "atk", (per_empty * change) as f64);
+        placement::add(&mut f, "built_atk", (per_empty * change) as f64);
+    }
     for (w, (m, e, runes)) in all.iter().zip(placement::earned(&grid.board, &all)) {
         let p = w.place;
         if let Some(a) = &p.adjacent
@@ -593,9 +605,9 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         &plan,
     ));
     let spot_worth = grid::spot_values(&g, &only, &plan);
-    let spot_got = {
+    let (spot_got, empty) = {
         let all = grid::worn_of(&only, &plan);
-        placement::earned(&g.board, &all)
+        (placement::earned(&g.board, &all), placement::empty_cells(&g.board, &all))
     };
     let stays =
         |s: &grid::Spot| list[s.piece].grid == EQUIP && list[s.piece].at == (s.x, s.y, s.rot);
@@ -627,6 +639,12 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         }
         for r in runes {
             spot.push(format!("rune {r}"));
+        }
+        if o.piece.place.atk_per_empty != 0 {
+            spot.push(format!(
+                "{empty} empty cells at {} atk each",
+                o.piece.place.atk_per_empty
+            ));
         }
         lines.push(format!(
             "  {:<24} to ({}, {}) turn {}{}{}",
