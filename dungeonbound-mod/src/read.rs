@@ -307,6 +307,19 @@ pub fn fold(items: &[Gd<Object>]) -> Result<Fold, String> {
     fold_in(items, godot::builtin::VarArray::new().to_variant())
 }
 
+/// The game's own count of empty equipment cells for these placements
+/// (combatant_runtime.gd _empty_equip_cells), for research.
+pub fn empty_equip_cells(placements: Variant) -> Result<i64, String> {
+    let run = held(&node("/root/Global")?, "current_run")?;
+    let mut script = held(&held(&run, "player")?, "script")?;
+    let inv = inventory()?;
+    Ok(int(&call(
+        &mut script,
+        "_empty_equip_cells",
+        &[placements, inv.to_variant()],
+    )?))
+}
+
 /// The fold with the pieces' placements, as the game builds the hero
 /// now (game_state.gd: from_player with placements_in(EQUIP)); it adds
 /// what the spots give and the pieces' grown stats.

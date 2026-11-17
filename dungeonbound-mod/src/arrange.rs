@@ -462,6 +462,18 @@ fn spots(_: &Json) -> Result<Json, String> {
             "game": diff(&h.placed),
             "mod": diff(&ours),
             "board": format!("{:?}", g.board),
+            "empty": {
+                "mod": placement::empty_cells(&g.board, &all),
+                "mod_base": g.board.base.len(),
+                "game": read::empty_equip_cells(read::call(
+                    &mut read::inventory()?,
+                    "placements_in",
+                    &[EQUIP.to_variant()],
+                )?)?,
+                "game_none": read::empty_equip_cells(godot::builtin::VarArray::new().to_variant())?,
+                "worn_all": seen.list.iter().filter(|o| o.grid == EQUIP).count(),
+                "worn_judged": layout.len(),
+            },
             "worn": worn,
         }))
     })

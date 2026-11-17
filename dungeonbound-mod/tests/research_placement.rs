@@ -16,6 +16,7 @@ fn research_placement() {
     };
     let r = common::op(&api, "spots", json!({}));
     println!("board: {}", r["board"]);
+    println!("empty cells: {}", r["empty"]);
     for w in r["worn"].as_array().into_iter().flatten() {
         println!("worn: {w}");
     }
