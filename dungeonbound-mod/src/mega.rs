@@ -352,6 +352,24 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         }
     }
     let laid = sets.len();
+    // The game's recipe (item_forge.gd mega_spec) gives the made piece
+    // the shape of the biggest part and the parts' stats added up. So a
+    // set is ranked first by its parts' values in the biggest part's
+    // cells (the operator's "max value per inventory/eq slot"), and
+    // only the best are previewed by the game (operator 2026-11-17:
+    // "this shouldnt take so long"). Mine: PREVIEW_MOST sets.
+    const PREVIEW_MOST: usize = 40;
+    let per_cell = |set: &[usize]| {
+        let value: f64 = set.iter().map(|&i| list[i].piece.value).sum();
+        let biggest = set.iter().map(|&i| cells(i)).max().unwrap_or(1).max(1);
+        value / biggest as f64
+    };
+    sets.sort_by(|a, b| per_cell(&b.0).total_cmp(&per_cell(&a.0)));
+    sets.truncate(PREVIEW_MOST);
+    lines.push(format!(
+        "mega forge: {laid} sets of 2 to 4 pieces lay out on the {w}x{h} anvil; the {} with the most value per cell of the made piece go to the game's preview",
+        sets.len()
+    ));
     // The game's preview of each, in short main-thread passes so the
     // game keeps running between them (operator 2026-11-17: "game ia
     // almost bfrozen").
@@ -385,7 +403,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         Ok(out)
     })?;
     lines.push(format!(
-        "mega forge: {laid} sets of 2 to 4 pieces lay out on the {w}x{h} anvil; previewed by the game in {:.2}s over {passes} passes",
+        "mega forge: previewed by the game in {:.2}s over {passes} passes",
         previewed_at.elapsed().as_secs_f64()
     ));
     // Judge: the packer's best equipment value with the made piece in
