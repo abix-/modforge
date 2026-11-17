@@ -14,6 +14,7 @@ pub mod args;
 pub mod biome;
 pub mod brain;
 pub mod buying;
+pub mod chance;
 pub mod client;
 pub mod code_patch;
 pub mod combat;

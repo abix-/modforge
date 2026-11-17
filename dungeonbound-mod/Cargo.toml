@@ -22,12 +22,13 @@ path = "src/bin/deploy.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+fastrand = { workspace = true }
+modforge = { path = "../modforge" }
 # Features come from godotforge's godot4.
 godot = "0.5.5"
 godotforge = { path = "../godotforge", features = ["godot4"] }
 
 [dev-dependencies]
-modforge = { path = "../modforge" }
 serde_json = { workspace = true }
 
 [lints]

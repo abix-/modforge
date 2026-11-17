@@ -6,6 +6,8 @@
 //! name and starts the real GodotSteam, renamed beside it. Every op is
 //! godotforge's; the control plane is on 127.0.0.1:31330/op.
 
+pub mod fight;
+
 static MOD_INFO: godotforge::ModDef = godotforge::ModDef {
     name: "dungeonbound-mod",
     version: "0.1.0",
