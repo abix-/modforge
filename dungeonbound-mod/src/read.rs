@@ -42,13 +42,13 @@ pub fn held(o: &Gd<Object>, property: &str) -> Result<Gd<Object>, String> {
         .map_err(|_| format!("no {property}"))
 }
 
-fn num_or(v: &Variant, or: f64) -> f64 {
+pub fn num_or(v: &Variant, or: f64) -> f64 {
     v.try_to::<f64>()
         .or_else(|_| v.try_to::<i64>().map(|i| i as f64))
         .unwrap_or(or)
 }
 
-fn int(v: &Variant) -> i64 {
+pub fn int(v: &Variant) -> i64 {
     v.try_to::<i64>().unwrap_or(0)
 }
 
@@ -277,6 +277,47 @@ pub fn shapes_of(item: &mut Gd<Object>) -> Result<(Cells, Cells), String> {
     Ok((shapes, holes))
 }
 
+/// Any item as the mod judges it: owned (`placement`, on grid `g`) or
+/// not (a shop ware, a loot drop: `placement` None, grid -1).
+pub fn item_of(
+    inv: &mut Gd<Object>,
+    item: &mut Gd<Object>,
+    g: i64,
+    at: (i32, i32, i32),
+    placement: Option<&AnyDictionary>,
+) -> Result<Owned, String> {
+    let (shapes, holes) = shapes_of(item)?;
+    let iv = item.to_variant();
+    let mut why = vec![iv.clone()];
+    why.extend(placement.map(|p| p.to_variant()));
+    let refusal = call(inv, "equip_block_reason", &why)?
+        .stringify()
+        .to_string();
+    let family = call(inv, "equip_family_id", &[iv])?.stringify().to_string();
+    let weapon = call(item, "is_weapon", &[])?
+        .try_to::<bool>()
+        .unwrap_or(false);
+    Ok(Owned {
+        id: item.instance_id().to_i64(),
+        name: item.get("display_name").stringify().to_string(),
+        grid: g,
+        at,
+        refusal,
+        // equipment_item.gd ItemType: EQUIPABLE, WEAPON, CONSUMABLE.
+        consumable: int(&item.get("item_type")) == 2,
+        gem: call(item, "is_gem", &[])?.try_to::<bool>().unwrap_or(false),
+        rarity: int(&item.get("rarity")),
+        stats: stats_from(&script_vars(item, 0)),
+        piece: grid::Piece {
+            value: 0.0,
+            shapes,
+            holes,
+            family,
+            weapon,
+        },
+    })
+}
+
 pub fn seen() -> Result<Seen, String> {
     let mut global = node("/root/Global")?;
     let mut inv = inventory()?;
@@ -287,42 +328,13 @@ pub fn seen() -> Result<Seen, String> {
                 continue;
             };
             let at = |k: &str| p.get(k).map_or(0, |v| int(&v)) as i32;
-            let (shapes, holes) = shapes_of(&mut item)?;
-            let iv = item.to_variant();
-            let refusal = call(
+            list.push(item_of(
                 &mut inv,
-                "equip_block_reason",
-                &[iv.clone(), p.to_variant()],
-            )?
-            .stringify()
-            .to_string();
-            let family = call(&mut inv, "equip_family_id", &[iv])?
-                .stringify()
-                .to_string();
-            let weapon = call(&mut item, "is_weapon", &[])?
-                .try_to::<bool>()
-                .unwrap_or(false);
-            list.push(Owned {
-                id: item.instance_id().to_i64(),
-                name: item.get("display_name").stringify().to_string(),
-                grid: g,
-                at: (at("x"), at("y"), at("rot")),
-                refusal,
-                // equipment_item.gd ItemType: EQUIPABLE, WEAPON, CONSUMABLE.
-                consumable: int(&item.get("item_type")) == 2,
-                gem: call(&mut item, "is_gem", &[])?
-                    .try_to::<bool>()
-                    .unwrap_or(false),
-                rarity: int(&item.get("rarity")),
-                stats: stats_from(&script_vars(&item, 0)),
-                piece: grid::Piece {
-                    value: 0.0,
-                    shapes,
-                    holes,
-                    family,
-                    weapon,
-                },
-            });
+                &mut item,
+                g,
+                (at("x"), at("y"), at("rot")),
+                Some(&p),
+            )?);
         }
     }
     let size = call(&mut inv, "grid_size", &[EQUIP.to_variant()])?

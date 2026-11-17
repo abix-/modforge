@@ -103,7 +103,7 @@ fn stats_text(stats: &[(&str, f64)]) -> String {
         .join(", ")
 }
 
-fn gems(args: &Json) -> Result<Json, String> {
+pub fn gems(args: &Json) -> Result<Json, String> {
     let force = args.get("force").and_then(Json::as_bool).unwrap_or(false);
     let at = Instant::now();
     let (seen, me, foe) = on_main("gems read", || {
@@ -195,7 +195,7 @@ fn gems(args: &Json) -> Result<Json, String> {
             }
         })
         .collect();
-    let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps);
+    let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps, arrange::FINALISTS);
     lines.push(format!(
         "gems: {} gems, {} pieces they could go into, {} the game takes; judged against {} (hp {} atk {}); \
          equipment value without a gem {without:.4}. Best pairings:",

@@ -259,7 +259,7 @@ fn leave(s: &mut Gd<Object>) -> Result<(), String> {
     Ok(())
 }
 
-fn mega_forge(_args: &Json) -> Result<Json, String> {
+pub fn mega_forge(_args: &Json) -> Result<Json, String> {
     let at = Instant::now();
     let mut lines = Vec::new();
     // The stop, and nothing left on the anvil from before.
@@ -408,7 +408,7 @@ fn mega_forge(_args: &Json) -> Result<Json, String> {
             add: m.piece.clone(),
         })
         .collect();
-    let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps);
+    let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps, arrange::FINALISTS);
     let scored: Vec<(f64, usize, Made)> = top
         .into_iter()
         .map(|(v, s)| (v, kept[s].0, kept[s].1.clone()))

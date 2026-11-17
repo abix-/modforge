@@ -129,13 +129,14 @@ pub struct Swap {
 }
 
 /// The packer's best equipment value with no swap, and the best swaps
-/// by the same value (best first, at most FINALISTS), each as (value,
+/// by the same value (best first, at most `finalists`), each as (value,
 /// index into `swaps`). Mine: a swap is worth its packed value.
 pub fn rank(
     g: &grid::Grid,
     hands: usize,
     owned: &[grid::Piece],
     swaps: &[Swap],
+    finalists: usize,
 ) -> (f64, Vec<(f64, usize)>) {
     let packed = |s: Option<&Swap>, budget: u64| {
         let mut pieces: Vec<grid::Piece> = (0..owned.len())
@@ -151,7 +152,7 @@ pub fn rank(
         .map(|(k, s)| (packed(Some(s), QUICK), k))
         .collect();
     top.sort_by(|a, b| b.0.total_cmp(&a.0));
-    top.truncate(FINALISTS);
+    top.truncate(finalists);
     for t in top.iter_mut() {
         t.0 = packed(Some(&swaps[t.1]), BUDGET);
     }
@@ -159,7 +160,7 @@ pub fn rank(
     (packed(None, BUDGET), top)
 }
 
-fn arrange(args: &Json) -> Result<Json, String> {
+pub fn arrange(args: &Json) -> Result<Json, String> {
     let force = args.get("force").and_then(Json::as_bool).unwrap_or(false);
     let bought = on_main("arrange rows", buy_rows)?;
     let read_at = Instant::now();

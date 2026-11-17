@@ -7,17 +7,21 @@
 //! godotforge's; the control plane is on 127.0.0.1:31330/op.
 
 pub mod arrange;
+pub mod auto;
 pub mod fight;
 pub mod gems;
 pub mod grid;
 pub mod items;
 pub mod mega;
 pub mod read;
+pub mod shop;
 
 fn on_init() {
     arrange::register_ops();
+    auto::register_ops();
     gems::register_ops();
     mega::register_ops();
+    shop::register_ops();
 }
 
 static MOD_INFO: godotforge::ModDef = godotforge::ModDef {
