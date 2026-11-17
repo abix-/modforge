@@ -181,8 +181,13 @@ fn research_actions() {
     assert!(rows.iter().any(|a| a["action"] == json!("ui_accept")));
 }
 
-/// The game's mouse lands where `move_mouse` put it: proves window
-/// pixels from `screen` are the pixels input events use.
+/// After `move_mouse` onto a clickable control, Godot's GUI says that
+/// control is under the mouse: proves the window pixels `screen`
+/// gives are the pixels input events use.
+///
+/// The viewport's mouse position is no proof: on 2026-11-16 it stayed
+/// at the OS cursor (1179, 713) after a move to (204, 400), because
+/// the root viewport reads the OS cursor.
 #[test]
 fn research_move_mouse() {
     let Some(api) = common::api_or_skip() else {
@@ -191,22 +196,21 @@ fn research_move_mouse() {
     let text = screen_text(&api);
     let node = text
         .iter()
-        .find(|n| n["rect"].is_object())
-        .expect("a visible node with a rect");
-    let r = &node["rect"];
-    let cx = r["position"][0].as_f64().unwrap() + r["size"][0].as_f64().unwrap() / 2.0;
-    let cy = r["position"][1].as_f64().unwrap() + r["size"][1].as_f64().unwrap() / 2.0;
-    common::op(&api, "move_mouse", json!({"id": node["id"]}));
+        .find(|n| n["clickable"] == json!(true))
+        .expect("a visible clickable control with text");
+    let moved = common::op(&api, "move_mouse", json!({"id": node["id"]}));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    let screen = common::op(&api, "screen", json!({"text_only": true}));
-    let mx = screen["mouse"][0].as_f64().unwrap();
-    let my = screen["mouse"][1].as_f64().unwrap();
+    let hovered = common::op(
+        &api,
+        "call_method",
+        json!({"node": "/root", "method": "gui_get_hovered_control"}),
+    );
     println!(
-        "node {:?} centre ({cx:.1}, {cy:.1}), game mouse ({mx:.1}, {my:.1})",
-        node["text"].as_str().unwrap_or("")
+        "moved to {} over {:?} {}; hovered {}",
+        moved["at"],
+        node["text"].as_str().unwrap_or(""),
+        node["path"],
+        hovered["result"]
     );
-    assert!(
-        (mx - cx).abs() < 2.0 && (my - cy).abs() < 2.0,
-        "mouse not on the node"
-    );
+    assert_eq!(hovered["result"]["id"], node["id"], "GUI hover is not the node");
 }
