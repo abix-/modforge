@@ -188,6 +188,211 @@ pub struct Fighter {
     pub attack_timer: Option<Timer>,
     pub active_statuses: Vec<Active>,
     pub gate_fails: HashMap<&'static str, Option<u32>>,
+    pub hit: Hit,
+}
+
+/// The fields the hit chain reads (combat_resolver.gd attack, strike,
+/// thorns, ward, hurt, block and counter code). Status fields hold the
+/// status id; the resolver finds the status in its Db.
+#[derive(Clone, Debug, Default)]
+pub struct Hit {
+    pub thorns_damage: i64,
+    pub thorns_status: Option<String>,
+    pub thorns_status_chance: f64,
+    /// [status id, stacks, chance] each.
+    pub retorts: Vec<(String, i64, f64)>,
+    pub resisted_magic_reflect: f64,
+    pub burn_thorns_chance: f64,
+    pub stun_thorns_chance: f64,
+    pub freeze_thorns_chance: f64,
+    pub status_stack_amount: i64,
+    pub freeze_turn_bonus: i64,
+    pub heal_on_hurt_chance: f64,
+    pub heal_on_hurt_fraction: f64,
+    pub enrage_on_hit_chance: f64,
+    pub regen_on_hurt_chance: f64,
+    pub bleed_rupture_mult: f64,
+    pub bleed_on_hit_chance: f64,
+    pub regen_on_attack_chance: f64,
+    pub absorb_gain_atk: i64,
+    pub absorb_heal: i64,
+    pub absorb_timer_charge: f64,
+    pub absorb_pool_regen: i64,
+    pub absorb_reflect: f64,
+    pub absorb_stun_chance: f64,
+    pub absorb_vuln_chance: f64,
+    pub full_block_count: i64,
+    pub counter_after_dodge_chance: f64,
+    pub counter_attack_chance: f64,
+    pub counter_status: Option<String>,
+    pub counter_status_chance: f64,
+    pub on_hit_status: Option<String>,
+    pub on_hit_status_pool: Vec<String>,
+    pub on_hit_status_chance: f64,
+    pub stun_on_hit_chance: f64,
+    pub freeze_on_hit_chance: f64,
+    pub burn_on_hit_chance: f64,
+    pub poison_on_hit_chance: f64,
+    pub terror_on_hit_chance: f64,
+    pub burn_on_hit_extra: i64,
+    pub chain_hit_chance: f64,
+    pub bonus_vs_full_hp: f64,
+    pub bonus_vs_half_hp: f64,
+    pub bonus_vs_fast: f64,
+    pub bonus_vs_terrified: f64,
+    pub dmg_pct_per_self_poison: f64,
+    pub dmg_pct_per_enrage: f64,
+    pub dmg_while_pool_intact: f64,
+    pub sheds_skin_every_n_turns: i64,
+    pub turns_since_shed: i64,
+    pub blessed_every_n_turns: i64,
+    pub turns_since_blessed_heal: i64,
+    pub blessed_heal_percent: f64,
+    pub status_stack_cap: i64,
+    pub poison_stack_bonus: i64,
+    pub poison_dmg_bonus: f64,
+    pub burn_dmg_bonus: f64,
+    pub bleed_dmg_bonus: f64,
+    pub stun_dmg_bonus: f64,
+    pub regen_heal_bonus: f64,
+    pub lifesteal_foe_poison_chance: f64,
+    pub lifesteal_foe_poison_stacks: i64,
+    pub bloodthirsty_heal_percent: f64,
+    pub death_status: Option<String>,
+    pub death_status_chance: f64,
+    pub frostburn_dmg: f64,
+    pub below_half_atk: i64,
+    /// [source, scale] each (combatant_runtime.gd _derived_amount).
+    pub derived_atk: Vec<(String, f64)>,
+    pub base_armor: i64,
+    pub luck: f64,
+    /// The hero's gold, for derived attack from gold.
+    pub gold: i64,
+    pub triple_strike_chance: f64,
+    pub quad_strike_chance: f64,
+    pub aoe_chance: f64,
+    pub fled: bool,
+    pub has_thief_kit: bool,
+    pub flees_after_hits: i64,
+}
+
+/// A status field: the status id, when the snapshot holds one.
+fn status_id(v: Option<&Value>) -> Option<String> {
+    match v? {
+        Value::String(s) if !s.is_empty() => Some(s.clone()),
+        Value::Object(m) => m.get("id").and_then(Value::as_str).map(str::to_string),
+        _ => None,
+    }
+}
+
+impl Hit {
+    fn from_vars(vars: &Map<String, Value>) -> Hit {
+        let v = Vars(vars);
+        let list = |k: &str| {
+            vars.get(k)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let retorts = list("retorts")
+            .iter()
+            .filter_map(|r| {
+                let r = r.as_array()?;
+                Some((
+                    r.first()?.as_str()?.to_string(),
+                    r.get(1)?.as_f64()? as i64,
+                    r.get(2)?.as_f64()?,
+                ))
+            })
+            .collect();
+        let derived_atk = list("derived_atk")
+            .iter()
+            .filter_map(|r| {
+                let r = r.as_array()?;
+                Some((r.first()?.as_str()?.to_string(), r.get(1)?.as_f64()?))
+            })
+            .collect();
+        Hit {
+            thorns_damage: v.i("thorns_damage"),
+            thorns_status: status_id(vars.get("thorns_status")),
+            thorns_status_chance: v.f("thorns_status_chance"),
+            retorts,
+            resisted_magic_reflect: v.f("resisted_magic_reflect"),
+            burn_thorns_chance: v.f("burn_thorns_chance"),
+            stun_thorns_chance: v.f("stun_thorns_chance"),
+            freeze_thorns_chance: v.f("freeze_thorns_chance"),
+            status_stack_amount: v.i("status_stack_amount"),
+            freeze_turn_bonus: v.i("freeze_turn_bonus"),
+            heal_on_hurt_chance: v.f("heal_on_hurt_chance"),
+            heal_on_hurt_fraction: v.f("heal_on_hurt_fraction"),
+            enrage_on_hit_chance: v.f("enrage_on_hit_chance"),
+            regen_on_hurt_chance: v.f("regen_on_hurt_chance"),
+            bleed_rupture_mult: v.f("bleed_rupture_mult"),
+            bleed_on_hit_chance: v.f("bleed_on_hit_chance"),
+            regen_on_attack_chance: v.f("regen_on_attack_chance"),
+            absorb_gain_atk: v.i("absorb_gain_atk"),
+            absorb_heal: v.i("absorb_heal"),
+            absorb_timer_charge: v.f("absorb_timer_charge"),
+            absorb_pool_regen: v.i("absorb_pool_regen"),
+            absorb_reflect: v.f("absorb_reflect"),
+            absorb_stun_chance: v.f("absorb_stun_chance"),
+            absorb_vuln_chance: v.f("absorb_vuln_chance"),
+            full_block_count: v.i("full_block_count"),
+            counter_after_dodge_chance: v.f("counter_after_dodge_chance"),
+            counter_attack_chance: v.f("counter_attack_chance"),
+            counter_status: status_id(vars.get("counter_status")),
+            counter_status_chance: v.f("counter_status_chance"),
+            on_hit_status: status_id(vars.get("on_hit_status")),
+            on_hit_status_pool: list("on_hit_status_pool")
+                .iter()
+                .filter_map(|x| status_id(Some(x)))
+                .collect(),
+            on_hit_status_chance: v.f("on_hit_status_chance"),
+            stun_on_hit_chance: v.f("stun_on_hit_chance"),
+            freeze_on_hit_chance: v.f("freeze_on_hit_chance"),
+            burn_on_hit_chance: v.f("burn_on_hit_chance"),
+            poison_on_hit_chance: v.f("poison_on_hit_chance"),
+            terror_on_hit_chance: v.f("terror_on_hit_chance"),
+            burn_on_hit_extra: v.i("burn_on_hit_extra"),
+            chain_hit_chance: v.f("chain_hit_chance"),
+            bonus_vs_full_hp: v.f("bonus_vs_full_hp"),
+            bonus_vs_half_hp: v.f("bonus_vs_half_hp"),
+            bonus_vs_fast: v.f("bonus_vs_fast"),
+            bonus_vs_terrified: v.f("bonus_vs_terrified"),
+            dmg_pct_per_self_poison: v.f("dmg_pct_per_self_poison"),
+            dmg_pct_per_enrage: v.f("dmg_pct_per_enrage"),
+            dmg_while_pool_intact: v.f("dmg_while_pool_intact"),
+            sheds_skin_every_n_turns: v.i("sheds_skin_every_n_turns"),
+            turns_since_shed: v.i("turns_since_shed"),
+            blessed_every_n_turns: v.i("blessed_every_n_turns"),
+            turns_since_blessed_heal: v.i("turns_since_blessed_heal"),
+            blessed_heal_percent: v.f("blessed_heal_percent"),
+            status_stack_cap: v.i("status_stack_cap"),
+            poison_stack_bonus: v.i("poison_stack_bonus"),
+            poison_dmg_bonus: v.f("poison_dmg_bonus"),
+            burn_dmg_bonus: v.f("burn_dmg_bonus"),
+            bleed_dmg_bonus: v.f("bleed_dmg_bonus"),
+            stun_dmg_bonus: v.f("stun_dmg_bonus"),
+            regen_heal_bonus: v.f("regen_heal_bonus"),
+            lifesteal_foe_poison_chance: v.f("lifesteal_foe_poison_chance"),
+            lifesteal_foe_poison_stacks: v.i("lifesteal_foe_poison_stacks"),
+            bloodthirsty_heal_percent: v.f("bloodthirsty_heal_percent"),
+            death_status: status_id(vars.get("death_status")),
+            death_status_chance: v.f("death_status_chance"),
+            frostburn_dmg: v.f("frostburn_dmg"),
+            below_half_atk: v.i("below_half_atk"),
+            derived_atk,
+            base_armor: v.i("base_armor"),
+            luck: v.f("luck"),
+            gold: 0,
+            triple_strike_chance: v.f("triple_strike_chance"),
+            quad_strike_chance: v.f("quad_strike_chance"),
+            aoe_chance: v.f("aoe_chance"),
+            fled: v.b("fled"),
+            has_thief_kit: v.b("has_thief_kit"),
+            flees_after_hits: v.i("flees_after_hits"),
+        }
+    }
 }
 
 /// Reads a fighter's script variables.
@@ -297,6 +502,7 @@ impl Fighter {
             attack_timer: None,
             active_statuses: Vec::new(),
             gate_fails: HashMap::new(),
+            hit: Hit::from_vars(vars),
         };
         if f.damage_dealt_mult == 0.0 && !vars.contains_key("damage_dealt_mult") {
             f.damage_dealt_mult = 1.0;
@@ -315,8 +521,48 @@ impl Fighter {
         self.current_hp * 2 < self.max_hp
     }
 
+    /// combatant_runtime.gd _derived_amount.
+    fn derived_amount(&self, source: &str, scale: f64) -> i64 {
+        const GOLD_ATK_CAP: i64 = 5000;
+        match source {
+            "missing_hp" => ((self.max_hp - self.current_hp) as f64 * scale) as i64,
+            "base_armor" => (self.hit.base_armor as f64 * scale) as i64,
+            "speed" => (self.speed * scale) as i64,
+            "gold" => GOLD_ATK_CAP.min((self.hit.gold as f64 * scale) as i64),
+            "luck" => (self.hit.luck * 100.0 * scale) as i64,
+            "crit" => (self.crit_chance.max(0.0) * 100.0 * scale) as i64,
+            _ => 0,
+        }
+    }
+
+    /// combatant_runtime.gd effective_atk.
+    pub fn effective_atk(&self) -> i64 {
+        let mut out = self.atk;
+        for (source, scale) in &self.hit.derived_atk {
+            out += self.derived_amount(source, *scale).max(0);
+        }
+        if self.hit.below_half_atk > 0 && self.is_below_half_hp() {
+            out += self.hit.below_half_atk;
+        }
+        (out - self.curse_penalty("atk") as i64 - self.get_status_stacks(Kind::Weak)).max(1)
+    }
+
+    /// combatant_runtime.gd add_block.
+    pub fn add_block(&mut self, amount: i64, overflow: bool) {
+        if overflow {
+            self.block_pool = (self.block_pool + amount).max(0);
+        } else if amount >= 0 {
+            self.block_pool = self
+                .block_pool
+                .max((self.block_pool + amount).min(self.block_max()));
+        } else {
+            self.block_pool = (self.block_pool + amount).clamp(0, self.block_max());
+        }
+    }
+
     pub fn block_max(&self) -> i64 {
-        (self.armor as f64 * (1.0 + self.armor_pool_mult)) as i64
+        // combatant_runtime.gd block_max: capped_hp rounds.
+        round(self.armor as f64 * (1.0 + self.armor_pool_mult)).max(0)
     }
 
     pub fn has_status(&self, kind: Kind) -> bool {
