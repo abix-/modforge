@@ -1,0 +1,48 @@
+[package]
+name = "godotforge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Godot framework. Peer of ueforge and unityforge. Depends on
+# modforge for the engine-agnostic core (op registry, server,
+# main-thread queue, counters, shutdown). Adds Godot-specific
+# surfaces through godot-rust:
+#   - godot3: GDNative (Godot 3.x) through the `gdnative` crate.
+#   - godot4: GDExtension (Godot 4.x) through the `godot` crate. A
+#     Godot 4 mod stands in for a GDExtension the game already loads
+#     and starts the real one; see src/godot4/mod.rs.
+#
+# Game mods (e.g. crueltysquad-mod) build a cdylib, invoke
+# `godotforge_mod!`, and are loaded by the GDScript loader in
+# `gdscript/` as a NativeScript node.
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+godot3 = ["dep:gdnative"]
+# Godot 4 GDExtension through godot-rust (`godot` crate).
+godot4 = ["dep:godot", "dep:windows-sys"]
+
+[dependencies]
+modforge = { path = "../modforge" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+zip = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+gdnative = { version = "0.11.3", optional = true }
+# api-4-7 is the newest API godot-rust knows; extensions built on it
+# run on 4.7 and later. Lazy function tables load a class's methods
+# on first use, so a method a custom engine build lacks fails only
+# when called, not at startup.
+godot = { version = "0.5.5", optional = true, features = ["api-4-7", "lazy-function-tables"] }
+windows-sys = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+
+[lints]
+workspace = true

@@ -1,29 +1,16 @@
 //! Research: is the mod loaded in place of GodotSteam, and do ops
 //! reach Godot's main thread?
-//!
-//! Needs the game running with the mod deployed. Skips otherwise.
 
-use modforge::client::Api;
-use serde_json::{Value, json};
+mod common;
 
-fn api() -> Api<Value> {
-    Api::at(31330, "/op").with_timeout(std::time::Duration::from_secs(10))
-}
+use serde_json::json;
 
 #[test]
 fn research_engine() {
-    let api = api();
-    let r = match api.try_op("engine", json!({})) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!(
-                "SKIP: no control plane on 31330 ({e}); launch the game with the mod deployed"
-            );
-            return;
-        }
+    let Some(api) = common::api_or_skip() else {
+        return;
     };
-    assert!(r.ok, "engine op failed: {:?}", r.error);
-    let data = r.result;
+    let data = common::op(&api, "engine", json!({}));
     println!(
         "{}",
         serde_json::to_string_pretty(&data).unwrap_or_default()
