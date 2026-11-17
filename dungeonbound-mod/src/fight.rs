@@ -526,6 +526,9 @@ pub struct Score {
     pub win: f64,
     pub hp_left: f64,
     pub foes_left: f64,
+    /// One number for the fight, -1 to 1: a won fight counts its
+    /// share of hp left, a lost one minus the squad's share left.
+    pub margin: f64,
 }
 
 impl Score {
@@ -541,13 +544,17 @@ pub fn score(player: &Fighter, squad: &[Fighter], run: Run) -> Score {
     const TRIALS: u32 = 1000;
     const SEED: u64 = 0x5eed;
     let mut rng = fastrand::Rng::with_seed(SEED);
-    let (mut wins, mut left, mut foes) = (0u32, 0.0, 0.0);
+    let (mut wins, mut left, mut foes, mut margin) = (0u32, 0.0, 0.0, 0.0);
     for _ in 0..TRIALS {
         let r = fight(player, squad, run, &mut rng);
         foes += r.foes_left;
         if r.outcome == Outcome::Won {
             wins += 1;
-            left += r.hp_left as f64 / player.max_hp.max(1) as f64;
+            let share = r.hp_left as f64 / player.max_hp.max(1) as f64;
+            left += share;
+            margin += share;
+        } else {
+            margin -= r.foes_left;
         }
     }
     let n = f64::from(TRIALS);
@@ -555,6 +562,7 @@ pub fn score(player: &Fighter, squad: &[Fighter], run: Run) -> Score {
         win: f64::from(wins) / n,
         hp_left: left / n,
         foes_left: foes / n,
+        margin: margin / n,
     }
 }
 

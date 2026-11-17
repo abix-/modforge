@@ -60,7 +60,14 @@ struct Game {
     judged: std::cell::RefCell<String>,
     /// The shop already bought from.
     shop_done: std::cell::RefCell<Value>,
+    /// The item stop already used once.
+    shrine_done: std::cell::RefCell<Value>,
+    /// The shop on screen and the gold held when it opened.
+    shop_entry: std::cell::RefCell<(Value, i64)>,
 }
+
+/// Share of the gold held on entering a shop that is kept.
+const KEEP_GOLD: f64 = 0.25;
 
 /// Inventory grids (inventory.gd).
 const EQUIP: i64 = 0;
@@ -306,15 +313,9 @@ impl Game {
         });
         for (i, s) in &ranked {
             let (item, _) = &items[*i];
-            let id = self.prop(item, "id")?;
-            self.call(&stop, "_on_item_dropped", json!([id]))?;
-            let Some(act) = self.named("EncounterContinueBtn")? else {
+            let Some(act) = self.stage(&stop, item)? else {
                 continue;
             };
-            if !self.pressable(&act) {
-                println!("[auto]   {} refused", self.item_name(item));
-                continue;
-            }
             println!(
                 "[auto]   dismantle {}: {} -> win {:.1}% hp left {:.0}%",
                 self.item_name(item),
@@ -325,13 +326,136 @@ impl Game {
             self.press(&act, "DISMANTLE")?;
             return Ok(true);
         }
-        println!("[auto]   nothing to dismantle; leaving");
+        self.leave("nothing to dismantle")?;
+        Ok(true)
+    }
+
+    /// An item stop (item_shrine.gd): the game's own drop stages the
+    /// item. Returns the act button when the stop takes it and it is
+    /// free (use_cost 0).
+    fn stage(&self, stop: &Value, item: &Value) -> Result<Option<Value>, String> {
+        let id = self.prop(item, "id")?;
+        self.call(stop, "_on_item_dropped", json!([id]))?;
+        let Some(act) = self.named("EncounterContinueBtn")? else {
+            return Ok(None);
+        };
+        if !self.pressable(&act) {
+            println!("[auto]   {} refused", self.item_name(item));
+            return Ok(None);
+        }
+        let cost = self
+            .call(stop, "use_cost", json!([]))?
+            .as_i64()
+            .unwrap_or(0);
+        if cost > 0 {
+            println!(
+                "[auto]   {} would cost {cost} gold; not paying",
+                self.item_name(item)
+            );
+            return Ok(None);
+        }
+        Ok(Some(act))
+    }
+
+    /// Leave a stop with SKIP (or LEAVE after a use), giving the reason.
+    fn leave(&self, why: &str) -> Result<(), String> {
         if let Some(skip) = self.named("EncounterSkipBtn")?
             && self.pressable(&skip)
         {
-            self.press(&skip, "SKIP (nothing to dismantle)")?;
+            self.press(&skip, &format!("SKIP ({why})"))?;
         }
+        Ok(())
+    }
+
+    /// Gamble (gamble_encounter.gd): a wheel on one item, break 17%,
+    /// curse 23%, affinity 20%, upgrade 30%, jackpot 10%. Operator
+    /// 2026-11-16: "we should be gambling the items that can give us
+    /// the most gain per slot", "making wure each grid in equipment
+    /// gfives most stats possible". Every item, worn or loose, ranked
+    /// by gain per cell (`per_cell`). Free uses only; one spin per
+    /// stop, then leave.
+    fn gamble(&self, crawl: &Value) -> Result<bool, String> {
+        let Some(stop) = self.find(&json!({"node": SCENE}), "gamble_encounter.gd", 4)? else {
+            return Ok(false);
+        };
+        if *self.shrine_done.borrow() == stop {
+            if self.prop(&stop, "_used")? != json!(true) {
+                self.leave("spun once")?;
+            }
+            return Ok(true);
+        }
+        if self.prop(&stop, "_used")? == json!(true)
+            || self.prop(&stop, "_spinning")? == json!(true)
+        {
+            return Ok(true);
+        }
+        let inv = json!({"id": self.prop(&json!({"node": "/root/Global"}), "inventory")?["id"]});
+        let mut items: Vec<Value> = Vec::new();
+        for grid in [EQUIP, BAG, TRAY] {
+            for p in self
+                .call(&inv, "placements_in", json!([grid]))?
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                let item = json!({"id": p["item"]["id"]});
+                if !items.contains(&item) {
+                    items.push(item);
+                }
+            }
+        }
+        let ranked = self.per_cell(crawl, &items)?;
+        for (i, gain) in &ranked {
+            let item = &items[*i];
+            println!("[auto]   {}: gain per cell {gain:.4}", self.item_name(item));
+        }
+        for (i, _) in &ranked {
+            let item = &items[*i];
+            if let Some(act) = self.stage(&stop, item)? {
+                *self.shrine_done.borrow_mut() = stop.clone();
+                return self
+                    .press(&act, &format!("GAMBLE {}", self.item_name(item)))
+                    .map(|()| true);
+            }
+        }
+        self.leave("no loose item to gamble; worn items risk a break")?;
         Ok(true)
+    }
+
+    /// Items ranked by gain per grid cell, best first: the fight
+    /// margin its plain stats add to the player, over the cells its
+    /// shape takes (EquipmentItem shape_cells). The one measure of
+    /// how well an item uses its space.
+    fn per_cell(&self, crawl: &Value, items: &[Value]) -> Result<Vec<(usize, f64)>, String> {
+        let (me, squad) = self.player_and_guardian(crawl)?;
+        let base = fight::score(&me, &squad, Run::Campaign).margin;
+        let mut out = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            let cells = self
+                .call(item, "shape_cells", json!([0]))?
+                .as_array()
+                .map_or(1, |c| c.len().max(1));
+            let mut p = me.clone();
+            for (stat, v) in self.item_stats(item)? {
+                apply_bonus(&mut p, stat, v);
+            }
+            let gain = fight::score(&p, &squad, Run::Campaign).margin - base;
+            out.push((i, gain / cells as f64));
+        }
+        out.sort_by(|a, b| b.1.total_cmp(&a.1));
+        Ok(out)
+    }
+
+    /// An item's plain stats as player stat bonuses (ITEM_STATS).
+    fn item_stats(&self, item: &Value) -> Result<Vec<(&'static str, f64)>, String> {
+        let vars = self.vars(&item["id"])?;
+        Ok(ITEM_STATS
+            .iter()
+            .filter_map(|(field, stat)| {
+                let v = vars.get(*field)?.as_f64()?;
+                (v != 0.0).then_some((*stat, v))
+            })
+            .collect())
     }
 
     /// Genie: three permanent stat wishes (genie_encounter.gd). Takes
@@ -593,6 +717,13 @@ impl Game {
         if *self.shop_done.borrow() == shop {
             return Ok(false);
         }
+        // Operator 2026-11-16: "maybe we keep 25% of the gold when
+        // shopping". A quarter of the gold held on entry is never spent.
+        let gold = self.call(&shop, "_gold", json!([]))?.as_i64().unwrap_or(0);
+        if self.shop_entry.borrow().0 != shop {
+            *self.shop_entry.borrow_mut() = (shop.clone(), gold);
+        }
+        let keep = (self.shop_entry.borrow().1 as f64 * KEEP_GOLD).ceil() as i64;
         let mut s = shop.clone();
         s["property"] = json!("_cards");
         s["depth"] = json!(1);
@@ -607,21 +738,16 @@ impl Game {
                 continue;
             }
             let price = self.prop(&ware, "price")?;
-            if self.call(&shop, "can_afford", json!([price]))? != json!(true) {
+            if self.call(&shop, "can_afford", json!([price]))? != json!(true)
+                || gold - price.as_i64().unwrap_or(i64::MAX) < keep
+            {
                 continue;
             }
             let item = json!({"id": self.prop(&ware, "item")?["id"]});
             if item["id"].is_null() {
                 continue;
             }
-            let vars = self.vars(&item["id"])?;
-            let stats: Vec<(&str, f64)> = ITEM_STATS
-                .iter()
-                .filter_map(|(field, stat)| {
-                    let v = vars.get(*field)?.as_f64()?;
-                    (v != 0.0).then_some((*stat, v))
-                })
-                .collect();
+            let stats = self.item_stats(&item)?;
             if !stats.is_empty() {
                 wares.push((ware, item, stats));
             }
@@ -674,6 +800,9 @@ impl Game {
             return Ok(());
         }
         if self.shop(&crawl)? {
+            return Ok(());
+        }
+        if self.gamble(&crawl)? {
             return Ok(());
         }
         if self.equip(&crawl)? {
@@ -795,6 +924,8 @@ fn main() {
         tried: std::cell::RefCell::new(String::new()),
         judged: std::cell::RefCell::new(String::new()),
         shop_done: std::cell::RefCell::new(Value::Null),
+        shrine_done: std::cell::RefCell::new(Value::Null),
+        shop_entry: std::cell::RefCell::new((Value::Null, 0)),
     };
     println!("[auto] playing; Ctrl+C stops");
     let mut last_err = String::new();
