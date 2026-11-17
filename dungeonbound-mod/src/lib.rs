@@ -8,6 +8,7 @@
 
 pub mod arrange;
 pub mod auto;
+pub mod battle;
 pub mod fight;
 pub mod gems;
 pub mod grid;
