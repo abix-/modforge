@@ -32,6 +32,7 @@ use crate::fight::{self, Fighter, Run};
 use crate::grid;
 use crate::placement;
 use crate::read::{self, BAG, EQUIP, TRAY};
+use crate::sets;
 
 /// Search steps before the packer keeps the best layout found.
 pub const BUDGET: u64 = 2_000_000;
@@ -117,6 +118,8 @@ fn hash_of(parts: &impl std::hash::Hash) -> u64 {
 pub struct Judge {
     pub squad: Vec<Fighter>,
     now: read::Fold,
+    /// The game's fold with nothing worn.
+    empty: read::Fold,
     /// The hero now less the fold of what is worn now with its
     /// placements.
     run: read::Fold,
@@ -145,6 +148,7 @@ impl Judge {
         let mut j = Judge {
             squad,
             now: hero.now.clone(),
+            empty: hero.empty.clone(),
             run,
             base: 0.0,
             key,
@@ -253,6 +257,41 @@ impl Judge {
         layout: &[grid::Spot],
     ) -> read::Fold {
         spotted(fold, &self.now, grid, pieces, layout)
+    }
+
+    /// What each set these pieces could make is worth, at each strength
+    /// step: the fight margin the set adds to the hero with nothing
+    /// worn (mine, like a piece's value).
+    pub fn set_table<'a>(&self, pieces: impl IntoIterator<Item = &'a grid::Piece>) -> sets::Table {
+        let places: Vec<&placement::Place> = pieces.into_iter().map(|p| &*p.place).collect();
+        let tags: Vec<&str> = sets::TAGS
+            .iter()
+            .copied()
+            .filter(|t| sets::reachable(&places, t))
+            .collect();
+        let steps = (sets::MAX_STRENGTH / sets::STEP).round() as usize;
+        let rows = std::thread::scope(|s| {
+            let jobs: Vec<_> = tags
+                .iter()
+                .map(|&tag| {
+                    s.spawn(move || {
+                        let row: Vec<f64> = (0..=steps)
+                            .map(|k| {
+                                if k == 0 {
+                                    return 0.0;
+                                }
+                                let mut f = self.empty.clone();
+                                sets::apply(&mut f, tag, k as f64 * sets::STEP);
+                                self.score(&f).margin - self.base
+                            })
+                            .collect();
+                        (tag.to_string(), row)
+                    })
+                })
+                .collect();
+            jobs.into_iter().filter_map(|j| j.join().ok()).collect()
+        });
+        sets::Table { rows }
     }
 
     /// A piece's value and what its spot bonuses are worth.
@@ -420,7 +459,7 @@ fn pack_key(g: &grid::Grid, pieces: &[grid::Piece], hands: usize, budget: u64) -
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (g.w, g.h, &g.open, hands, budget).hash(&mut h);
-    (g.board.size, &g.board.runes).hash(&mut h);
+    (g.board.size, &g.board.runes, format!("{:?}", g.sets.rows)).hash(&mut h);
     for p in pieces {
         (p.value.to_bits(), &p.shapes, &p.holes, &p.family, p.weapon).hash(&mut h);
         format!("{:?}", p.place).hash(&mut h);
@@ -541,7 +580,8 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let open_cells = seen.open.iter().filter(|&&o| o).count();
     let only: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
     let packed_at = Instant::now();
-    let g = seen.grid();
+    let mut g = seen.grid();
+    g.sets = judge.set_table(&only);
     let (plan, value, done) = grid::pack(&g, &only, seen.hands, BUDGET);
     // Both by the same judge: the plan and what is worn, each folded by
     // the game, with what their spots add.
@@ -610,6 +650,13 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
                     o.at.2
                 )
             }
+        ));
+    }
+    let planned: Vec<&placement::Place> = plan.iter().map(|s| &*only[s.piece].place).collect();
+    for (tag, s) in sets::active(&planned) {
+        lines.push(format!(
+            "  set {tag} at strength {s:.2} (worth {:.4})",
+            g.sets.worth(tag, s)
         ));
     }
     for (i, o) in list.iter().enumerate() {

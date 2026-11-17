@@ -69,6 +69,9 @@ pub struct Place {
     /// The item's own bonus_atk when the Brawler rune applies to it
     /// (slot_bonus.gd fold: a melee weapon that is not a trigger bow).
     pub brawler_atk: i64,
+    /// equipment_item.gd set_count_bonus and set_bonus_mult (sets.rs).
+    pub set_count_bonus: i64,
+    pub set_bonus_mult: f64,
     pub gain: Gain,
 }
 

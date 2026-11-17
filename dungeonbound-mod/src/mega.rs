@@ -419,7 +419,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
     ));
     // Judge: the packer's best equipment value with the made piece in
     // place of its parts.
-    let g = seen.grid();
+    let mut g = seen.grid();
     let owned: Vec<Piece> = list.iter().map(|o| o.piece.clone()).collect();
     let mut kept: Vec<(usize, Made)> = Vec::new();
     for (k, got) in made.into_iter().enumerate() {
@@ -437,6 +437,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
             add: m.piece.clone(),
         })
         .collect();
+    g.sets = judge.set_table(owned.iter().chain(swaps.iter().map(|s| &s.add)));
     let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps, arrange::FINALISTS);
     let scored: Vec<(f64, usize, Made)> = top
         .into_iter()

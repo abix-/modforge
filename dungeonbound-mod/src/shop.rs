@@ -272,7 +272,6 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
         };
         asks.push((k, swap));
     }
-    let g = seen.grid();
     let swaps: Vec<arrange::Swap> = asks
         .iter()
         .map(|(_, s)| arrange::Swap {
@@ -280,6 +279,8 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
             add: s.add.clone(),
         })
         .collect();
+    let mut g = seen.grid();
+    g.sets = judge.set_table(owned.iter().chain(swaps.iter().map(|s| &s.add)));
     // Operator 2026-11-16: "those upgrad should probagbly the the fIRST
     // things we buy im a shop": wares that merge into an owned copy are
     // judged first and bought when they add anything.

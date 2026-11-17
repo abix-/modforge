@@ -21,6 +21,13 @@
 //! the value.
 
 use crate::placement::{self, Board, Shared, Worn};
+use crate::sets;
+
+/// What a layout's sets are worth.
+pub fn set_value(grid: &Grid, pieces: &[Piece], layout: &[Spot]) -> f64 {
+    let worn: Vec<&placement::Place> = layout.iter().map(|s| &*pieces[s.piece].place).collect();
+    grid.sets.of(&worn)
+}
 
 /// One piece that may be worn.
 #[derive(Debug, Clone)]
@@ -79,6 +86,8 @@ pub struct Grid {
     pub open: Vec<bool>,
     /// Edges and runes for the placement bonuses.
     pub board: Board,
+    /// What each set is worth (sets.rs); empty for none.
+    pub sets: sets::Table,
 }
 
 /// The best layout found, and whether the search ran to the end
@@ -103,7 +112,11 @@ pub fn pack(grid: &Grid, pieces: &[Piece], hands: usize, budget: u64) -> (Vec<Sp
         budget,
         order: Vec::new(),
         most: Vec::new(),
+        sets_most: 0.0,
     };
+    // The most sets could add with every piece worn.
+    let all: Vec<&placement::Place> = pieces.iter().map(|p| &*p.place).collect();
+    s.sets_most = grid.sets.most(&all);
     // The most each piece's spot could add, from the pieces it could
     // sit beside.
     s.most = (0..pieces.len())
@@ -154,6 +167,8 @@ struct Search<'a> {
     /// their spot could add).
     order: Vec<usize>,
     most: Vec<f64>,
+    /// The most sets could add.
+    sets_most: f64,
 }
 
 impl Search<'_> {
@@ -183,18 +198,21 @@ impl Search<'_> {
                 free = 0.0;
             }
         }
-        self.value + self.extra + add
+        self.value + self.extra + self.sets_most + add
     }
 
-    /// The layout so far with what its spots add.
+    /// The layout so far with what its spots and sets add.
     fn worth(&self) -> f64 {
-        if self.extra <= 0.0 {
-            return self.value;
-        }
-        self.value
-            + spot_values(self.grid, self.pieces, &self.layout)
+        let mut v = self.value;
+        if self.extra > 0.0 {
+            v += spot_values(self.grid, self.pieces, &self.layout)
                 .iter()
-                .sum::<f64>()
+                .sum::<f64>();
+        }
+        if self.sets_most > 0.0 {
+            v += set_value(self.grid, self.pieces, &self.layout);
+        }
+        v
     }
 
     fn fits(&self, p: &Piece, rot: usize, ox: i32, oy: i32) -> bool {
@@ -224,7 +242,7 @@ impl Search<'_> {
     fn go(&mut self, from: usize) {
         self.steps += 1;
         // Spots are worked out only when the layout could beat the best.
-        if self.value + self.extra > self.best_value {
+        if self.value + self.extra + self.sets_most > self.best_value {
             let v = self.worth();
             if v > self.best_value {
                 self.best_value = v;
@@ -331,6 +349,7 @@ mod tests {
                 size: (w, h),
                 runes: Vec::new(),
             },
+            sets: sets::Table::default(),
         }
     }
 

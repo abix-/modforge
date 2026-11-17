@@ -226,6 +226,7 @@ impl Seen {
             h: self.h,
             open: self.open.clone(),
             board: self.board.clone(),
+            sets: crate::sets::Table::default(),
         }
     }
 
@@ -474,6 +475,8 @@ pub fn place_of(item: &mut Gd<Object>) -> Result<placement::Place, String> {
         adjacent,
         edge,
         brawler_atk,
+        set_count_bonus: int(&item.get("set_count_bonus")),
+        set_bonus_mult: num_or(&item.get("set_bonus_mult"), 0.0),
         gain: placement::Gain::default(),
     })
 }

@@ -168,7 +168,7 @@ pub fn gems(args: &Json) -> Result<Json, String> {
     })?;
     // Judge: the packer's best equipment value with the socketed piece
     // in place of the plain one.
-    let g = seen.grid();
+    let mut g = seen.grid();
     let owned: Vec<grid::Piece> = list.iter().map(|o| o.piece.clone()).collect();
     let mut kept: Vec<(usize, Vec<(&'static str, f64)>, f64)> = Vec::new();
     let mut refused: Vec<(i64, String)> = Vec::new();
@@ -196,6 +196,7 @@ pub fn gems(args: &Json) -> Result<Json, String> {
             }
         })
         .collect();
+    g.sets = judge.set_table(owned.iter().chain(swaps.iter().map(|s| &s.add)));
     let (without, top) = arrange::rank(&g, seen.hands, &owned, &swaps, arrange::FINALISTS);
     lines.push(format!(
         "gems: {} gems, {} pieces they could go into, {} the game takes; judged against {} (hp {} atk {}); \

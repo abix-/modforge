@@ -16,6 +16,7 @@ pub mod items;
 pub mod mega;
 pub mod placement;
 pub mod read;
+pub mod sets;
 pub mod shop;
 
 fn on_init() {
