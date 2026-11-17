@@ -431,6 +431,97 @@ pub fn success_rate(player: &Fighter, squad: &[Fighter], run: Run, trials: u32, 
     })
 }
 
+/// The fighter as the game holds it: a fighter's script variables
+/// (`inspect` rows, combatant_runtime.gd names) by name.
+pub fn from_vars(name: &str, vars: &serde_json::Map<String, serde_json::Value>) -> Fighter {
+    let f = |k: &str| {
+        vars.get(k)
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0)
+    };
+    let i = |k: &str| f(k) as i64;
+    let armor = f("armor");
+    Fighter {
+        name: name.to_string(),
+        hp: i("current_hp"),
+        max_hp: i("max_hp"),
+        atk: i("atk"),
+        block: i("block_pool"),
+        block_max: (armor * (1.0 + f("armor_pool_mult"))).round() as i64,
+        block_chance: f("block_chance"),
+        speed: f("speed"),
+        speed_cut: f("speed_cut"),
+        dodge: f("dodge_chance"),
+        crit: f("crit_chance"),
+        crit_mult: f("crit_multiplier"),
+        multistrike: f("multistrike_chance"),
+        double_dmg: f("double_dmg_chance"),
+        block_pierce: f("block_pierce"),
+        magic: vars.get("dmg_type").and_then(serde_json::Value::as_str) == Some("magic"),
+        magic_resist: f("magic_resist"),
+        campaign_caps: vars.get("campaign_caps") == Some(&serde_json::Value::Bool(true)),
+    }
+}
+
+/// Which choice leaves the player most likely to win: each choice
+/// changes a copy of the player, and every copy fights the same
+/// squad with the same random rolls. Returns (best index, each
+/// choice's success rate).
+pub fn best_choice<T>(
+    player: &Fighter,
+    squad: &[Fighter],
+    run: Run,
+    choices: &[T],
+    apply: impl Fn(&mut Fighter, &T),
+) -> (Option<usize>, Vec<f64>) {
+    let scores: Vec<Score> = choices
+        .iter()
+        .map(|c| {
+            let mut p = player.clone();
+            apply(&mut p, c);
+            score(&p, squad, run)
+        })
+        .collect();
+    let best = (0..scores.len()).max_by(|&a, &b| scores[a].cmp(&scores[b]));
+    (best, scores.iter().map(|s| s.win).collect())
+}
+
+/// How well a player does against a squad: win rate, then the mean
+/// share of max hp left, so of two loadouts that both always win the
+/// one that wins with more hp left is better. Same seed every time,
+/// so two loadouts meet the same rolls.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Score {
+    pub win: f64,
+    pub hp_left: f64,
+}
+
+impl Score {
+    pub fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.win
+            .total_cmp(&other.win)
+            .then(self.hp_left.total_cmp(&other.hp_left))
+    }
+}
+
+pub fn score(player: &Fighter, squad: &[Fighter], run: Run) -> Score {
+    const TRIALS: u32 = 1000;
+    const SEED: u64 = 0x5eed;
+    let mut rng = fastrand::Rng::with_seed(SEED);
+    let (mut wins, mut left) = (0u32, 0.0);
+    for _ in 0..TRIALS {
+        let r = fight(player, squad, run, &mut rng);
+        if r.outcome == Outcome::Won {
+            wins += 1;
+            left += r.hp_left as f64 / player.max_hp.max(1) as f64;
+        }
+    }
+    Score {
+        win: f64::from(wins) / f64::from(TRIALS),
+        hp_left: left / f64::from(TRIALS),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
