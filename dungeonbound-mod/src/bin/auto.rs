@@ -819,15 +819,21 @@ impl Game {
         };
         // (a, b, flipped, improvement per cell, result gain, cells)
         let mut best: Option<(usize, usize, bool, f64, f64, usize)> = None;
+        // Each pair once: the second variant is the other item as base.
+        println!("[auto]   fuse: judging pairs of {} items", items.len());
         for a in 0..items.len() {
             if self.call(&stop, "_refusal_for", json!([items[a], true]))? != json!("") {
                 continue;
             }
+            println!(
+                "[auto]     pairs with {} ({}/{})",
+                self.item_name(&items[a]),
+                a + 1,
+                items.len()
+            );
             self.call(&stop, "_on_slot_filled", json!([ids[a], true]))?;
-            for b in 0..items.len() {
-                if b == a
-                    || self.call(&stop, "_refusal_for", json!([items[b], false]))? != json!("")
-                {
+            for b in a + 1..items.len() {
+                if self.call(&stop, "_refusal_for", json!([items[b], false]))? != json!("") {
                     continue;
                 }
                 self.call(&stop, "_on_slot_filled", json!([ids[b], false]))?;
@@ -842,8 +848,9 @@ impl Game {
                         best = Some((a, b, flipped, up, g, cells));
                     }
                 }
-                self.call(&stop, "_clear_slot", json!([false]))?;
             }
+            // Staging the next b hands this one back (_on_slot_filled).
+            self.call(&stop, "_clear_slot", json!([false]))?;
             self.call(&stop, "_clear_slot", json!([true]))?;
         }
         let Some((a, b, flipped, up, g, cells)) = best else {
@@ -991,7 +998,11 @@ impl Game {
                 }
             }
         }
-        let key = format!("{loose:?}");
+        // Keyed on everything owned, so items the packing itself moves
+        // to the bag or tray do not start it again.
+        let mut all = self.owned(&inv, &[EQUIP, BAG, TRAY])?;
+        all.sort_by_key(|v| v["id"].as_i64());
+        let key = format!("{all:?}");
         if *self.tried.borrow() == key {
             return Ok(false);
         }
@@ -1039,19 +1050,32 @@ impl Game {
             let worn = self.owned(&inv, &[EQUIP])?;
             let mut weakest = self.per_cell(crawl, &worn)?;
             weakest.reverse();
+            weakest.retain(|(_, pc)| *pc < mine);
             let mut off = Vec::new();
             let mut fit = false;
-            for (i, pc) in weakest {
-                if pc >= mine {
-                    break;
-                }
-                if !self.unequip(&inv, &worn[i])? {
+            // One worn item at a time first, weakest first; more than
+            // one only when no single one makes room.
+            for (i, _) in &weakest {
+                if !self.unequip(&inv, &worn[*i])? {
                     continue;
                 }
-                off.push(worn[i].clone());
                 if self.equip_auto(&inv, item)? {
+                    off.push(worn[*i].clone());
                     fit = true;
                     break;
+                }
+                self.equip_auto(&inv, &worn[*i])?;
+            }
+            if !fit {
+                for (i, _) in &weakest {
+                    if !self.unequip(&inv, &worn[*i])? {
+                        continue;
+                    }
+                    off.push(worn[*i].clone());
+                    if self.equip_auto(&inv, item)? {
+                        fit = true;
+                        break;
+                    }
                 }
             }
             if fit {
@@ -1146,20 +1170,7 @@ impl Game {
         if kept {
             self.call(&json!({"node": "/root/Global"}), "save_game", json!([]))?;
         }
-        // What is loose now, so the same bag is not tried again.
-        let mut now = Vec::new();
-        for grid in [BAG, TRAY] {
-            for p in self
-                .call(&inv, "placements_in", json!([grid]))?
-                .as_array()
-                .into_iter()
-                .flatten()
-            {
-                now.push(json!({"id": p["item"]["id"]}));
-            }
-        }
-        now.dedup();
-        *self.tried.borrow_mut() = format!("{now:?}");
+        *self.tried.borrow_mut() = key;
         Ok(kept)
     }
 
