@@ -559,11 +559,21 @@ fn loot() -> Result<bool, String> {
             let mut valued: Vec<read::Owned> =
                 seen.list.iter().filter(|o| o.wearable()).cloned().collect();
             judge.value_all(&mut valued);
-            if let Some(o) = shop::weakest(&valued, &seen, &[BAG, TRAY]) {
+            // Worn, bag and the loot itself, all by worth per square
+            // (operator 2026-11-17). When the loot is worth least, the
+            // loot goes.
+            if let Some(o) = shop::weakest(&valued, &seen, &[EQUIP, BAG, TRAY]) {
                 let ok = shop::sell(o.id)?;
                 say(&format!(
-                    "  sold {} (worth {:.5}, the least loose): {ok}",
-                    o.name, o.piece.value
+                    "  sold {} from the {} (worth {:.5}, {:.5} per square, the least per square of worn, bag and loot): {ok}",
+                    o.name,
+                    match o.grid {
+                        EQUIP => "equipment",
+                        BAG => "bag",
+                        _ => "loot",
+                    },
+                    o.piece.value,
+                    shop::per_cell(o)
                 ));
             } else {
                 say("  nothing loose to sell (gems and potions are kept)");

@@ -33,7 +33,7 @@ use serde_json::{Value as Json, json};
 
 use crate::arrange;
 use crate::grid;
-use crate::read::{self, BAG, EQUIP};
+use crate::read::{self, BAG, EQUIP, TRAY};
 
 /// Operator 2026-11-16: "maybe we keep 25% of the gold when shopping".
 const KEEP_GOLD: f64 = 0.25;
@@ -67,25 +67,45 @@ struct Ware {
     bag_spot: bool,
 }
 
-/// The loose piece worth least on `grids`: the wearable ones by their
-/// value (`valued`, from arrange::value_all), the rest (other classes,
-/// too high a level) at 0. Never a gem or a potion (mine). The one
-/// choice of what to sell, for the shop and the loot.
+/// A piece's value per square it fills.
+pub fn per_cell(o: &read::Owned) -> f64 {
+    o.piece.value / o.piece.shapes[0].len().max(1) as f64
+}
+
+/// The piece on `grids` worth least per square (operator 2026-11-17:
+/// "look at all the slots and figure out whats worth the least per
+/// square", "NOT THE BEST STUFF JUST CAUSE ITS IN THE LOO BOX"): the
+/// wearable ones by their value (`valued`, from arrange::value_all),
+/// the rest (other classes, too high a level) at 0. Where it sits does
+/// not change its worth. Never a gem, a potion or a locked piece
+/// (mine). On a tie, the loot tray goes first, then the bag, then worn
+/// (mine). The one choice of what to sell, for the shop and the loot.
 pub fn weakest<'a>(
     valued: &'a [read::Owned],
     seen: &'a read::Seen,
     grids: &[i64],
 ) -> Option<&'a read::Owned> {
-    let keep = |o: &&read::Owned| grids.contains(&o.grid) && !o.gem && !o.consumable;
+    let keep = |o: &&read::Owned| grids.contains(&o.grid) && !o.gem && !o.consumable && !o.locked;
+    let order = |g: i64| match g {
+        TRAY => 0,
+        BAG => 1,
+        _ => 2,
+    };
     valued
         .iter()
         .filter(keep)
         .chain(seen.list.iter().filter(keep).filter(|o| !o.wearable()))
-        .min_by(|a, b| a.piece.value.total_cmp(&b.piece.value))
+        .min_by(|a, b| {
+            per_cell(a)
+                .total_cmp(&per_cell(b))
+                .then(order(a.grid).cmp(&order(b.grid)))
+        })
 }
 
 /// Sell an owned piece by its object id through the game's own sell
-/// (Global.sell_item).
+/// (Global.sell_item). Its placement goes too, so the game sells that
+/// copy and not the first one with the same id (inventory.gd
+/// pick_copy takes the tray, then the bag, then worn).
 pub fn sell(id: i64) -> Result<bool, String> {
     on_main("sell", move || {
         let mut inv = read::inventory()?;
@@ -96,11 +116,13 @@ pub fn sell(id: i64) -> Result<bool, String> {
             return Ok(false);
         };
         let gid = item.get("id");
-        Ok(
-            read::call(&mut read::node("/root/Global")?, "sell_item", &[gid])?
-                .try_to::<bool>()
-                .unwrap_or(false),
-        )
+        Ok(read::call(
+            &mut read::node("/root/Global")?,
+            "sell_item",
+            &[gid, p.to_variant()],
+        )?
+        .try_to::<bool>()
+        .unwrap_or(false))
     })
 }
 

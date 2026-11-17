@@ -182,6 +182,9 @@ pub struct Owned {
     pub consumable: bool,
     /// A gem (equipment_item.gd is_gem): it goes inside other pieces.
     pub gem: bool,
+    /// The player locked it (inventory.gd is_locked); the game will not
+    /// sell it.
+    pub locked: bool,
     pub rarity: i64,
     pub stats: Vec<(&'static str, f64)>,
     /// The hero with only this piece worn, by the game's fold.
@@ -373,6 +376,9 @@ pub fn item_of(
         // equipment_item.gd ItemType: EQUIPABLE, WEAPON, CONSUMABLE.
         consumable: int(&item.get("item_type")) == 2,
         gem: call(item, "is_gem", &[])?.try_to::<bool>().unwrap_or(false),
+        locked: placement
+            .and_then(|p| p.get("locked"))
+            .is_some_and(|v| int(&v) > 0),
         rarity: int(&item.get("rarity")),
         stats: stats_from(&script_vars(item, 0)),
         alone: fold(std::slice::from_ref(item))?,

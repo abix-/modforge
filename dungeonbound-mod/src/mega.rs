@@ -242,14 +242,26 @@ fn stop() -> Result<Option<Gd<Object>>, String> {
 
 /// Pieces on the anvil go back through the game (game_state.gd
 /// return_forge_pieces).
+/// The names of the pieces on the anvil now.
+fn on_anvil(inv: &mut Gd<Object>) -> Result<Vec<String>, String> {
+    Ok(read::placements(inv, FORGE)?
+        .iter()
+        .filter_map(read::placed_item)
+        .map(|i| i.get("display_name").to_string())
+        .collect())
+}
+
+/// The game sends what is on the anvil to the bag (game_state.gd
+/// return_forge_pieces: inventory.stow); says which pieces went.
 fn clear_anvil(global: &mut Gd<Object>, inv: &mut Gd<Object>) -> Result<Option<String>, String> {
-    let left = read::placements(inv, FORGE)?.len();
-    if left == 0 {
+    let left = on_anvil(inv)?;
+    if left.is_empty() {
         return Ok(None);
     }
     read::call(global, "return_forge_pieces", &[])?;
     Ok(Some(format!(
-        "mega forge: {left} pieces were on the anvil; the game returned them"
+        "mega forge: {} were on the anvil; the game put them in the bag",
+        left.join(", ")
     )))
 }
 
@@ -497,10 +509,21 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
                 ));
             }
             Err(e) => {
-                take_off(&mut inv, &rows)?;
+                let back = take_off(&mut inv, &rows)?;
+                let stuck = on_anvil(&mut inv)?;
                 read::call(&mut global, "return_forge_pieces", &[])?;
                 return Ok(format!(
-                    "the anvil would not forge it ({e}); nothing forged"
+                    "the anvil would not forge it ({e}); nothing forged; {}; on the anvil before the game cleared it: {}",
+                    if back {
+                        "the set's pieces went back to their spots"
+                    } else {
+                        "a set piece would not go back to its spot"
+                    },
+                    if stuck.is_empty() {
+                        "nothing".to_string()
+                    } else {
+                        format!("{} (now in the bag)", stuck.join(", "))
+                    }
                 ));
             }
         }
