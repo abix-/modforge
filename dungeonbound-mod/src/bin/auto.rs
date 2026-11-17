@@ -381,7 +381,58 @@ impl Game {
         Ok(kept)
     }
 
+    /// The first node under the scene whose path ends with `/name`.
+    fn named(&self, name: &str) -> Result<Option<Value>, String> {
+        let tree = self.op("tree", json!({"node": SCENE, "depth": 8}))?;
+        Ok(tree["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|n| {
+                n["path"]
+                    .as_str()
+                    .is_some_and(|p| p.ends_with(&format!("/{name}")))
+            })
+            .map(|n| json!({"id": n["id"]})))
+    }
+
+    /// Death and the hub. The death screen's CONTINUE is RETURN TO
+    /// HUB in a campaign (death_screen.gd configure_bar). The hub's
+    /// START RUN resumes or starts the campaign (hub.gd
+    /// _on_start_run_pressed). True when one of them is up.
+    fn between_runs(&self) -> Result<bool, String> {
+        let scene = json!({"node": SCENE});
+        if self.find(&scene, "death_screen.gd", 6)?.is_some() {
+            // RERUN (the skip button, death_screen.gd configure_bar)
+            // starts the run again at once; CONTINUE when it is not
+            // shown (climb, daily).
+            for (name, label) in [
+                ("EncounterSkipBtn", "RERUN (died)"),
+                ("EncounterContinueBtn", "CONTINUE (died)"),
+            ] {
+                if let Some(b) = self.named(name)?
+                    && self.pressable(&b)
+                {
+                    self.press(&b, label)?;
+                    break;
+                }
+            }
+            return Ok(true);
+        }
+        if let Some(hub) = self.find(&scene, "/hub.gd", 2)? {
+            let b = json!({"id": self.prop(&hub, "_start_run_btn")?["id"]});
+            if self.pressable(&b) {
+                self.press(&b, "START RUN (hub)")?;
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     fn step(&self) -> Result<(), String> {
+        if self.between_runs()? {
+            return Ok(());
+        }
         let crawl = self.crawl()?;
         if self.prop(&crawl, "_fighting")? == json!(true) {
             return Ok(());
