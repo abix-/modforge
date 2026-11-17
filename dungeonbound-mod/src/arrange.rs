@@ -433,7 +433,10 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         lines.push("packing: kept, the plan is what is worn now".into());
         return Ok(json!({"changed": false, "lines": lines}));
     }
-    if !then.cmp(&now).is_gt() {
+    // Operator 2026-11-17: "empty equipment slots are wasted". A plan that
+    // wears more pieces and does not lose is used too.
+    let order = then.cmp(&now);
+    if order.is_lt() || (order.is_eq() && plan.len() <= worn_now) {
         lines.push(
             "packing: kept what is worn, the plan does not beat it (win first, then hp left)"
                 .into(),
