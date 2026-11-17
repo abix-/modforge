@@ -53,6 +53,60 @@ fn research_stop_on_screen() {
     }
 }
 
+/// The curse stop's bargain for each equipped item, through the
+/// game's own preview (CurseEncounter `bargain`, which works on a copy
+/// of the item), and what using the stop costs.
+#[test]
+fn research_curse_offer() {
+    let Some(api) = common::api_or_skip() else {
+        return;
+    };
+    let Some(curse) = stops(&api).into_iter().find(|n| {
+        n["script"]
+            .as_str()
+            .is_some_and(|s| s.ends_with("curse_encounter.gd"))
+    }) else {
+        eprintln!("SKIP: no curse stop on screen");
+        return;
+    };
+    let call = |id: &serde_json::Value, method: &str, args: serde_json::Value| {
+        common::op(
+            &api,
+            "call_method",
+            json!({"id": id, "method": method, "args": args, "depth": 6}),
+        )["result"]
+            .clone()
+    };
+    let offer = common::op(
+        &api,
+        "get_property",
+        json!({"id": curse["id"], "property": "_offer", "depth": 6}),
+    )["value"]
+        .clone();
+    println!("offer {offer}");
+    println!("cost {}", call(&curse["id"], "use_cost", json!([])));
+    let inv = common::op(
+        &api,
+        "get_property",
+        json!({"node": "/root/Global", "property": "inventory", "depth": 0}),
+    )["value"]["id"]
+        .clone();
+    for item in call(&inv, "get_equipped_list", json!([]))
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let name = common::op(
+            &api,
+            "get_property",
+            json!({"id": item["id"], "property": "id", "depth": 0}),
+        )["value"]
+            .clone();
+        let deal = call(&curse["id"], "bargain", json!([offer, {"id": item["id"]}]));
+        println!("  {name}: {deal}");
+    }
+}
+
 /// The shop's wares (ShopEncounter `_cards`): item, price, sold.
 #[test]
 fn research_shop_wares() {
