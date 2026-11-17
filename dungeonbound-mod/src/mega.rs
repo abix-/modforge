@@ -352,35 +352,55 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         }
     }
     let laid = sets.len();
-    // The game's preview of each, all in one main-thread pass.
-    let asks: Vec<(Vec<i64>, Vec<(i32, i32, i32)>)> = sets
-        .iter()
-        .map(|(set, spots)| (set.iter().map(|&i| list[i].id).collect(), spots.clone()))
-        .collect();
+    // The game's preview of each, in short main-thread passes so the
+    // game keeps running between them: one long pass over thousands of
+    // sets froze the game (2026-11-17, operator: "game ia almost
+    // bfrozen"). Mine: a pass ends after PASS of main-thread time.
+    const PASS: std::time::Duration = std::time::Duration::from_millis(200);
+    let asks: std::sync::Arc<Vec<(Vec<i64>, Vec<(i32, i32, i32)>)>> = std::sync::Arc::new(
+        sets.iter()
+            .map(|(set, spots)| (set.iter().map(|&i| list[i].id).collect(), spots.clone()))
+            .collect(),
+    );
     let previewed_at = Instant::now();
-    let made = on_main("mega preview", move || {
-        let mut global = read::node("/root/Global")?;
-        let mut inv = read::inventory()?;
-        let mut out = Vec::new();
-        for (ids, spots) in &asks {
-            let (rows, refused) = put_on(&mut inv, ids, spots)?;
-            let got = match refused {
-                Some(r) => Err(r),
-                None => preview(&mut global, &mut inv)?,
-            };
-            if !take_off(&mut inv, &rows)? {
-                read::call(&mut global, "return_forge_pieces", &[])?;
-                return Err(
-                    "a piece would not go back to its spot; the game returned the anvil's pieces"
-                        .into(),
-                );
+    let mut made: Vec<Result<Made, String>> = Vec::with_capacity(asks.len());
+    let mut passes = 0;
+    while made.len() < asks.len() {
+        let from = made.len();
+        let asks = asks.clone();
+        let got = on_main("mega preview", move || {
+            let started = Instant::now();
+            let mut global = read::node("/root/Global")?;
+            let mut inv = read::inventory()?;
+            let mut out = Vec::new();
+            for (ids, spots) in &asks[from..] {
+                let (rows, refused) = put_on(&mut inv, ids, spots)?;
+                let got = match refused {
+                    Some(r) => Err(r),
+                    None => preview(&mut global, &mut inv)?,
+                };
+                if !take_off(&mut inv, &rows)? {
+                    read::call(&mut global, "return_forge_pieces", &[])?;
+                    return Err(
+                        "a piece would not go back to its spot; the game returned the anvil's pieces"
+                            .into(),
+                    );
+                }
+                out.push(got);
+                if started.elapsed() >= PASS {
+                    break;
+                }
             }
-            out.push(got);
+            Ok(out)
+        })?;
+        if got.is_empty() {
+            break;
         }
-        Ok(out)
-    })?;
+        made.extend(got);
+        passes += 1;
+    }
     lines.push(format!(
-        "mega forge: {laid} sets of 2 to 4 pieces lay out on the {w}x{h} anvil; previewed by the game in {:.2}s",
+        "mega forge: {laid} sets of 2 to 4 pieces lay out on the {w}x{h} anvil; previewed by the game in {:.2}s over {passes} passes",
         previewed_at.elapsed().as_secs_f64()
     ));
     // Judge: the packer's best equipment value with the made piece in
