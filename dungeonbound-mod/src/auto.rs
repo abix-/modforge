@@ -559,13 +559,16 @@ fn loot() -> Result<bool, String> {
             let mut valued: Vec<read::Owned> =
                 seen.list.iter().filter(|o| o.wearable()).cloned().collect();
             judge.value_all(&mut valued, &seen.board);
-            // Worn, bag and the loot itself, all by worth per square
-            // (operator 2026-11-17). When the loot is worth least, the
-            // loot goes.
-            if let Some(o) = shop::weakest(&valued, &seen, &[EQUIP, BAG, TRAY]) {
+            // By worth per square (operator 2026-11-17). When the loot is
+            // worth least, the loot goes. Only bag and loot: the loot
+            // goes into the bag (inventory.gd first_fit on BAG), so
+            // selling a worn piece makes no room for it (it sold six
+            // worn pieces for one drop on 2026-11-17). Worn pieces the
+            // bag beats are swapped out by the planner instead.
+            if let Some(o) = shop::weakest(&valued, &seen, &[BAG, TRAY]) {
                 let ok = shop::sell(o.id)?;
                 say(&format!(
-                    "  sold {} from the {} (worth {:.5}, {:.5} per square, the least per square of worn, bag and loot): {ok}",
+                    "  sold {} from the {} (worth {:.5}, {:.5} per square, the least per square of bag and loot): {ok}",
                     o.name,
                     match o.grid {
                         EQUIP => "equipment",
