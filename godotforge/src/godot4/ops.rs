@@ -73,7 +73,7 @@ pub fn register_builtins() {
         OpDef::new(
             "call_method",
             "Call a method; args are converted to the method's declared types",
-            "{id|node, method: str, args?: [any], depth?: 3}",
+            "{id|node, method: str, args?: [any], depth?: 3, read?: [prop | {method, args?}]}",
             call_method,
         ),
         OpDef::new(
@@ -390,9 +390,31 @@ fn call_method(args: &Json) -> Result<Json, String> {
         let result = o
             .try_call(method.as_str(), &call_args)
             .map_err(|e| format!("{method}: {e}"))?;
+        let d = depth(&args, 3);
+        // A returned object nothing keeps (a RefCounted preview) is
+        // freed after this call; `read` gets its properties and
+        // method results while it is alive.
+        let mut read = serde_json::Map::new();
+        if let Some(list) = args.get("read").and_then(Json::as_array)
+            && let Ok(Some(mut obj)) = result.try_to::<Option<Gd<Object>>>()
+        {
+            for r in list {
+                if let Some(prop) = r.as_str() {
+                    read.insert(prop.to_string(), value::to_json(&obj.get(prop), d));
+                } else if let Some(m) = r.get("method").and_then(Json::as_str) {
+                    let mut margs = Vec::new();
+                    for a in r.get("args").and_then(Json::as_array).into_iter().flatten() {
+                        margs.push(value::from_json(a, None)?);
+                    }
+                    let v = obj.try_call(m, &margs).map_err(|e| format!("{m}: {e}"))?;
+                    read.insert(m.to_string(), value::to_json(&v, d));
+                }
+            }
+        }
         Ok(json!({
             "type": value::type_name(result.get_type()),
-            "result": value::to_json(&result, depth(&args, 3)),
+            "result": value::to_json(&result, d),
+            "read": read,
         }))
     })
 }
