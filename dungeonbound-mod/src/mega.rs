@@ -123,6 +123,8 @@ struct Made {
     name: String,
     stats: Vec<(&'static str, f64)>,
     alone: read::Fold,
+    /// The game's own score of it (equipment_item.gd stat_score).
+    score: f64,
     piece: Piece,
     refusal: String,
 }
@@ -218,6 +220,7 @@ fn preview(global: &mut Gd<Object>, inv: &mut Gd<Object>) -> Result<Result<Made,
         name: item.get("display_name").to_string(),
         stats: stats_from(&script_vars(&item, 0)),
         alone: read::fold(std::slice::from_ref(&item))?,
+        score: read::stat_score(&mut item)?,
         piece: Piece {
             value: 0.0,
             shapes,
@@ -427,7 +430,7 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
         if m.refusal.starts_with("This class") || m.refusal.starts_with("Requires Level") {
             continue;
         }
-        judge.price(&mut m.piece, &m.alone, &seen.board);
+        judge.price(&mut m.piece, &m.alone, m.score, &seen.board);
         kept.push((k, m));
     }
     let swaps: Vec<arrange::Swap> = kept

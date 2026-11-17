@@ -188,6 +188,8 @@ pub struct Owned {
     pub locked: bool,
     pub rarity: i64,
     pub stats: Vec<(&'static str, f64)>,
+    /// The game's own score of the piece (equipment_item.gd stat_score).
+    pub score: f64,
     /// The hero with only this piece worn, by the game's fold.
     pub alone: Fold,
     pub piece: grid::Piece,
@@ -419,6 +421,7 @@ pub fn item_of(
             .is_some_and(|v| int(&v) > 0),
         rarity: int(&item.get("rarity")),
         stats: stats_from(&script_vars(item, 0)),
+        score: stat_score(item)?,
         alone: fold(std::slice::from_ref(item))?,
         piece: grid::Piece {
             value: 0.0,
@@ -436,6 +439,13 @@ const MELEE_CLASSES: &[&str] = &["sword", "axe", "mace", "dagger", "spear", "cla
 
 /// An item's placement rules and what other rules see of it
 /// (equipment_item.gd adjacent_*, edge_*, tags, matches_rule).
+/// The game's own score of a piece (equipment_item.gd stat_score): every
+/// stat by one weight, plus points for its special effects.
+pub fn stat_score(item: &mut Gd<Object>) -> Result<f64, String> {
+    let v = call(item, "stat_score", &[])?;
+    v.try_to::<f64>().map_err(|e| e.to_string())
+}
+
 pub fn place_of(item: &mut Gd<Object>) -> Result<placement::Place, String> {
     let weapon = call(item, "is_weapon", &[])?
         .try_to::<bool>()

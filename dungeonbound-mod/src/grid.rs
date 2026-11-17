@@ -74,6 +74,14 @@ pub fn spot_values(grid: &Grid, pieces: &[Piece], layout: &[Spot]) -> Vec<f64> {
     placement::worth(&grid.board, &all, &placement::earned(&grid.board, &all))
 }
 
+/// What a whole layout is worth, as the packer counts it: each piece's
+/// value, what its spot adds, and the sets.
+pub fn layout_value(grid: &Grid, pieces: &[Piece], layout: &[Spot]) -> f64 {
+    layout.iter().map(|s| pieces[s.piece].value).sum::<f64>()
+        + spot_values(grid, pieces, layout).iter().sum::<f64>()
+        + set_value(grid, pieces, layout)
+}
+
 /// Whether a piece's spot can change what it is worth.
 fn has_spot(p: &Piece, board: &Board) -> bool {
     let p = &p.place;

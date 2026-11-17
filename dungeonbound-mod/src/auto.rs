@@ -30,7 +30,7 @@ use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
 use crate::fight::{self, Fighter, Run};
-use crate::items::{ITEM_STATS, apply_bonus, stats_from};
+use crate::items::{ITEM_STATS, apply_bonus};
 use crate::read::{self, BAG, EQUIP, SCENE, TRAY, int};
 use crate::{arrange, gems, mega, shop};
 
@@ -265,7 +265,8 @@ struct Item {
     id: i64,
     name: String,
     gid: GString,
-    stats: Vec<(&'static str, f64)>,
+    /// The game's own score of it (equipment_item.gd stat_score).
+    score: f64,
     cells: usize,
 }
 
@@ -277,7 +278,7 @@ fn item(i: &mut Gd<Object>) -> Result<Item, String> {
         id: i.instance_id().to_i64(),
         name: i.get("display_name").stringify().to_string(),
         gid: i.get("id").try_to().unwrap_or_default(),
-        stats: stats_from(&script_vars(i, 0)),
+        score: read::stat_score(i)?,
         cells,
     })
 }
@@ -307,35 +308,17 @@ fn player_and_foe() -> Result<(Fighter, Vec<Fighter>), String> {
     Ok((me, vec![foe()?]))
 }
 
-/// Items ranked by gain per grid cell, best first: the fight margin
-/// its plain stats add to the player, over the cells its shape takes.
-fn per_cell(me: &Fighter, squad: &[Fighter], items: &[Item]) -> Vec<(usize, f64)> {
-    let base = fight::score(me, squad, Run::Campaign).margin;
+/// Items ranked by value per grid cell, best first: the game's own
+/// stat_score of each, over the cells its shape takes. Operator
+/// 2026-11-17: "win rate isnt how we choose pitam gear".
+fn per_cell(items: &[Item]) -> Vec<(usize, f64)> {
     let mut out: Vec<(usize, f64)> = items
         .iter()
         .enumerate()
-        .map(|(i, it)| {
-            let mut p = me.clone();
-            for (s, v) in &it.stats {
-                apply_bonus(&mut p, s, *v);
-            }
-            (
-                i,
-                (fight::score(&p, squad, Run::Campaign).margin - base) / it.cells as f64,
-            )
-        })
+        .map(|(i, it)| (i, it.score / it.cells as f64))
         .collect();
     out.sort_by(|a, b| b.1.total_cmp(&a.1));
     out
-}
-
-/// The fight margin plain stats add to the player.
-fn gain(me: &Fighter, squad: &[Fighter], base: f64, stats: &[(&'static str, f64)]) -> f64 {
-    let mut p = me.clone();
-    for (s, v) in stats {
-        apply_bonus(&mut p, s, *v);
-    }
-    fight::score(&p, squad, Run::Campaign).margin - base
 }
 
 // The steps.
@@ -860,7 +843,7 @@ fn item_stop() -> Result<bool, String> {
         Look::Judge(a, b, c, d, e) => (a, b, c, d, e),
     };
     let (me, squad) = player_and_foe()?;
-    let mut ranked = per_cell(&me, &squad, &items);
+    let mut ranked = per_cell(&items);
     if let Some(offer) = curse {
         let base = fight::score(&me, &squad, Run::Campaign).margin;
         let mut p = me.clone();
@@ -1064,12 +1047,8 @@ fn fuse() -> Result<bool, String> {
         Look::Acted => return Ok(true),
         Look::Judge(i) => i,
     };
-    let (me, squad) = player_and_foe()?;
-    let base = fight::score(&me, &squad, Run::Campaign).margin;
-    let worth: Vec<f64> = items
-        .iter()
-        .map(|it| gain(&me, &squad, base, &it.stats))
-        .collect();
+    // Each by the game's own stat_score.
+    let worth: Vec<f64> = items.iter().map(|it| it.score).collect();
     // The game's recipe (item_forge.gd make_fused): the base keeps its
     // shape and stats, the other adds FUSE_BONUS_SHARE of its stats. So
     // a pair is ranked by that value per base cell, the better of its
@@ -1095,7 +1074,7 @@ fn fuse() -> Result<bool, String> {
     for (a, b, flipped, r) in &made {
         let parts = worth[*a] + worth[*b];
         let parts_per_cell = parts / (items[*a].cells + items[*b].cells) as f64;
-        let g = gain(&me, &squad, base, &r.stats);
+        let g = r.score;
         let up = g / r.cells as f64 - parts_per_cell;
         if g >= parts && up > 0.0 && best.is_none_or(|x| up > x.3) {
             best = Some((*a, *b, *flipped, up, g, r.cells));
@@ -1346,8 +1325,7 @@ fn rune() -> Result<bool, String> {
     let Some((items, spots)) = look else {
         return Ok(false);
     };
-    let (me, squad) = player_and_foe()?;
-    for (i, _) in per_cell(&me, &squad, &items) {
+    for (i, _) in per_cell(&items) {
         if let Some(&(origin, _, covered)) = spots.iter().filter(|s| s.1 == i).max_by_key(|s| s.2) {
             say(&format!(
                 "  rune on {} at {origin:?} ({covered} cells under it)",

@@ -99,17 +99,40 @@ fn buy_rows() -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Piece values already worked out, by judge and piece: a piece's value
-/// stays the same until the hero or the foe changes, so a step only
-/// values pieces it has not seen. Operator 2026-11-17: "we want this
-/// fast bro".
-static VALUES: Mutex<Vec<(u64, f64)>> = Mutex::new(Vec::new());
+/// The game's stat weights (equipment_item.gd stat_score), by the hero
+/// field each item stat lands on: bonus_hp 0.6, bonus_atk 5, bonus_armor
+/// 5, bonus_speed 8, dodge, crit and multistrike 120, bonus_crit_mult 120,
+/// block chance 150 and magic resist 40 (block_rolls is true in a
+/// campaign), block regen 80, lifesteal 100, thorns 4, status damage 8,
+/// poison_resist_pct 80.
+const WEIGHTS: [(&str, f64); 18] = [
+    ("stun_dmg_bonus", 8.0),
+    ("max_hp", 0.6),
+    ("atk", 5.0),
+    ("armor", 5.0),
+    ("speed", 8.0),
+    ("dodge_chance", 120.0),
+    ("crit_chance", 120.0),
+    ("multistrike_chance", 120.0),
+    ("crit_multiplier", 120.0),
+    ("block_chance", 150.0),
+    ("block_regen", 80.0),
+    ("magic_resist", 40.0),
+    ("lifesteal", 100.0),
+    ("thorns_damage", 4.0),
+    ("burn_dmg_bonus", 8.0),
+    ("poison_dmg_bonus", 8.0),
+    ("bleed_dmg_bonus", 8.0),
+    ("poison_resist", 80.0),
+];
 
-fn hash_of(parts: &impl std::hash::Hash) -> u64 {
-    use std::hash::Hasher;
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    parts.hash(&mut h);
-    h.finish()
+/// A hero fold by the game's stat weights: differences of it value spot
+/// and set bonuses on the same scale as a piece's stat_score.
+pub fn weigh(fold: &read::Fold) -> f64 {
+    WEIGHTS
+        .iter()
+        .map(|(k, w)| fold.get(*k).and_then(Json::as_f64).unwrap_or(0.0) * w)
+        .sum()
 }
 
 /// The one judge of pieces and sets of pieces: the hero as the game
@@ -125,8 +148,6 @@ pub struct Judge {
     run: read::Fold,
     /// Fight margin with nothing worn.
     pub base: f64,
-    /// What the judge's values depend on besides the piece.
-    key: u64,
 }
 
 impl Judge {
@@ -139,45 +160,15 @@ impl Judge {
                 Some((k.clone(), Json::from(d)))
             })
             .collect();
-        let key = hash_of(&(
-            Json::Object(hero.now.clone()).to_string(),
-            Json::Object(hero.placed.clone()).to_string(),
-            Json::Object(hero.empty.clone()).to_string(),
-            format!("{squad:?}"),
-        ));
         let mut j = Judge {
             squad,
             now: hero.now.clone(),
             empty: hero.empty.clone(),
             run,
             base: 0.0,
-            key,
         };
         j.base = j.score(&hero.empty).margin;
         j
-    }
-
-    fn value_key(&self, alone: &read::Fold) -> u64 {
-        hash_of(&(self.key, Json::Object(alone.clone()).to_string()))
-    }
-
-    fn cached(&self, alone: &read::Fold) -> Option<f64> {
-        let k = self.value_key(alone);
-        VALUES
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .iter()
-            .find(|(c, _)| *c == k)
-            .map(|&(_, v)| v)
-    }
-
-    fn remember(&self, alone: &read::Fold, v: f64) {
-        let k = self.value_key(alone);
-        let mut c = VALUES.lock().unwrap_or_else(|e| e.into_inner());
-        if c.len() >= 4096 {
-            c.drain(..1024);
-        }
-        c.push((k, v));
     }
 
     /// The hero with a fold's pieces worn, at full hp.
@@ -199,23 +190,18 @@ impl Judge {
         fight::score(&self.hero(fold), &self.squad, Run::Campaign)
     }
 
-    /// What wearing a piece is worth: the fight margin it adds to the
-    /// hero with nothing worn (mine: at least a tiny value).
-    pub fn value(&self, alone: &read::Fold) -> f64 {
-        if let Some(v) = self.cached(alone) {
-            return v;
-        }
-        let v = (self.score(alone).margin - self.base).max(1e-6);
-        self.remember(alone, v);
-        v
-    }
-
-    /// What a piece's spot bonuses are worth for it: each by the fight
-    /// margin its stats add to the piece worn alone (placement.rs).
+    /// What a piece's spot bonuses are worth for it: the stats each adds
+    /// to the piece worn alone, by the game's stat weights (weigh).
     /// Mine: an adjacency bonus is worth the same for each match.
-    pub fn gains(&self, piece: &grid::Piece, alone: &read::Fold, board: &placement::Board) -> placement::Gain {
+    pub fn gains(
+        &self,
+        piece: &grid::Piece,
+        alone: &read::Fold,
+        board: &placement::Board,
+    ) -> placement::Gain {
         let p = &piece.place;
-        let worth = |f: read::Fold| self.value(&f) - piece.value;
+        let at = weigh(alone);
+        let worth = |f: read::Fold| weigh(&f) - at;
         let mut g = placement::Gain::default();
         if let Some(a) = &p.adjacent
             && a.amount != 0.0
@@ -266,8 +252,8 @@ impl Judge {
     }
 
     /// What each set these pieces could make is worth, at each strength
-    /// step: the fight margin the set adds to the hero with nothing
-    /// worn (mine, like a piece's value).
+    /// step: the stats the set adds to the hero with nothing worn, by
+    /// the game's stat weights (weigh).
     pub fn set_table<'a>(&self, pieces: impl IntoIterator<Item = &'a grid::Piece>) -> sets::Table {
         let places: Vec<&placement::Place> = pieces.into_iter().map(|p| &*p.place).collect();
         let tags: Vec<&str> = sets::TAGS
@@ -288,7 +274,7 @@ impl Judge {
                                 }
                                 let mut f = self.empty.clone();
                                 sets::apply(&mut f, tag, k as f64 * sets::STEP);
-                                self.score(&f).margin - self.base
+                                weigh(&f) - weigh(&self.empty)
                             })
                             .collect();
                         (tag.to_string(), row)
@@ -300,9 +286,18 @@ impl Judge {
         sets::Table { rows }
     }
 
-    /// A piece's value and what its spot bonuses are worth.
-    pub fn price(&self, piece: &mut grid::Piece, alone: &read::Fold, board: &placement::Board) {
-        piece.value = self.value(alone);
+    /// A piece's value and what its spot bonuses are worth: its value
+    /// is the game's own stat_score of it (equipment_item.gd, what the
+    /// game's bots pick gear by in qa_driver.gd and jerry_sim.gd).
+    /// Mine: at least a tiny value, so a piece fills an empty slot.
+    pub fn price(
+        &self,
+        piece: &mut grid::Piece,
+        alone: &read::Fold,
+        score: f64,
+        board: &placement::Board,
+    ) {
+        piece.value = score.max(1e-6);
         let g = self.gains(piece, alone, board);
         if g != std::sync::Arc::as_ref(&piece.place).gain {
             std::sync::Arc::make_mut(&mut piece.place).gain = g;
@@ -318,7 +313,7 @@ impl Judge {
                 .map(|i| {
                     s.spawn(move || {
                         let mut piece = list[i].piece.clone();
-                        self.price(&mut piece, &list[i].alone, board);
+                        self.price(&mut piece, &list[i].alone, list[i].score, board);
                         (i, piece)
                     })
                 })
@@ -639,10 +634,10 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let mut g = seen.grid();
     g.sets = judge.set_table(&only);
     let (plan, value, done) = grid::pack(&g, &only, seen.hands, BUDGET);
-    // Both by the same judge: the plan and what is worn, each folded by
-    // the game, with what their spots add.
-    // Both folded by the game with their placements: what is worn is
-    // the hero now; the plan is its pieces moved to their spots.
+    // Kept or used by the game's stat score: the plan's value against
+    // what is worn now, counted the same way. The fight odds, each
+    // folded by the game with its placements, are only logged.
+    let worn_value = grid::layout_value(&g, &only, &worn_layout(&list));
     let now = judge.score(&seen.hero.placed);
     let then = judge.score(&fold_placed(
         plan.iter()
@@ -652,7 +647,10 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let spot_worth = grid::spot_values(&g, &only, &plan);
     let (spot_got, empty) = {
         let all = grid::worn_of(&only, &plan);
-        (placement::earned(&g.board, &all), placement::empty_cells(&g.board, &all))
+        (
+            placement::earned(&g.board, &all),
+            placement::empty_cells(&g.board, &all),
+        )
     };
     let stays =
         |s: &grid::Spot| list[s.piece].grid == EQUIP && list[s.piece].at == (s.x, s.y, s.rot);
@@ -660,7 +658,7 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let same = plan.len() == worn_now && plan.iter().all(stays);
     lines.push(format!(
         "packing: {}x{} grid, {open_cells} open cells, weapon slots {}, one piece per family; \
-         {} pieces planned, value {value:.4}, {} in {:.2}s; win {:.1}% hp left {:.0}% (now {:.1}% {:.0}%). The plan:",
+         {} pieces planned, value {value:.1} (worn now {worn_value:.1}), {} in {:.2}s; win {:.1}% hp left {:.0}% (now {:.1}% {:.0}%). The plan:",
         g.w,
         g.h,
         if seen.hands == usize::MAX { "any".to_string() } else { seen.hands.to_string() },
@@ -731,14 +729,10 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         lines.push("packing: kept, the plan is what is worn now".into());
         return Ok(json!({"changed": false, "lines": lines}));
     }
-    // Operator 2026-11-17: "empty equipment slots are wasted". A plan that
-    // wears more pieces and does not lose is used too.
-    let order = then.cmp(&now);
-    if order.is_lt() || (order.is_eq() && plan.len() <= worn_now) {
-        lines.push(
-            "packing: kept what is worn, the plan does not beat it (win first, then hp left)"
-                .into(),
-        );
+    // Operator 2026-11-17: "win rate isnt how we choose pitam gear", "we
+    // want to use all our slots".
+    if value <= worn_value {
+        lines.push("packing: kept what is worn, the plan's value does not beat it".into());
         return Ok(json!({"changed": false, "lines": lines}));
     }
     lines.push("packing: using the plan, it beats what is worn".into());

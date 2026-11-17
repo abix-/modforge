@@ -255,7 +255,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
                     continue;
                 };
                 let mut add = list[t].piece.clone();
-                judge.price(&mut add, &up.alone, &seen.board);
+                judge.price(&mut add, &up.alone, up.score, &seen.board);
                 arrange::Swap {
                     remove: vec![t],
                     add,
@@ -263,7 +263,7 @@ pub fn shop(_args: &Json) -> Result<Json, String> {
             }
             None => {
                 let mut add = w.item.piece.clone();
-                judge.price(&mut add, &w.item.alone, &seen.board);
+                judge.price(&mut add, &w.item.alone, w.item.score, &seen.board);
                 arrange::Swap {
                     remove: vec![],
                     add,

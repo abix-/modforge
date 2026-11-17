@@ -56,7 +56,7 @@ pub fn register_ops() {
 fn socketed(
     gem: &mut Gd<Object>,
     target: &mut Gd<Object>,
-) -> Result<Result<(Vec<(&'static str, f64)>, read::Fold), String>, String> {
+) -> Result<Result<(Vec<(&'static str, f64)>, read::Fold, f64), String>, String> {
     let mut db: Gd<Object> = read::held(&read::node("/root/LootDB")?, "GemDB")?;
     let (g, t) = (gem.to_variant(), target.to_variant());
     let why = read::call(&mut db, "refusal", &[g.clone(), t.clone()])?.to_string();
@@ -88,12 +88,13 @@ fn socketed(
         let spec = read::call(&mut db, "socketed_spec", &[g, t])?;
         read::call(&mut equipment, "item_from_spec", &[spec])?
     };
-    let Ok(item) = made.try_to::<Gd<Object>>() else {
+    let Ok(mut item) = made.try_to::<Gd<Object>>() else {
         return Ok(Err("the game made no piece".into()));
     };
     Ok(Ok((
         stats_from(&script_vars(&item, 0)),
         read::fold(std::slice::from_ref(&item))?,
+        read::stat_score(&mut item)?,
     )))
 }
 
@@ -175,10 +176,10 @@ pub fn gems(args: &Json) -> Result<Json, String> {
     let mut priced: Vec<grid::Piece> = Vec::new();
     for (k, got) in made.into_iter().enumerate() {
         match got {
-            Ok((stats, alone)) => {
+            Ok((stats, alone, score)) => {
                 let t = targets.iter().position(|&t| t == asks[k].1).unwrap_or(0);
                 let mut p = owned[t].clone();
-                judge.price(&mut p, &alone, &seen.board);
+                judge.price(&mut p, &alone, score, &seen.board);
                 kept.push((k, stats, p.value));
                 priced.push(p);
             }
