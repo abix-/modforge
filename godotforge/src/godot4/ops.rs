@@ -90,6 +90,8 @@ pub fn register_builtins() {
         ),
     ]);
     super::input::register_ops();
+    super::files::register_ops();
+    super::watch::register_ops();
 }
 
 fn depth(args: &Json, default: u32) -> u32 {

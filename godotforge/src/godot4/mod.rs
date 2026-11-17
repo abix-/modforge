@@ -24,10 +24,12 @@
 //! `Gd::try_from_instance_id`, `get`.
 
 pub mod chain;
+pub mod files;
 pub mod input;
 pub mod ops;
 pub mod target;
 pub mod value;
+pub mod watch;
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
