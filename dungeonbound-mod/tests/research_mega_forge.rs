@@ -26,7 +26,7 @@ const SCENE: &str = "/root/@Control@65/CurrentScene";
 const FORGE: i64 = 3;
 const ANVIL_CELLS: usize = 6 * 5;
 /// Sets previewed through the game.
-const PREVIEWS: usize = 12;
+const PREVIEWS: usize = 40;
 
 /// item_forge.gd MEGA_INT_STATS and MEGA_FLOAT_STATS: the stats a
 /// mega forge sums.
@@ -86,6 +86,83 @@ struct Piece {
     cells: usize,
     consumable: bool,
     stats: Vec<(String, f64)>,
+    /// Shape and hole cells for turns 0 to 3.
+    shapes: Vec<Vec<(i64, i64)>>,
+    holes: Vec<Vec<(i64, i64)>>,
+}
+
+fn cells_of(v: &Value) -> Vec<(i64, i64)> {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| (c[0].as_i64().unwrap_or(0), c[1].as_i64().unwrap_or(0)))
+        .collect()
+}
+
+/// A spot and turn on the 6x5 anvil for each piece of `set`, in
+/// order, by the game's rules (inventory.gd fits: shape cells inside
+/// and free, no shape in another piece's holes, no hole on another
+/// piece), every piece touching one already placed (game_state.gd
+/// mega_forge_block_reason, "Every piece must touch another"). Mine:
+/// the first layout found.
+fn layout(pieces: &[Piece], set: &[usize]) -> Option<Vec<(i64, i64, i64)>> {
+    fn go(
+        pieces: &[Piece],
+        set: &[usize],
+        taken: &mut Vec<(i64, i64)>,
+        body: &mut Vec<(i64, i64)>,
+        out: &mut Vec<(i64, i64, i64)>,
+    ) -> bool {
+        let Some(&i) = set.get(out.len()) else {
+            return true;
+        };
+        let p = &pieces[i];
+        for rot in 0..4usize {
+            if p.shapes[..rot].contains(&p.shapes[rot]) {
+                continue;
+            }
+            for oy in -5..5i64 {
+                for ox in -6..6i64 {
+                    let shape: Vec<(i64, i64)> = p.shapes[rot]
+                        .iter()
+                        .map(|&(x, y)| (ox + x, oy + y))
+                        .collect();
+                    let holes: Vec<(i64, i64)> = p.holes[rot]
+                        .iter()
+                        .map(|&(x, y)| (ox + x, oy + y))
+                        .collect();
+                    let inside = shape
+                        .iter()
+                        .all(|&(x, y)| (0..6).contains(&x) && (0..5).contains(&y));
+                    if !inside || shape.iter().chain(&holes).any(|c| taken.contains(c)) {
+                        continue;
+                    }
+                    let touches = body.is_empty()
+                        || shape.iter().any(|&(x, y)| {
+                            [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+                                .iter()
+                                .any(|n| body.contains(n))
+                        });
+                    if !touches {
+                        continue;
+                    }
+                    let (t, b) = (taken.len(), body.len());
+                    taken.extend(shape.iter().chain(&holes));
+                    body.extend(&shape);
+                    out.push((ox, oy, rot as i64));
+                    if go(pieces, set, taken, body, out) {
+                        return true;
+                    }
+                    out.pop();
+                    taken.truncate(t);
+                    body.truncate(b);
+                }
+            }
+        }
+        false
+    }
+    let mut out = Vec::new();
+    go(pieces, set, &mut Vec::new(), &mut Vec::new(), &mut out).then_some(out)
 }
 
 fn stats_text(stats: &[(String, f64)]) -> String {
@@ -162,6 +239,12 @@ fn research_mega_forge_sets() {
                     .map_or(0, Vec::len),
                 consumable: get("item_type") == json!(2),
                 stats,
+                shapes: (0..4)
+                    .map(|r| cells_of(&call(&api, &item, "shape_cells", json!([r]))))
+                    .collect(),
+                holes: (0..4)
+                    .map(|r| cells_of(&call(&api, &item, "hole_cells", json!([r]))))
+                    .collect(),
                 item,
             });
         }
@@ -207,26 +290,46 @@ fn research_mega_forge_sets() {
         let biggest = set.iter().map(|&i| pieces[i].cells).max().unwrap_or(0);
         sets.push((total - biggest, set));
     }
-    sets.sort_by(|a, b| b.0.cmp(&a.0));
+    let counted = sets.len();
+    // Biggest first: the game takes the shape from the biggest piece.
+    let mut laid: Vec<(usize, Vec<usize>, Vec<(i64, i64, i64)>, f64)> = sets
+        .into_iter()
+        .filter_map(|(saved, mut set)| {
+            set.sort_by(|a, b| pieces[*b].cells.cmp(&pieces[*a].cells));
+            let spots = layout(&pieces, &set)?;
+            // Mine, to order the previews: summed hp + armor + atk.
+            let sum: f64 = set
+                .iter()
+                .flat_map(|&i| &pieces[i].stats)
+                .filter(|(k, _)| matches!(k.as_str(), "bonus_hp" | "bonus_armor" | "bonus_atk"))
+                .map(|(_, v)| v)
+                .sum();
+            Some((saved, set, spots, sum))
+        })
+        .collect();
+    laid.sort_by(|a, b| b.0.cmp(&a.0).then(b.3.total_cmp(&a.3)));
     println!(
-        "== {} sets fit the anvil; previewing the {PREVIEWS} that save the most cells",
-        sets.len()
+        "== {counted} sets fit the anvil by cell count, {} lay out touching by the game's rules; \
+         previewing the {PREVIEWS} that save the most cells (ties: most hp + armor + atk)",
+        laid.len()
     );
+    let sets: Vec<(usize, Vec<usize>, Vec<(i64, i64, i64)>)> = laid
+        .into_iter()
+        .map(|(s, set, spots, _)| (s, set, spots))
+        .collect();
     let mut read: Vec<Value> = SUMMED.iter().map(|k| json!(k)).collect();
     read.push(json!("display_name"));
     read.push(json!({"method": "shape_cells", "args": [0]}));
-    for (saved, set) in sets.iter().take(PREVIEWS) {
+    for (saved, set, spots) in sets.iter().take(PREVIEWS) {
         let names: Vec<&str> = set.iter().map(|&i| pieces[i].name.as_str()).collect();
-        // Biggest first, as the game picks the shape from the biggest.
-        let mut order = set.clone();
-        order.sort_by(|a, b| pieces[*b].cells.cmp(&pieces[*a].cells));
         let mut moved = Vec::new();
         let mut refused = None;
-        for &i in &order {
+        for (&i, &(ox, oy, rot)) in set.iter().zip(spots) {
             let p = &pieces[i];
             let (fx, fy) = first_cell(&api, &p.item, p.rot);
             let row = placement(&inv, p.grid, (p.x + fx, p.y + fy));
-            if call(&api, &inv, "move_to_grid", json!([row, FORGE])) == json!(true) {
+            let to = json!([row, FORGE, {"vector2i": [ox, oy]}, rot]);
+            if call(&api, &inv, "move", to) == json!(true) {
                 moved.push(i);
             } else {
                 refused = Some(p.name.clone());
@@ -268,7 +371,12 @@ fn research_mega_forge_sets() {
                     row["y"].as_i64().unwrap_or(0) + fy,
                 ),
             );
-            let back = call(&api, &inv, "move", json!([at, p.grid, [p.x, p.y], p.rot]));
+            let back = call(
+                &api,
+                &inv,
+                "move",
+                json!([at, p.grid, {"vector2i": [p.x, p.y]}, p.rot]),
+            );
             if back != json!(true) {
                 println!("  !! could not put {} back", p.name);
             }
