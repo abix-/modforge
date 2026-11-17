@@ -154,6 +154,41 @@ impl Game {
             Ok((pick, tray))
         };
         let (pick, tray) = left(&inv)?;
+        // Operator 2026-11-16: "if we cant claim loot for oom then we
+        // gotta sell it right???", "we gotta check free sapc eright??".
+        // Before claiming, every tray item must have a spot in the bag
+        // (the game's first_fit); if one does not, the least gain per
+        // cell of bag and tray is sold first.
+        if !pick && tray > 0 {
+            let loot = self.owned(&inv, &[TRAY])?;
+            let mut room = true;
+            for item in &loot {
+                if self
+                    .call(&inv, "first_fit", json!([item, BAG]))?
+                    .as_object()
+                    .is_none_or(|o| o.is_empty())
+                {
+                    room = false;
+                    break;
+                }
+            }
+            if !room {
+                let loose = self.owned(&inv, &[BAG, TRAY])?;
+                if let Some((i, pc)) = self.per_cell(crawl, &loose)?.last() {
+                    let item = &loose[*i];
+                    let id = self.prop(item, "id")?;
+                    let ok =
+                        self.call(&json!({"node": "/root/Global"}), "sell_item", json!([id]))?
+                            == json!(true);
+                    println!(
+                        "[auto]   no room in the bag: sold {} (gain per cell {pc:.5}, the least of {} loose): {ok}",
+                        self.item_name(item),
+                        loose.len()
+                    );
+                    return Ok(true);
+                }
+            }
+        }
         let mut pressed = false;
         for (var, label, want) in [
             ("_loot_auto_btn", "AUTO PICK", pick),
@@ -572,15 +607,45 @@ impl Game {
             .as_array()
             .map_or(0, Vec::len);
         // DungeonLayout Content: ENEMY 1, ELITE 2, SHRINE 6, TREASURE 7, SHOP 8.
-        let mut best: Option<(usize, (i64, i64))> = None;
+        // Operator 2026-11-16: "find best success rate then do it. tahts
+        // the rule". A lane's success rate is the chance to win each of
+        // its fights in a row. Mine, as the foes of a lane are rolled
+        // only when entered: an enemy stop is judged as the strongest
+        // foe of the last fight, an elite as the floor's guardian, and
+        // an unknown stop is a fight 25% of the time (floor_plan.gd
+        // UNKNOWN_ODDS ENEMY 25).
+        let (p_enemy, p_elite) = match self.player_and_guardian(crawl) {
+            Ok((me, guard)) => {
+                let p_elite = fight::score(&me, &guard, Run::Campaign).win;
+                let p_enemy = self.last_foe.borrow().clone().map_or(p_elite, |mut f| {
+                    f.hp = f.max_hp;
+                    f.block = f.block_max;
+                    fight::score(&me, &[f], Run::Campaign).win
+                });
+                (p_enemy, p_elite)
+            }
+            Err(e) => {
+                println!("[auto]   path: no foe to judge ({e}); success rates unknown");
+                (1.0, 1.0)
+            }
+        };
+        let mut best: Option<(usize, (f64, i64, i64))> = None;
         for lane in 0..lanes {
             let stops = self.call(&plan, "path_stops", json!([lane]))?;
             let mut good = 0;
             let mut elites = 0;
             let mut seen = Vec::new();
+            let mut rate = 1.0f64;
             for s in stops.as_array().into_iter().flatten() {
                 let kind = s["kind"].as_i64().unwrap_or(0);
                 let unknown = s["unknown"] == json!(true);
+                // DungeonLayout Content: ENEMY 1, ELITE 2, CHALLENGER 9.
+                rate *= match (unknown, kind) {
+                    (true, _) => 0.75 + 0.25 * p_enemy,
+                    (false, 1) => p_enemy,
+                    (false, 2 | 9) => p_elite,
+                    _ => 1.0,
+                };
                 if unknown || kind == 6 || kind == 7 {
                     good += 1;
                 }
@@ -594,11 +659,14 @@ impl Game {
                 });
             }
             println!(
-                "[auto]   path {}: stops {seen:?} good {good} elites {elites}",
-                lane + 1
+                "[auto]   path {}: stops {seen:?} success {:.1}% good {good} elites {elites}",
+                lane + 1,
+                rate * 100.0
             );
-            let key = (good, -elites);
-            if best.is_none_or(|(_, k)| key > k) {
+            // Best success rate; on a tie (within 0.1%), the most good
+            // stops, then the fewest elites (mine).
+            let key = (((rate * 1000.0).round()) / 1000.0, good, -elites);
+            if best.is_none_or(|(_, k)| key.partial_cmp(&k).is_some_and(|o| o.is_gt())) {
                 best = Some((lane, key));
             }
         }
@@ -1327,6 +1395,62 @@ impl Game {
             .last()
             .map_or(0.0, |(_, pc)| *pc);
         let items: Vec<Value> = wares.iter().map(|(_, item, _)| item.clone()).collect();
+        // Operator 2026-11-16: "those upgrad should probagbly the the
+        // fIRST things we buy im a shop", "because it increase per slot
+        // value right?". A ware that merges onto a worn copy (inventory.gd
+        // absorbs; the game levels it, shop_encounter.gd buy) adds the
+        // next level's stats in no new cells, so upgrades come first,
+        // the biggest gain first.
+        let worn_ids: Vec<Value> = worn
+            .iter()
+            .map(|w| self.prop(w, "id"))
+            .collect::<Result<_, _>>()?;
+        let mut upgrades: Vec<(usize, f64)> = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            let id = self.prop(item, "id")?;
+            if self.call(&inv, "absorbs", json!([item]))? != json!(true) || !worn_ids.contains(&id)
+            {
+                continue;
+            }
+            let base_id = self.call(item, "get_base_id", json!([]))?;
+            let level = self.prop(item, "level")?.as_i64().unwrap_or(1);
+            let next = self.call(
+                &json!({"node": "/root/EquipmentDB"}),
+                "get_leveled_item",
+                json!([base_id, level + 1]),
+            )?;
+            if next["id"].is_null() {
+                continue;
+            }
+            let (me, squad) = self.player_and_guardian(crawl)?;
+            let now = fight::score(&me, &squad, Run::Campaign).margin;
+            let mut p = me.clone();
+            for (stat, v) in self.item_stats(item)? {
+                apply_bonus(&mut p, stat, -v);
+            }
+            for (stat, v) in self.item_stats(&json!({"id": next["id"]}))? {
+                apply_bonus(&mut p, stat, v);
+            }
+            let up = fight::score(&p, &squad, Run::Campaign).margin - now;
+            println!(
+                "[auto]   upgrade {} to level {}: gain {up:.4}",
+                self.item_name(item),
+                level + 1
+            );
+            if up > 0.0 {
+                upgrades.push((i, up));
+            }
+        }
+        upgrades.sort_by(|a, b| b.1.total_cmp(&a.1));
+        if let Some((i, up)) = upgrades.first() {
+            let (ware, item, _) = &wares[*i];
+            println!(
+                "[auto]   buy {} (upgrade of a worn piece, gain {up:.4}, no new cells)",
+                self.item_name(item)
+            );
+            self.call(&shop, "buy", json!([ware]))?;
+            return Ok(true);
+        }
         let mut picks: Vec<(usize, f64, &str)> = Vec::new();
         for (i, gain, cells) in self.worth(crawl, &items)? {
             if gain <= 0.0 {
@@ -1334,7 +1458,10 @@ impl Game {
             }
             let pc = gain / cells as f64;
             if self.call(&inv, "absorbs", json!([items[i]]))? == json!(true) {
-                picks.push((i, f64::INFINITY, "merges onto an owned copy"));
+                // A bag copy: levels a piece not worn; judged per cell.
+                if pc > weakest {
+                    picks.push((i, pc, "levels a bag copy that beats the weakest worn"));
+                }
             } else if self
                 .call(&inv, "first_fit", json!([items[i], EQUIP]))?
                 .as_object()
