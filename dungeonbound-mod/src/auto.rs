@@ -1040,52 +1040,19 @@ fn fuse() -> Result<bool, String> {
             say("  took the fused item");
             return Ok(Look::Acted);
         }
-        let mut objs = owned_items(|_| false)?;
         let mut items = Vec::new();
-        for i in objs.iter_mut() {
+        for i in owned_items(|_| false)?.iter_mut() {
             items.push(item(i)?);
         }
-        let refused = |s: &mut Gd<Object>, i: &Gd<Object>, base: bool| -> Result<bool, String> {
-            Ok(
-                !read::call(s, "_refusal_for", &[i.to_variant(), base.to_variant()])?
-                    .stringify()
-                    .is_empty(),
-            )
-        };
-        let mut made = Vec::new();
-        for a in 0..objs.len() {
-            if refused(&mut s, &objs[a], true)? {
-                continue;
-            }
-            read::call(
-                &mut s,
-                "_on_slot_filled",
-                &[items[a].gid.to_variant(), true.to_variant()],
-            )?;
-            for b in a + 1..objs.len() {
-                if refused(&mut s, &objs[b], false)? {
-                    continue;
-                }
-                read::call(
-                    &mut s,
-                    "_on_slot_filled",
-                    &[items[b].gid.to_variant(), false.to_variant()],
-                )?;
-                for flipped in [false, true] {
-                    if let Ok(mut p) =
-                        read::call(&mut s, "variant_preview", &[flipped.to_variant()])?
-                            .try_to::<Gd<Object>>()
-                    {
-                        made.push((a, b, flipped, item(&mut p)?));
-                    }
-                }
-            }
-            // Staging the next b hands this one back (_on_slot_filled).
-            read::call(&mut s, "_clear_slot", &[false.to_variant()])?;
-            read::call(&mut s, "_clear_slot", &[true.to_variant()])?;
-        }
-        Ok(Look::Judge(items, made))
+        Ok(Look::Judge(items, Vec::new()))
     })?;
+    let look = match look {
+        Look::Judge(items, _) => {
+            let made = fuse_previews(&items)?;
+            Look::Judge(items, made)
+        }
+        other => other,
+    };
     let (items, made) = match look {
         Look::None => return Ok(false),
         Look::Acted => return Ok(true),
@@ -1158,6 +1125,97 @@ fn fuse() -> Result<bool, String> {
         leave("FUSE is not pressable")?;
     }
     Ok(true)
+}
+
+/// The forge's preview of every pair it accepts, both variants, as
+/// (base, other, flipped, result). In short main-thread passes so the
+/// game keeps running between them: one pass over every pair froze the
+/// game at the fusion forge (2026-11-17, operator: "on fusion forge the
+/// game locks up"). Mine: a pass ends after FUSE_PASS of main-thread
+/// time, with both slots cleared.
+const FUSE_PASS: Duration = Duration::from_millis(200);
+
+fn fuse_previews(items: &[Item]) -> Result<Vec<(usize, usize, bool, Item)>, String> {
+    let ids: Vec<(i64, String)> = items.iter().map(|i| (i.id, i.gid.to_string())).collect();
+    let ids = std::sync::Arc::new(ids);
+    let mut made = Vec::new();
+    let mut at = Some((0usize, 1usize));
+    let mut passes = 0;
+    let started = Instant::now();
+    while let Some((from_a, from_b)) = at {
+        let ids = ids.clone();
+        let (got, next) = on_main("auto fuse preview", move || {
+            let pass = Instant::now();
+            let Some(mut s) = stop("fuse_encounter.gd", 4)? else {
+                return Ok((Vec::new(), None));
+            };
+            let objs: Vec<Gd<Object>> = ids
+                .iter()
+                .map(|(id, _)| object(*id))
+                .collect::<Result<_, _>>()?;
+            let refused =
+                |s: &mut Gd<Object>, i: &Gd<Object>, base: bool| -> Result<bool, String> {
+                    Ok(
+                        !read::call(s, "_refusal_for", &[i.to_variant(), base.to_variant()])?
+                            .stringify()
+                            .is_empty(),
+                    )
+                };
+            let stage = |s: &mut Gd<Object>, k: usize, base: bool| {
+                read::call(
+                    s,
+                    "_on_slot_filled",
+                    &[
+                        GString::from(ids[k].1.as_str()).to_variant(),
+                        base.to_variant(),
+                    ],
+                )
+            };
+            let mut out = Vec::new();
+            let mut next = None;
+            'rows: for a in from_a..objs.len() {
+                if refused(&mut s, &objs[a], true)? {
+                    continue;
+                }
+                stage(&mut s, a, true)?;
+                let first = if a == from_a { from_b } else { a + 1 };
+                for b in first.max(a + 1)..objs.len() {
+                    if refused(&mut s, &objs[b], false)? {
+                        continue;
+                    }
+                    stage(&mut s, b, false)?;
+                    for flipped in [false, true] {
+                        if let Ok(mut p) =
+                            read::call(&mut s, "variant_preview", &[flipped.to_variant()])?
+                                .try_to::<Gd<Object>>()
+                        {
+                            out.push((a, b, flipped, item(&mut p)?));
+                        }
+                    }
+                    if pass.elapsed() >= FUSE_PASS {
+                        next = Some((a, b + 1));
+                        break 'rows;
+                    }
+                }
+                // Staging the next b hands this one back (_on_slot_filled).
+                read::call(&mut s, "_clear_slot", &[false.to_variant()])?;
+                read::call(&mut s, "_clear_slot", &[true.to_variant()])?;
+            }
+            if next.is_some() {
+                read::call(&mut s, "_clear_slot", &[false.to_variant()])?;
+                read::call(&mut s, "_clear_slot", &[true.to_variant()])?;
+            }
+            Ok((out, next))
+        })?;
+        made.extend(got);
+        passes += 1;
+        at = next;
+    }
+    say(&format!(
+        "  fuse: previewed by the game in {:.2}s over {passes} passes",
+        started.elapsed().as_secs_f64()
+    ));
+    Ok(made)
 }
 
 /// Rune stone (slot_bless_encounter.gd): a 2x2 rune set on the
