@@ -1025,7 +1025,7 @@ fn fuse() -> Result<bool, String> {
     enum Look {
         None,
         Acted,
-        Judge(Vec<Item>, Vec<(usize, usize, bool, Item)>),
+        Judge(Vec<Item>),
     }
     let look = on_main("auto fuse", || {
         let Some(mut s) = stop("fuse_encounter.gd", 4)? else {
@@ -1044,19 +1044,12 @@ fn fuse() -> Result<bool, String> {
         for i in owned_items(|_| false)?.iter_mut() {
             items.push(item(i)?);
         }
-        Ok(Look::Judge(items, Vec::new()))
+        Ok(Look::Judge(items))
     })?;
-    let look = match look {
-        Look::Judge(items, _) => {
-            let made = fuse_previews(&items)?;
-            Look::Judge(items, made)
-        }
-        other => other,
-    };
-    let (items, made) = match look {
+    let items = match look {
         Look::None => return Ok(false),
         Look::Acted => return Ok(true),
-        Look::Judge(i, m) => (i, m),
+        Look::Judge(i) => i,
     };
     let (me, squad) = player_and_foe()?;
     let base = fight::score(&me, &squad, Run::Campaign).margin;
@@ -1064,11 +1057,26 @@ fn fuse() -> Result<bool, String> {
         .iter()
         .map(|it| gain(&me, &squad, base, &it.stats))
         .collect();
+    // The game's recipe (item_forge.gd make_fused): the base keeps its
+    // shape and stats, the other adds FUSE_BONUS_SHARE of its stats. So
+    // a pair is ranked by that value per base cell, the better of its
+    // two variants, and only the best go to the game's preview.
+    const FUSE_BONUS_SHARE: f64 = 0.75;
+    let per_cell = |base: usize, other: usize| {
+        (worth[base] + FUSE_BONUS_SHARE * worth[other]) / items[base].cells.max(1) as f64
+    };
+    let mut pairs: Vec<(usize, usize)> = (0..items.len())
+        .flat_map(|a| (a + 1..items.len()).map(move |b| (a, b)))
+        .collect();
+    let all = pairs.len();
+    arrange::best_first(&mut pairs, |&(a, b)| per_cell(a, b).max(per_cell(b, a)));
     say(&format!(
-        "  fuse: judged {} variants of pairs of {} items",
-        made.len(),
-        items.len()
+        "  fuse: {all} pairs of {} items; the {} with the most value per cell of the fused piece go to the game's preview",
+        items.len(),
+        pairs.len()
     ));
+    let made = fuse_previews(&items, pairs)?;
+    say(&format!("  fuse: judged {} variants", made.len()));
     // (a, b, flipped, improvement per cell, result gain, cells)
     let mut best: Option<(usize, usize, bool, f64, f64, usize)> = None;
     for (a, b, flipped, r) in &made {
@@ -1132,11 +1140,13 @@ fn fuse() -> Result<bool, String> {
 /// game keeps running between them: one pass over every pair froze the
 /// game at the fusion forge (2026-11-17, operator: "on fusion forge the
 /// game locks up"). Each pass ends with both slots cleared.
-fn fuse_previews(items: &[Item]) -> Result<Vec<(usize, usize, bool, Item)>, String> {
+fn fuse_previews(
+    items: &[Item],
+    mut pairs: Vec<(usize, usize)>,
+) -> Result<Vec<(usize, usize, bool, Item)>, String> {
     let ids: Vec<(i64, String)> = items.iter().map(|i| (i.id, i.gid.to_string())).collect();
-    let pairs: Vec<(usize, usize)> = (0..ids.len())
-        .flat_map(|a| (a + 1..ids.len()).map(move |b| (a, b)))
-        .collect();
+    // By base, so each base is staged once.
+    pairs.sort();
     let started = Instant::now();
     let (made, passes) =
         on_main_passes("auto fuse preview", pairs.len(), move |from, deadline| {

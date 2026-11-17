@@ -241,6 +241,20 @@ pub fn fold_of(ids: Vec<i64>) -> Result<read::Fold, String> {
 pub const QUICK: u64 = 20_000;
 pub const FINALISTS: usize = 8;
 
+/// How many forge sets or pairs go to the game's preview. Mine.
+pub const PREVIEW_MOST: usize = 40;
+
+/// Keeps the `PREVIEW_MOST` asks with the best `score`, best first: the
+/// mod ranks every forge set or pair by the game's own recipe and only
+/// the best are previewed by the game (operator 2026-11-17: "this
+/// shouldnt take so long", "we need it all DRY done proeprly").
+pub fn best_first<T>(asks: &mut Vec<T>, score: impl Fn(&T) -> f64) {
+    let mut scored: Vec<(f64, T)> = asks.drain(..).map(|a| (score(&a), a)).collect();
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+    scored.truncate(PREVIEW_MOST);
+    asks.extend(scored.into_iter().map(|(_, a)| a));
+}
+
 /// Owned pieces `remove` turned into `add` (a forge, a socketed gem).
 pub struct Swap {
     pub remove: Vec<usize>,

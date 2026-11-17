@@ -357,15 +357,13 @@ pub fn mega_forge(_args: &Json) -> Result<Json, String> {
     // set is ranked first by its parts' values in the biggest part's
     // cells (the operator's "max value per inventory/eq slot"), and
     // only the best are previewed by the game (operator 2026-11-17:
-    // "this shouldnt take so long"). Mine: PREVIEW_MOST sets.
-    const PREVIEW_MOST: usize = 40;
+    // "this shouldnt take so long").
     let per_cell = |set: &[usize]| {
         let value: f64 = set.iter().map(|&i| list[i].piece.value).sum();
         let biggest = set.iter().map(|&i| cells(i)).max().unwrap_or(1).max(1);
         value / biggest as f64
     };
-    sets.sort_by(|a, b| per_cell(&b.0).total_cmp(&per_cell(&a.0)));
-    sets.truncate(PREVIEW_MOST);
+    arrange::best_first(&mut sets, |s| per_cell(&s.0));
     lines.push(format!(
         "mega forge: {laid} sets of 2 to 4 pieces lay out on the {w}x{h} anvil; the {} with the most value per cell of the made piece go to the game's preview",
         sets.len()

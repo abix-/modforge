@@ -74,29 +74,53 @@ impl Gate {
     }
 
     pub fn roll(&mut self, rng: &mut fastrand::Rng) -> bool {
-        let roll = rng.f64();
-        if self.chance <= 0.0 {
-            return false;
-        }
-        if self.chance >= 1.0 {
-            self.fails = Some(0);
-            return true;
-        }
-        if self.c <= 0.0 {
-            return roll < self.chance;
-        }
-        let fails = match self.fails {
-            Some(f) => f,
-            None => warm_fails(self.c, rng),
-        };
-        let n = fails + 1;
-        if roll < (self.c * f64::from(n)).min(1.0) {
-            self.fails = Some(0);
-            true
-        } else {
-            self.fails = Some(n);
-            false
-        }
+        roll_with(&mut self.fails, self.chance, self.c, rng)
+    }
+}
+
+/// One roll of a gate whose chance changes between rolls (a curse or a
+/// status moves it), keeping only the miss count: Dungeonbound's
+/// `gated_roll` finds the constant for the chance of this roll.
+pub fn gated_roll(fails: &mut Option<u32>, chance: f64, rng: &mut fastrand::Rng) -> bool {
+    // Every constant on the game's 0.001 grid, found once (the game
+    // keeps the same cache, _gate_constants).
+    static GRID: std::sync::OnceLock<Vec<f64>> = std::sync::OnceLock::new();
+    let c = if chance > 0.0 && chance < 1.0 {
+        let grid = GRID.get_or_init(|| {
+            (0..=(1.0 / STEP).round() as usize)
+                .map(|k| prd_constant(k as f64 * STEP))
+                .collect()
+        });
+        grid[((chance / STEP).round() as usize).min(grid.len() - 1)]
+    } else {
+        0.0
+    };
+    roll_with(fails, chance, c, rng)
+}
+
+fn roll_with(fails: &mut Option<u32>, chance: f64, c: f64, rng: &mut fastrand::Rng) -> bool {
+    let roll = rng.f64();
+    if chance <= 0.0 {
+        return false;
+    }
+    if chance >= 1.0 {
+        *fails = Some(0);
+        return true;
+    }
+    if c <= 0.0 {
+        return roll < chance;
+    }
+    let had = match *fails {
+        Some(f) => f,
+        None => warm_fails(c, rng),
+    };
+    let n = had + 1;
+    if roll < (c * f64::from(n)).min(1.0) {
+        *fails = Some(0);
+        true
+    } else {
+        *fails = Some(n);
+        false
     }
 }
 
