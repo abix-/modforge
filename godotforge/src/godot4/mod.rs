@@ -107,6 +107,39 @@ where
     MAIN_QUEUE.run_result(label, MAIN_TIMEOUT, f)
 }
 
+/// Main-thread time one pass of [`on_main_passes`] may take.
+pub const PASS: Duration = Duration::from_millis(200);
+
+/// Long main-thread work over `total` units, cut into short passes so
+/// the game keeps running between them (the way a frame budget spreads
+/// work over frames). `f(from, deadline)` does units from `from` on,
+/// one result each, and stops once `deadline` has passed. One long pass
+/// froze Dungeonbound at its forges (2026-11-17). Returns the results
+/// and the passes taken.
+pub fn on_main_passes<T, F>(label: &str, total: usize, f: F) -> Result<(Vec<T>, usize), String>
+where
+    T: Send + 'static,
+    F: Fn(usize, Instant) -> Result<Vec<T>, String> + Send + Sync + 'static,
+{
+    let f = std::sync::Arc::new(f);
+    let mut out: Vec<T> = Vec::with_capacity(total);
+    let mut passes = 0;
+    while out.len() < total {
+        let from = out.len();
+        let f = f.clone();
+        let got = on_main(label, move || f(from, Instant::now() + PASS))?;
+        passes += 1;
+        if got.is_empty() {
+            return Err(format!(
+                "{label}: a pass did no work at unit {from} of {total}"
+            ));
+        }
+        out.extend(got);
+    }
+    out.truncate(total);
+    Ok((out, passes))
+}
+
 /// Declare a Godot 4 mod that stands in for a GDExtension the game
 /// already loads.
 ///

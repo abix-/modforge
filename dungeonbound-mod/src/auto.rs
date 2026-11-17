@@ -25,7 +25,7 @@ use godot::builtin::{AnyArray, AnyDictionary, GString, StringName, Variant, Vect
 use godot::classes::{Node, Object};
 use godot::meta::ToGodot;
 use godot::obj::Gd;
-use godotforge::godot4::{on_main, ops::script_vars, target};
+use godotforge::godot4::{on_main, on_main_passes, ops::script_vars, target};
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
@@ -1131,23 +1131,17 @@ fn fuse() -> Result<bool, String> {
 /// (base, other, flipped, result). In short main-thread passes so the
 /// game keeps running between them: one pass over every pair froze the
 /// game at the fusion forge (2026-11-17, operator: "on fusion forge the
-/// game locks up"). Mine: a pass ends after FUSE_PASS of main-thread
-/// time, with both slots cleared.
-const FUSE_PASS: Duration = Duration::from_millis(200);
-
+/// game locks up"). Each pass ends with both slots cleared.
 fn fuse_previews(items: &[Item]) -> Result<Vec<(usize, usize, bool, Item)>, String> {
     let ids: Vec<(i64, String)> = items.iter().map(|i| (i.id, i.gid.to_string())).collect();
-    let ids = std::sync::Arc::new(ids);
-    let mut made = Vec::new();
-    let mut at = Some((0usize, 1usize));
-    let mut passes = 0;
+    let pairs: Vec<(usize, usize)> = (0..ids.len())
+        .flat_map(|a| (a + 1..ids.len()).map(move |b| (a, b)))
+        .collect();
     let started = Instant::now();
-    while let Some((from_a, from_b)) = at {
-        let ids = ids.clone();
-        let (got, next) = on_main("auto fuse preview", move || {
-            let pass = Instant::now();
+    let (made, passes) =
+        on_main_passes("auto fuse preview", pairs.len(), move |from, deadline| {
             let Some(mut s) = stop("fuse_encounter.gd", 4)? else {
-                return Ok((Vec::new(), None));
+                return Err("the fusion forge closed".into());
             };
             let objs: Vec<Gd<Object>> = ids
                 .iter()
@@ -1171,46 +1165,45 @@ fn fuse_previews(items: &[Item]) -> Result<Vec<(usize, usize, bool, Item)>, Stri
                     ],
                 )
             };
-            let mut out = Vec::new();
-            let mut next = None;
-            'rows: for a in from_a..objs.len() {
-                if refused(&mut s, &objs[a], true)? {
-                    continue;
-                }
-                stage(&mut s, a, true)?;
-                let first = if a == from_a { from_b } else { a + 1 };
-                for b in first.max(a + 1)..objs.len() {
-                    if refused(&mut s, &objs[b], false)? {
-                        continue;
+            let clear = |s: &mut Gd<Object>| -> Result<(), String> {
+                read::call(s, "_clear_slot", &[false.to_variant()])?;
+                read::call(s, "_clear_slot", &[true.to_variant()])?;
+                Ok(())
+            };
+            let mut out: Vec<Vec<(usize, usize, bool, Item)>> = Vec::new();
+            // The base staged now, and whether the forge takes it.
+            let mut base: Option<(usize, bool)> = None;
+            for &(a, b) in &pairs[from..] {
+                if base.is_none_or(|(k, _)| k != a) {
+                    // Staging a new base hands the old pair back.
+                    clear(&mut s)?;
+                    let ok = !refused(&mut s, &objs[a], true)?;
+                    if ok {
+                        stage(&mut s, a, true)?;
                     }
+                    base = Some((a, ok));
+                }
+                let mut got = Vec::new();
+                if base.is_some_and(|(_, ok)| ok) && !refused(&mut s, &objs[b], false)? {
                     stage(&mut s, b, false)?;
                     for flipped in [false, true] {
                         if let Ok(mut p) =
                             read::call(&mut s, "variant_preview", &[flipped.to_variant()])?
                                 .try_to::<Gd<Object>>()
                         {
-                            out.push((a, b, flipped, item(&mut p)?));
+                            got.push((a, b, flipped, item(&mut p)?));
                         }
                     }
-                    if pass.elapsed() >= FUSE_PASS {
-                        next = Some((a, b + 1));
-                        break 'rows;
-                    }
                 }
-                // Staging the next b hands this one back (_on_slot_filled).
-                read::call(&mut s, "_clear_slot", &[false.to_variant()])?;
-                read::call(&mut s, "_clear_slot", &[true.to_variant()])?;
+                out.push(got);
+                if Instant::now() >= deadline {
+                    break;
+                }
             }
-            if next.is_some() {
-                read::call(&mut s, "_clear_slot", &[false.to_variant()])?;
-                read::call(&mut s, "_clear_slot", &[true.to_variant()])?;
-            }
-            Ok((out, next))
+            clear(&mut s)?;
+            Ok(out)
         })?;
-        made.extend(got);
-        passes += 1;
-        at = next;
-    }
+    let made: Vec<(usize, usize, bool, Item)> = made.into_iter().flatten().collect();
     say(&format!(
         "  fuse: previewed by the game in {:.2}s over {passes} passes",
         started.elapsed().as_secs_f64()

@@ -29,7 +29,7 @@ use godot::builtin::{GString, Variant};
 use godot::classes::Object;
 use godot::meta::ToGodot;
 use godot::obj::Gd;
-use godotforge::godot4::{on_main, ops::script_vars};
+use godotforge::godot4::{on_main, on_main_passes, ops::script_vars};
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
 
@@ -137,18 +137,18 @@ pub fn gems(args: &Json) -> Result<Json, String> {
     };
     let mut list: Vec<read::Owned> = seen.list.into_iter().filter(|o| o.wearable()).collect();
     judge.value_all(&mut list);
-    // Every gem into every wearable piece, previewed by the game in one
-    // main-thread pass.
+    // Every gem into every wearable piece, previewed by the game in
+    // short main-thread passes so the game keeps running.
     let targets: Vec<i64> = list.iter().map(|o| o.id).collect();
     let asks: Vec<(i64, i64)> = gem_ids
         .iter()
         .flat_map(|&g| targets.iter().map(move |&t| (g, t)))
         .collect();
     let asked = asks.clone();
-    let made = on_main("gems preview", move || {
+    let (made, _) = on_main_passes("gems preview", asks.len(), move |from, deadline| {
         let mut inv = read::inventory()?;
         let mut out = Vec::new();
-        for (g, t) in &asked {
+        for (g, t) in &asked[from..] {
             let (Some(gp), Some(tp)) = (read::row_of(&mut inv, *g)?, read::row_of(&mut inv, *t)?)
             else {
                 out.push(Err("gone".to_string()));
@@ -160,6 +160,9 @@ pub fn gems(args: &Json) -> Result<Json, String> {
                 continue;
             };
             out.push(socketed(&mut gi, &mut ti)?);
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
         }
         Ok(out)
     })?;
