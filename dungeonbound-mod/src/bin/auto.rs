@@ -144,22 +144,52 @@ impl Game {
         if self.call(&holder, "is_visible_in_tree", json!([]))? != json!(true) {
             return Ok(false);
         }
-        for (var, label) in [
-            ("_loot_auto_btn", "AUTO PICK"),
-            ("_loot_claim_btn", "CLAIM ALL"),
+        let inv = json!({"id": self.prop(&json!({"node": "/root/Global"}), "inventory")?["id"]});
+        let left = |inv: &Value| -> Result<(bool, usize), String> {
+            let pick = self.call(inv, "has_pick", json!([]))? == json!(true);
+            let tray = self
+                .call(inv, "placements_in", json!([TRAY]))?
+                .as_array()
+                .map_or(0, Vec::len);
+            Ok((pick, tray))
+        };
+        let (pick, tray) = left(&inv)?;
+        let mut pressed = false;
+        for (var, label, want) in [
+            ("_loot_auto_btn", "AUTO PICK", pick),
+            ("_loot_claim_btn", "CLAIM ALL", tray > 0),
         ] {
             let b = json!({"id": self.prop(crawl, var)?["id"]});
-            if self.pressable(&b) {
+            if want && self.pressable(&b) {
                 self.press(&b, label)?;
-                return Ok(true);
+                pressed = true;
+                break;
             }
         }
-        let sell = json!({"id": self.prop(crawl, "_loot_sell_btn")?["id"]});
-        if self.pressable(&sell) {
-            self.press(&sell, "SELL ALL (bag full)")?;
-            return Ok(true);
+        if !pressed {
+            return Ok(false);
         }
-        Ok(false)
+        // The bag and tray have limited room (the game: "No room in
+        // your bag"). When the loot did not all go in, the loose item
+        // with the least gain per cell (bag or tray) is sold through
+        // the game's own sell, one per step, until it fits.
+        let (pick2, tray2) = left(&inv)?;
+        if (pick && pick2) || (!pick && tray2 >= tray && tray2 > 0) {
+            let loose = self.owned(&inv, &[BAG, TRAY])?;
+            let ranked = self.per_cell(crawl, &loose)?;
+            if let Some((i, pc)) = ranked.last() {
+                let item = &loose[*i];
+                let id = self.prop(item, "id")?;
+                let ok = self.call(&json!({"node": "/root/Global"}), "sell_item", json!([id]))?
+                    == json!(true);
+                println!(
+                    "[auto]   bag full: sold {} (gain per cell {pc:.5}, the least of {} loose): {ok}",
+                    self.item_name(item),
+                    loose.len()
+                );
+            }
+        }
+        Ok(true)
     }
 
     /// An object's script variables by name.
@@ -1095,7 +1125,18 @@ impl Game {
                 }
                 self.unequip(&inv, item)?;
             }
-            for o in &off {
+            // Biggest back first, so the first open spot does not take
+            // the room a big piece needs.
+            let mut back: Vec<(usize, Value)> = Vec::new();
+            for o in off {
+                let cells = self
+                    .call(&o, "shape_cells", json!([0]))?
+                    .as_array()
+                    .map_or(1, Vec::len);
+                back.push((cells, o));
+            }
+            back.sort_by(|a, b| b.0.cmp(&a.0));
+            for (_, o) in &back {
                 if !self.equip_auto(&inv, o)? {
                     println!("[auto]     could not put {} back", self.item_name(o));
                 }
@@ -1270,32 +1311,52 @@ impl Game {
                 wares.push((ware, item, stats));
             }
         }
-        let (me, squad) = self.player_and_guardian(crawl)?;
-        let now = fight::score(&me, &squad, Run::Campaign);
-        let ranked = fight::rank(&me, &squad, Run::Campaign, &wares, |p, (_, _, stats)| {
-            for (stat, v) in stats {
-                apply_bonus(p, stat, *v);
+        // Operator 2026-11-16: "they're limited so all the lots need to
+        // have max value items", "using max value per inventory/eq
+        // slot", "DRY". The one item judge (gain per cell). A ware is
+        // bought only when it has room to earn it:
+        // - it merges onto an owned copy (inventory.gd absorbs): no new
+        //   cells, so it goes first (operator: upgrades are preferred);
+        // - it fits the open equipment cells (first_fit) with a gain;
+        // - or its gain per cell beats the weakest worn item, which the
+        //   packing then swaps out.
+        let inv = json!({"id": self.prop(&json!({"node": "/root/Global"}), "inventory")?["id"]});
+        let worn = self.owned(&inv, &[EQUIP])?;
+        let weakest = self
+            .per_cell(crawl, &worn)?
+            .last()
+            .map_or(0.0, |(_, pc)| *pc);
+        let items: Vec<Value> = wares.iter().map(|(_, item, _)| item.clone()).collect();
+        let mut picks: Vec<(usize, f64, &str)> = Vec::new();
+        for (i, gain, cells) in self.worth(crawl, &items)? {
+            if gain <= 0.0 {
+                continue;
             }
-        });
-        if let Some((i, s)) = ranked.first()
-            && s.cmp(&now).is_gt()
-        {
+            let pc = gain / cells as f64;
+            if self.call(&inv, "absorbs", json!([items[i]]))? == json!(true) {
+                picks.push((i, f64::INFINITY, "merges onto an owned copy"));
+            } else if self
+                .call(&inv, "first_fit", json!([items[i], EQUIP]))?
+                .as_object()
+                .is_some_and(|o| !o.is_empty())
+            {
+                picks.push((i, pc, "fits the open equipment cells"));
+            } else if pc > weakest {
+                picks.push((i, pc, "beats the weakest worn item per cell"));
+            }
+        }
+        picks.sort_by(|a, b| b.1.total_cmp(&a.1));
+        if let Some((i, pc, why)) = picks.first() {
             let (ware, item, stats) = &wares[*i];
             println!(
-                "[auto]   buy {} {:?}: win {:.1}% hp left {:.0}% foe left {:.0}% (now {:.1}% {:.0}% {:.0}%)",
+                "[auto]   buy {} {:?}: gain per cell {pc:.5}, {why} (weakest worn {weakest:.5})",
                 self.item_name(item),
-                stats,
-                s.win * 100.0,
-                s.hp_left * 100.0,
-                s.foes_left * 100.0,
-                now.win * 100.0,
-                now.hp_left * 100.0,
-                now.foes_left * 100.0
+                stats
             );
             self.call(&shop, "buy", json!([ware]))?;
             return Ok(true);
         }
-        println!("[auto]   shop: nothing affordable beats the loadout");
+        println!("[auto]   shop: no affordable ware has room to add value");
         *self.shop_done.borrow_mut() = shop;
         Ok(false)
     }
