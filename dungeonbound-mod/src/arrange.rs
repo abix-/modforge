@@ -820,8 +820,16 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
         read::call(&mut read::node("/root/Global")?, "save_game", &[])?;
         Ok(out)
     })?;
+    // Plans again only when the game refused a move: a plan it took is
+    // what the next search would find again (it cost a second search of
+    // seconds at every stop). Operator 2026-11-17: "need all these
+    // thigns to be fast".
+    if applied
+        .iter()
+        .any(|l| l.ends_with("refused") || l.ends_with("is gone"))
+    {
+        TRIED.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
     lines.extend(applied);
-    // The moves changed what is where; the next arrange plans again.
-    TRIED.lock().unwrap_or_else(|e| e.into_inner()).clear();
     Ok(json!({"changed": true, "lines": lines}))
 }
