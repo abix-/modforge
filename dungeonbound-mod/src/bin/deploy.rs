@@ -23,9 +23,9 @@ fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(DEFAULT_GAME_DIR));
     let exe = std::env::current_exe()?;
+    // Built beside this exe, in the same profile folder.
     let built = exe
         .parent()
-        .and_then(|d| d.parent())
         .context("deploy exe has no parent folder")?
         .join("dungeonbound_mod.dll");
     if !built.exists() {
