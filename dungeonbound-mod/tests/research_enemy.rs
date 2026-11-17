@@ -30,6 +30,76 @@ fn print_set_vars(api: &modforge::client::Api<Value>, label: &str, id: &Value) -
     vars
 }
 
+/// The fight code's methods with arguments: the combat resolver, the
+/// combatant, and the battle speed control that holds the damage
+/// estimate button.
+#[test]
+fn research_fight_methods() {
+    let Some(api) = common::api_or_skip() else {
+        return;
+    };
+    for script in [
+        "combat_resolver.gd",
+        "battle_speed_control.gd",
+        "enemy_display_3d.gd",
+    ] {
+        let Some(node) = common::node_with_script(&api, SCENE, script, 4) else {
+            println!("{script}: not in the scene");
+            continue;
+        };
+        common::print_methods(&api, script, &node["id"]);
+    }
+    let run = common::op(
+        &api,
+        "get_property",
+        json!({"node": "/root/Global", "property": "current_run", "depth": 0}),
+    );
+    let player = common::op(
+        &api,
+        "get_property",
+        json!({"id": run["value"]["id"], "property": "player", "depth": 0}),
+    );
+    common::print_methods(&api, "combatant_runtime.gd", &player["value"]["id"]);
+}
+
+/// The damage estimate panel (the battle speed control's damage
+/// button): its tabs and the text each tab shows. Opens and closes
+/// the panel; does not touch the run.
+#[test]
+fn research_damage_estimate() {
+    let Some(api) = common::api_or_skip() else {
+        return;
+    };
+    let Some(control) = common::node_with_script(&api, SCENE, "battle_speed_control.gd", 4) else {
+        eprintln!("SKIP: no battle speed control in the scene");
+        return;
+    };
+    let call = |method: &str, args: Value| {
+        common::op(
+            &api,
+            "call_method",
+            json!({"id": control["id"], "method": method, "args": args, "depth": 3}),
+        )["result"]
+            .clone()
+    };
+    let tabs = call("damage_tabs", json!([]));
+    println!("damage tabs {tabs}");
+    for tab in tabs.as_array().into_iter().flatten() {
+        let tab = tab["id"].as_str().unwrap_or("");
+        let modal = call("open_damage", json!([tab]));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        println!("tab {tab:?} modal {}", modal["path"]);
+        let screen = common::op(&api, "screen", json!({"text_only": true}));
+        let under = modal["path"].as_str().unwrap_or("?");
+        for n in screen["nodes"].as_array().into_iter().flatten() {
+            if n["path"].as_str().is_some_and(|p| p.starts_with(under)) {
+                println!("  {:?}", n["text"].as_str().unwrap_or(""));
+            }
+        }
+        call("close_modal", json!([]));
+    }
+}
+
 /// The squads the resolver has ready for coming fights, and the
 /// floor's guardian: enemy data known before the fight starts.
 #[test]

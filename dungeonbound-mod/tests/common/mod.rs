@@ -51,6 +51,32 @@ pub fn script_vars(api: &Api<Value>, id: &Value, depth: u32) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// Print an object's script methods as `name(arg: TYPE, ...) -> TYPE`.
+pub fn print_methods(api: &Api<Value>, label: &str, id: &Value) {
+    let methods = op(api, "list_methods", json!({"id": id, "script_only": true}));
+    println!("{label}:");
+    for m in methods["methods"].as_array().into_iter().flatten() {
+        let params: Vec<String> = m["args"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|a| {
+                format!(
+                    "{}: {}",
+                    a["name"].as_str().unwrap_or("?"),
+                    a["type"].as_str().unwrap_or("?")
+                )
+            })
+            .collect();
+        println!(
+            "  {}({}) -> {}",
+            m["name"].as_str().unwrap_or("?"),
+            params.join(", "),
+            m["return"]
+        );
+    }
+}
+
 /// True for a zero, empty or null value.
 pub fn is_default(v: &Value) -> bool {
     match v {
