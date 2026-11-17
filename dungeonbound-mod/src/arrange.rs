@@ -343,6 +343,38 @@ pub fn fold_of(ids: Vec<i64>) -> Result<read::Fold, String> {
     })
 }
 
+/// The game's fold of a layout with its placements, as it builds the
+/// hero (game_state.gd: from_player with placements_in(EQUIP)): each
+/// piece's own placement row (its grown stats and the rest) moved to
+/// its planned spot. Spot bonuses, sets and percent scaling are all the
+/// game's own.
+pub fn fold_placed(plan: Vec<(i64, i32, i32, i32)>) -> Result<read::Fold, String> {
+    on_main("fold placed", move || {
+        let mut inv = read::inventory()?;
+        let mut items = Vec::new();
+        let mut rows = godot::builtin::VarArray::new();
+        for (id, x, y, rot) in &plan {
+            let Some(row) = read::row_of(&mut inv, *id)? else {
+                continue;
+            };
+            let Some(item) = read::placed_item(&row) else {
+                continue;
+            };
+            let mut moved = godot::builtin::VarDictionary::new();
+            for (k, v) in row.iter_shared() {
+                moved.set(&k, &v);
+            }
+            moved.set("x", *x);
+            moved.set("y", *y);
+            moved.set("rot", *rot);
+            moved.set("grid", EQUIP);
+            rows.push(&moved.to_variant());
+            items.push(item);
+        }
+        read::fold_in(&items, rows.to_variant())
+    })
+}
+
 /// Search steps per swap in the first pass over every swap; the best
 /// `FINALISTS` are packed again with the full BUDGET. Mine.
 pub const QUICK: u64 = 20_000;
@@ -609,13 +641,14 @@ pub fn arrange(args: &Json) -> Result<Json, String> {
     let (plan, value, done) = grid::pack(&g, &only, seen.hands, BUDGET);
     // Both by the same judge: the plan and what is worn, each folded by
     // the game, with what their spots add.
-    let now = judge.score(&judge.spotted(&seen.hero.worn, &g, &only, &worn_layout(&list)));
-    let then = judge.score(&judge.spotted(
-        &fold_of(plan.iter().map(|s| list[s.piece].id).collect())?,
-        &g,
-        &only,
-        &plan,
-    ));
+    // Both folded by the game with their placements: what is worn is
+    // the hero now; the plan is its pieces moved to their spots.
+    let now = judge.score(&seen.hero.placed);
+    let then = judge.score(&fold_placed(
+        plan.iter()
+            .map(|s| (list[s.piece].id, s.x, s.y, s.rot))
+            .collect(),
+    )?);
     let spot_worth = grid::spot_values(&g, &only, &plan);
     let (spot_got, empty) = {
         let all = grid::worn_of(&only, &plan);
