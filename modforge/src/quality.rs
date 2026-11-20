@@ -32,3 +32,63 @@ pub fn roll_tier(odds: &[u64], now: f32, salt: u64) -> Option<usize> {
 pub fn roll_sibling(siblings: u64, now: f32, salt: u64) -> u64 {
     rng(now, salt.wrapping_mul(97), siblings) + 1
 }
+
+/// One quality tier of a game's table (best first): its name, its
+/// per-mille odds, and how much harder a weapon of it hits and how much
+/// more a worn piece of it protects (1 is the base tier's).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tier {
+    pub name: String,
+    pub per_mille: u64,
+    pub power: f32,
+}
+
+/// The odds of a table, best tier first, as `roll_tier` takes them.
+pub fn odds(tiers: &[Tier]) -> Vec<u64> {
+    tiers.iter().map(|t| t.per_mille).collect()
+}
+
+/// How much a stack of `tier` (None the base tier) multiplies its hits
+/// and its protection: the one place quality changes an item's numbers.
+pub fn power(tier: Option<usize>, tiers: &[Tier]) -> f32 {
+    tier.and_then(|t| tiers.get(t)).map_or(1.0, |t| t.power)
+}
+
+/// The name of `tier`, None for the base tier.
+pub fn name(tier: Option<usize>, tiers: &[Tier]) -> Option<&str> {
+    tier.and_then(|t| tiers.get(t)).map(|t| t.name.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table() -> Vec<Tier> {
+        vec![
+            Tier { name: "best".into(), per_mille: 100, power: 1.5 },
+            Tier { name: "good".into(), per_mille: 300, power: 1.2 },
+        ]
+    }
+
+    #[test]
+    fn a_better_tier_hits_harder_and_the_base_tier_as_it_is() {
+        let t = table();
+        assert_eq!(power(None, &t), 1.0);
+        assert_eq!(power(Some(0), &t), 1.5);
+        assert_eq!(power(Some(1), &t), 1.2);
+        assert_eq!(name(Some(1), &t), Some("good"));
+        assert_eq!(name(None, &t), None);
+    }
+
+    #[test]
+    fn tiers_roll_at_about_their_odds() {
+        let o = odds(&table());
+        let rolls: Vec<_> = (0..2000).map(|s| roll_tier(&o, 0.0, s)).collect();
+        let best = rolls.iter().filter(|r| **r == Some(0)).count();
+        let good = rolls.iter().filter(|r| **r == Some(1)).count();
+        let base = rolls.iter().filter(|r| r.is_none()).count();
+        assert!((120..280).contains(&best), "best {best}");
+        assert!((450..750).contains(&good), "good {good}");
+        assert!((1050..1350).contains(&base), "base {base}");
+    }
+}
