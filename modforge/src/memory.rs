@@ -76,9 +76,9 @@ impl Known {
 
     /// How many of this kind were seen inside when last checked.
     pub fn held_count(&self, kind: &str) -> u32 {
-        self.held
-            .as_ref()
-            .map_or(0, |h| h.iter().filter(|(k, _)| k == kind).map(|(_, n)| n).sum())
+        self.held.as_ref().map_or(0, |h| {
+            h.iter().filter(|(k, _)| k == kind).map(|(_, n)| n).sum()
+        })
     }
 }
 
@@ -127,7 +127,13 @@ pub fn days_of<'a>(
             thirst += food.thirst * count as f32;
         }
     }
-    let days = |have: f32, per: f32| if per * people as f32 > 0.0 { have / (per * people as f32) } else { f32::INFINITY };
+    let days = |have: f32, per: f32| {
+        if per * people as f32 > 0.0 {
+            have / (per * people as f32)
+        } else {
+            f32::INFINITY
+        }
+    };
     (days(hunger, per_day.0), days(thirst, per_day.1))
 }
 
@@ -144,10 +150,13 @@ pub fn short_of<'a>(
     items: &crate::item::ItemRegistry,
 ) -> Vec<Need> {
     let (food, water) = days_of(supplies, litres, people, per_day, items);
-    let mut short: Vec<(Need, f32)> = [(Need::Hunger, food / days.0), (Need::Thirst, water / days.1)]
-        .into_iter()
-        .filter(|(_, c)| *c < 1.0)
-        .collect();
+    let mut short: Vec<(Need, f32)> = [
+        (Need::Hunger, food / days.0),
+        (Need::Thirst, water / days.1),
+    ]
+    .into_iter()
+    .filter(|(_, c)| *c < 1.0)
+    .collect();
     short.sort_by(|a, b| a.1.total_cmp(&b.1));
     short.into_iter().map(|(n, _)| n).collect()
 }
@@ -209,6 +218,12 @@ pub enum Did {
     Saw(ActorId),
     /// The conversation with this person ended, closed by either of them.
     TalkEnded(ActorId),
+    /// Did this, in words ("opened a door", "moved to 3, 0, 5"): an act
+    /// whose result has no kind of its own above.
+    Done(String),
+    /// Tried this, in words, and it failed for the second's reason
+    /// ("use", "nothing in reach"; RimWorld's job fail reasons).
+    Failed(String, String),
 }
 
 impl Did {
@@ -237,6 +252,8 @@ impl Did {
             Did::WasTold(..) => "was told",
             Did::Saw(_) => "saw",
             Did::TalkEnded(_) => "talk ended",
+            Did::Done(_) => "done",
+            Did::Failed(..) => "failed",
         }
     }
 
@@ -258,13 +275,17 @@ impl Did {
             Did::Doorway => "went through a doorway".to_string(),
             Did::Knocked => "knocked on a door".to_string(),
             Did::HeardKnocking(by) => format!("heard {} knock", by.0),
-            Did::Traded(with, gave, got) => format!("traded with {}: gave {gave}, got {got}", with.0),
+            Did::Traded(with, gave, got) => {
+                format!("traded with {}: gave {gave}, got {got}", with.0)
+            }
             Did::TradeRefused(by) => format!("was refused a trade by {}", by.0),
             Did::Talked(whom, said) => format!("said to {}: {}", whom.0, said.words),
             Did::Heard(by, said) => format!("heard from {}: {}", by.0, said.words),
             Did::WasTold(by, _, what) => format!("was told by {}: {}", by.0, what.words()),
             Did::Saw(whom) => format!("saw {}", whom.0),
             Did::TalkEnded(with) => format!("ended a talk with {}", with.0),
+            Did::Done(what) => what.clone(),
+            Did::Failed(what, why) => format!("could not {what}: {why}"),
         }
     }
 }
@@ -371,7 +392,12 @@ impl Memory {
     /// `again` ticks (someone in view every think is one sighting, not one
     /// a think, so the deeds kept are not all sightings).
     pub fn saw(&mut self, who: ActorId, now: u64, again: u64) {
-        let recent = self.done.iter().rev().take_while(|(t, _)| now.saturating_sub(*t) <= again).any(|(_, d)| *d == Did::Saw(who));
+        let recent = self
+            .done
+            .iter()
+            .rev()
+            .take_while(|(t, _)| now.saturating_sub(*t) <= again)
+            .any(|(_, d)| *d == Did::Saw(who));
         if !recent {
             self.did(Did::Saw(who), now);
         }
@@ -474,6 +500,17 @@ mod tests {
         assert_eq!(m.done[0].1, Did::Slept, "the oldest went");
     }
 
+    /// An act's result is remembered either way: done, or failed and why.
+    #[test]
+    fn an_act_is_remembered_done_or_failed_and_why() {
+        let mut m = Memory::default();
+        m.did(Did::Done("opened a door".to_string()), 3);
+        m.did(Did::Failed("use".to_string(), "nothing in reach".to_string()), 4);
+        let words: Vec<String> = m.done.iter().map(|(_, d)| d.words()).collect();
+        assert_eq!(words, ["opened a door", "could not use: nothing in reach"]);
+        assert_eq!(m.done[1].1.kind(), "failed");
+    }
+
     #[test]
     fn a_box_is_worth_the_food_seen_inside_it() {
         use crate::item::{FoodStats, ItemDef, ItemKind, ItemRegistry};
@@ -503,9 +540,22 @@ mod tests {
             .unwrap();
         let mut memory = Memory::default();
         memory.see(1, "storage box", Vec3::ZERO, 0);
-        assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 0.0, "never looked inside");
-        memory.checked(1, vec![("scrap".to_string(), 2), ("canned food".to_string(), 1)], 0.0, 5);
-        assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 50.0, "the cans inside");
+        assert_eq!(
+            food_worth(&memory.known[0], Need::Hunger, &items),
+            0.0,
+            "never looked inside"
+        );
+        memory.checked(
+            1,
+            vec![("scrap".to_string(), 2), ("canned food".to_string(), 1)],
+            0.0,
+            5,
+        );
+        assert_eq!(
+            food_worth(&memory.known[0], Need::Hunger, &items),
+            50.0,
+            "the cans inside"
+        );
         assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 0.0);
     }
 
@@ -539,9 +589,16 @@ mod tests {
             .unwrap();
         let mut memory = Memory::default();
         memory.see(1, "well", Vec3::ZERO, 0);
-        assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 100.0, "the well's water");
+        assert_eq!(
+            food_worth(&memory.known[0], Need::Thirst, &items),
+            100.0,
+            "the well's water"
+        );
         assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 0.0);
-        assert!(memory.known[0].believed_to_hold(), "a source is never empty");
+        assert!(
+            memory.known[0].believed_to_hold(),
+            "a source is never empty"
+        );
     }
 
     /// The registry's answer in these tests: a storage box is worth
@@ -572,7 +629,11 @@ mod tests {
                 max_stack: 10,
                 quality_siblings: 1,
                 combat: None,
-                food: Some(FoodStats { hunger: 50.0, thirst: 0.0, health: 0.0 }),
+                food: Some(FoodStats {
+                    hunger: 50.0,
+                    thirst: 0.0,
+                    health: 0.0,
+                }),
                 storage: None,
                 armor: None,
                 good_for: Default::default(),
@@ -586,14 +647,24 @@ mod tests {
         // cans and 4 litres (100 thirst a litre) cover it.
         let per_day = (100.0, 200.0);
         assert!(short_of([("canned food", 4)], 4.0, 2, (1.0, 1.0), per_day, &items).is_empty());
-        assert_eq!(short_of([("canned food", 4)], 1.0, 2, (1.0, 1.0), per_day, &items), [Need::Thirst]);
-        assert_eq!(short_of([("canned food", 1)], 4.0, 2, (1.0, 1.0), per_day, &items), [Need::Hunger]);
+        assert_eq!(
+            short_of([("canned food", 4)], 1.0, 2, (1.0, 1.0), per_day, &items),
+            [Need::Thirst]
+        );
+        assert_eq!(
+            short_of([("canned food", 1)], 4.0, 2, (1.0, 1.0), per_day, &items),
+            [Need::Hunger]
+        );
         assert_eq!(
             short_of([("canned food", 2)], 0.5, 2, (1.0, 1.0), per_day, &items),
             [Need::Thirst, Need::Hunger],
             "short of both, the shortest first"
         );
-        assert_eq!(days_of([], 80.0, 2, per_day, &items).1, 20.0, "80 L is 20 days for two");
+        assert_eq!(
+            days_of([], 80.0, 2, per_day, &items).1,
+            20.0,
+            "80 L is 20 days for two"
+        );
     }
 
     #[test]
@@ -613,7 +684,16 @@ mod tests {
         m.see(7, "storage box", Vec3::ZERO, 10);
         assert!(m.known[0].believed_to_hold(), "never looked: believed full");
         assert!(!m.known[0].held_kind("canned food"), "not seen yet");
-        m.checked(7, vec![("canned food".to_string(), 7), ("canned food".to_string(), 3), ("pipe".to_string(), 1)], 0.0, 30);
+        m.checked(
+            7,
+            vec![
+                ("canned food".to_string(), 7),
+                ("canned food".to_string(), 3),
+                ("pipe".to_string(), 1),
+            ],
+            0.0,
+            30,
+        );
         let box_ = &m.known[0];
         assert_eq!(box_.checked_at, Some(30));
         assert!(box_.held_kind("canned food") && box_.held_kind("pipe"));
