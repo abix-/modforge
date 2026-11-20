@@ -28,6 +28,26 @@ const ROAD_LIMIT: usize = 200_000;
 pub struct Clearing {
     pub at: Vec2,
     pub radius: f32,
+    /// A gap kept clear of things from the clearing toward a point, so the
+    /// door opens on the big thing on the horizon (topside design.md "The
+    /// first hour": "The way is readable (a gap, a track, a gate)"): the
+    /// point it heads for, how far it runs and how wide it is, metres.
+    pub gap: Option<(Vec2, f32, f32)>,
+}
+
+impl Clearing {
+    /// Whether a thing at `p` is kept out: in the clearing or in its gap.
+    pub fn clears(&self, p: Vec2) -> bool {
+        if self.at.distance(p) < self.radius {
+            return true;
+        }
+        let Some((toward, length, width)) = self.gap else {
+            return false;
+        };
+        let way = (toward - self.at).normalize_or_zero();
+        let along = (p - self.at).dot(way);
+        (0.0..=length).contains(&along) && (p - self.at - way * along).length() < width / 2.0
+    }
 }
 
 /// The registries a world reads when it makes chunks and sites.
@@ -245,7 +265,7 @@ impl World2d {
         chunk.things.retain(|thing| {
             let at = centre(thing.tile);
             !on_site(thing.tile)
-                && !bunkers.iter().any(|c| c.at.distance(at) < c.radius)
+                && !bunkers.iter().any(|c| c.clears(at))
                 && ground[index(thing.tile)] != Ground::Road
         });
         chunk
@@ -343,9 +363,19 @@ mod tests {
             river_fords: 0.3,
         };
         let ground = GroundGen::new(def, 9, biomes).unwrap();
-        let bunker = Clearing { at: Vec2::ZERO, radius: 20.0 };
+        let bunker = Clearing { at: Vec2::ZERO, radius: 20.0, gap: None };
         let places = Places::new(vec![SiteKind { monument: "stop".to_string(), chance: 0.7 }], vec![(bunker.at, bunker.radius)]);
         World2d::new(ground, places, vec![bunker])
+    }
+
+    #[test]
+    fn a_clearings_gap_keeps_clear_only_along_its_way() {
+        let c = Clearing { at: Vec2::ZERO, radius: 10.0, gap: Some((Vec2::new(100.0, 0.0), 50.0, 8.0)) };
+        assert!(c.clears(Vec2::new(5.0, 0.0)), "in the clearing");
+        assert!(c.clears(Vec2::new(40.0, 3.0)), "in the gap");
+        assert!(!c.clears(Vec2::new(40.0, 5.0)), "beside the gap");
+        assert!(!c.clears(Vec2::new(60.0, 0.0)), "past the gap's end");
+        assert!(!c.clears(Vec2::new(-30.0, 0.0)), "behind the bunker");
     }
 
     /// The bunker's clearing is bare land in its own ground, no circle of
