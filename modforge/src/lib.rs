@@ -24,6 +24,7 @@ pub mod command;
 pub mod counters;
 pub mod crafting;
 pub mod debug;
+pub mod descent;
 pub mod duel;
 pub mod edge;
 pub mod envelope;
