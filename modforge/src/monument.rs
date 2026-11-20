@@ -259,6 +259,27 @@ pub static AUTHORED_ROOMS: &[AuthoredRoom] = &[
             ("barracks", 80),
         ],
     },
+    // A radio room (todo 10j3): a long desk against one wall with the
+    // set on it, a mast cabinet in the corner, a chair before the desk.
+    AuthoredRoom {
+        name: "radio room",
+        furniture: &[
+            ([0.0, -0.4], [2.4, 0.8, 0.7], [0.4, 0.3, 0.2]),
+            ([-0.15, -0.42], [0.7, 0.4, 0.45], [0.25, 0.27, 0.25]),
+            ([0.2, -0.42], [0.5, 0.3, 0.4], [0.2, 0.22, 0.2]),
+            ([0.42, 0.4], [0.6, 2.0, 0.6], [0.35, 0.37, 0.35]),
+            ([0.0, -0.18], [0.5, 0.5, 0.5], [0.3, 0.2, 0.15]),
+        ],
+        barred: false,
+        chances: &[
+            ("office building", 100),
+            ("barracks", 120),
+            ("lab", 100),
+            ("lighthouse", 300),
+            ("bunker complex", 120),
+            ("dock building", 100),
+        ],
+    },
 ];
 
 pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef {
