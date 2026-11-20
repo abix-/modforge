@@ -47,12 +47,14 @@ pub enum StationKind {
 }
 
 /// One recipe as data. Inputs are (item id, count) pairs consumed.
-/// Output is the item id and count produced.
+/// Output is the item id and count produced, made with `layers` on it (a
+/// handle made with nails in it), none for a simple item.
 #[derive(Clone)]
 pub struct RecipeDef {
     pub name: String,
     pub inputs: Vec<(String, u32)>,
     pub output: (String, u32),
+    pub layers: Vec<String>,
     pub station: StationKind,
     pub craft_time: f32,
 }
@@ -106,6 +108,7 @@ pub fn craft(
     recipe: &RecipeDef,
     inventory: &mut Inventory,
     items: &ItemRegistry,
+    layers: &item::LayerRegistry,
     quality_odds: &[u64],
     now: f32,
     salt: u64,
@@ -113,6 +116,19 @@ pub fn craft(
     if !can_craft(recipe, inventory) {
         return None;
     }
+    // A recipe whose layers do not fit its item makes nothing and takes
+    // nothing.
+    let output_def = items.def(&recipe.output.0)?;
+    let made = item::create_layered(
+        output_def,
+        &recipe.layers,
+        layers,
+        recipe.output.1,
+        quality_odds,
+        now,
+        salt,
+    )
+    .ok()?;
     for (id, count) in &recipe.inputs {
         let mut remaining = *count;
         for slot in 0..inventory.slots.len() {
@@ -128,14 +144,7 @@ pub fn craft(
             }
         }
     }
-    let output_def = items.def(&recipe.output.0)?;
-    Some(item::create(
-        output_def,
-        recipe.output.1,
-        quality_odds,
-        now,
-        salt,
-    ))
+    Some(made)
 }
 
 #[cfg(test)]
@@ -197,6 +206,7 @@ mod tests {
                 name: "craft knife".to_string(),
                 inputs: vec![("scrap".to_string(), 3)],
                 output: ("knife".to_string(), 1),
+                layers: Vec::new(),
                 station: StationKind::CraftingBench,
                 craft_time: 2.0,
             })
@@ -226,6 +236,7 @@ mod tests {
             name: "test".to_string(),
             inputs: vec![],
             output: ("x".to_string(), 1),
+            layers: Vec::new(),
             station: StationKind::CraftingBench,
             craft_time: 1.0,
         };
@@ -247,7 +258,7 @@ mod tests {
     fn craft_consumes_inputs_and_produces_output() {
         let (items, recipes, mut inv) = setup();
         let recipe = recipes.def("craft knife").unwrap();
-        let result = craft(recipe, &mut inv, &items, &[], 1.0, 42).unwrap();
+        let result = craft(recipe, &mut inv, &items, &Default::default(), &[], 1.0, 42).unwrap();
         assert_eq!(result.item, "knife");
         assert_eq!(result.count, 1);
         assert_eq!(inv.count_of("scrap"), 7);
@@ -258,14 +269,14 @@ mod tests {
         let (items, recipes, _) = setup();
         let recipe = recipes.def("craft knife").unwrap();
         let mut empty = Inventory::new(5);
-        assert!(craft(recipe, &mut empty, &items, &[], 1.0, 42).is_none());
+        assert!(craft(recipe, &mut empty, &items, &Default::default(), &[], 1.0, 42).is_none());
     }
 
     #[test]
     fn craft_rolls_quality_on_output() {
         let (items, recipes, mut inv) = setup();
         let recipe = recipes.def("craft knife").unwrap();
-        let result = craft(recipe, &mut inv, &items, &[1000], 1.0, 42).unwrap();
+        let result = craft(recipe, &mut inv, &items, &Default::default(), &[1000], 1.0, 42).unwrap();
         assert!(result.quality.is_some());
     }
 
