@@ -39,6 +39,9 @@ pub struct Perception<'a> {
     /// The storm is coming or here (topside design.md "The storm"):
     /// hide or die.
     pub storm_coming: bool,
+    /// It is night (the consumer's day clock): people with a home go
+    /// home and sleep until morning (`sleeps_tonight`).
+    pub night: bool,
     /// Something in their own bags answers hunger, and thirst: they
     /// eat and drink what they carry before going for more.
     pub carries_food: bool,
@@ -423,11 +426,34 @@ pub fn eat_carried(t: &mut Think, target: &Target) -> Status {
 /// walk, the walk costing a Lazy person more. A need nothing known answers
 /// does not hide the next: worn out with nowhere to sleep, a person still
 /// goes to the well they know.
+/// Night sends people home to sleep and morning sends them out (topside
+/// todo 11e4; RimWorld's pawns sleep on a schedule): at night someone with
+/// a home, not a guard (guards hold their posts through the night) and
+/// not asked to be somewhere, wants their rest as if spent, and sleeps on
+/// until the night ends.
+pub fn sleeps_tonight(p: &Perception) -> bool {
+    p.night && p.home.is_some() && p.behaviour != Behaviour::Guard && p.asked.is_none()
+}
+
+/// Their needs, worst first, rest the worst of all on a night they sleep
+/// (`sleeps_tonight`).
+fn needs_now(p: &Perception) -> Vec<(Need, f32)> {
+    let mut needs = p.needs.needs_worst_first().to_vec();
+    if sleeps_tonight(p) {
+        for (need, value) in &mut needs {
+            if *need == Need::Rest {
+                *value = 0.0;
+            }
+        }
+        needs.sort_by(|a, b| a.1.total_cmp(&b.1));
+    }
+    needs
+}
+
 fn need_target(p: &Perception) -> Option<Target> {
     let diligence = p.personality.get(crate::actor::Axis::Diligence);
     let walk_cost = 1.0 - 0.25 * diligence;
-    p.needs
-        .needs_worst_first()
+    needs_now(p)
         .into_iter()
         .take_while(|(_, value)| *value < NEED_LINE)
         .find_map(|(need, _)| {
@@ -552,7 +578,7 @@ pub fn use_it(t: &mut Think, target: &Target) -> Status {
             Status::Running
         }
         Need::Rest => {
-            if p.needs.rest >= RESTED {
+            if p.needs.rest >= RESTED && !sleeps_tonight(p) {
                 t.act(vec![], Some(Do::Wake));
                 return Status::Succeeded;
             }
@@ -919,6 +945,7 @@ mod tests {
             asleep: false,
             hostile: None,
             storm_coming: false,
+            night: false,
             carries_food: false,
             carries_drink: false,
             store: None,
@@ -936,6 +963,30 @@ mod tests {
             asked: None,
             trader: None,
         }
+    }
+
+    /// Night sends people home to sleep, rested or not, and they sleep on
+    /// until morning; a guard holds its post, and someone asked to be
+    /// somewhere stays asked.
+    #[test]
+    fn night_sends_people_home_to_sleep_and_guards_hold_their_posts() {
+        let mut memory = Memory::default();
+        memory.see(1, "home", Vec3::ZERO, 1);
+        let personality = Personality::default();
+        let worth = |k: &crate::memory::Known, n: Need| if k.kind == "home" && n == Need::Rest { 100.0 } else { 0.0 };
+        let mut p = perception(&memory, &personality);
+        p.worth = &worth;
+        p.night = true;
+        assert!(sleeps_tonight(&p));
+        assert!(matches!(need_target(&p), Some(Target::Thing { key: 1, need: Some(Need::Rest), .. })), "rested, still home to sleep");
+        p.behaviour = Behaviour::Guard;
+        assert!(!sleeps_tonight(&p), "a guard holds its post");
+        p.behaviour = Behaviour::Hunter;
+        p.asked = Some(Vec3::ONE);
+        assert!(!sleeps_tonight(&p), "asked somewhere");
+        p.asked = None;
+        p.night = false;
+        assert!(need_target(&p).is_none(), "morning: rested, nothing sends them home");
     }
 
     #[test]
