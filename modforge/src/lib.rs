@@ -88,6 +88,7 @@ pub mod structure;
 pub mod studs;
 pub mod survival;
 pub mod talk;
+pub mod tech;
 pub mod test_queue;
 pub mod testkit;
 pub mod trade;
