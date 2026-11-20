@@ -41,11 +41,16 @@ pub struct Tier {
     pub name: String,
     pub per_mille: u64,
     pub power: f32,
+    /// The least danger a spot must have for this tier to be found there
+    /// (topside authority.md "LootTable": the danger sets the ceiling of
+    /// the tiers; no top tier from a safe place).
+    pub min_danger: u32,
 }
 
-/// The odds of a table, best tier first, as `roll_tier` takes them.
-pub fn odds(tiers: &[Tier]) -> Vec<u64> {
-    tiers.iter().map(|t| t.per_mille).collect()
+/// The odds of a table at a spot of `danger`, best tier first, as
+/// `roll_tier` takes them: a tier the danger does not reach has none.
+pub fn odds(tiers: &[Tier], danger: u32) -> Vec<u64> {
+    tiers.iter().map(|t| if t.min_danger <= danger { t.per_mille } else { 0 }).collect()
 }
 
 /// How much a stack of `tier` (None the base tier) multiplies its hits:
@@ -65,9 +70,16 @@ mod tests {
 
     fn table() -> Vec<Tier> {
         vec![
-            Tier { name: "best".into(), per_mille: 100, power: 1.5 },
-            Tier { name: "good".into(), per_mille: 300, power: 1.2 },
+            Tier { name: "best".into(), per_mille: 100, power: 1.5, min_danger: 3 },
+            Tier { name: "good".into(), per_mille: 300, power: 1.2, min_danger: 0 },
         ]
+    }
+
+    #[test]
+    fn a_safe_spot_never_rolls_the_top_tier() {
+        let o = odds(&table(), 1);
+        assert_eq!(o, vec![0, 300]);
+        assert!((0..2000).all(|s| roll_tier(&o, 0.0, s) != Some(0)));
     }
 
     #[test]
@@ -82,7 +94,7 @@ mod tests {
 
     #[test]
     fn tiers_roll_at_about_their_odds() {
-        let o = odds(&table());
+        let o = odds(&table(), 3);
         let rolls: Vec<_> = (0..2000).map(|s| roll_tier(&o, 0.0, s)).collect();
         let best = rolls.iter().filter(|r| **r == Some(0)).count();
         let good = rolls.iter().filter(|r| **r == Some(1)).count();
