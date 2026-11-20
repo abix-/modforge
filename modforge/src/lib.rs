@@ -64,6 +64,7 @@ pub mod persona;
 pub mod placement;
 pub mod places;
 pub mod power;
+pub mod practice;
 pub mod process_memory;
 pub mod process_ops;
 pub mod quality;
