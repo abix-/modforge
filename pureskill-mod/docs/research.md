@@ -57,3 +57,27 @@ test result: ok. 2 passed; 0 failed
 
 BepInEx log: `Registered mono type Unityforge.Shim.UnityforgeTickDriver in il2cpp domain`,
 so class injection works on this build despite the substitute warning.
+
+## the game's classes
+
+`tests/research_types.rs`, 2026-11-20, from the live game in 0.07 s:
+`Assembly-CSharp: 279 types, 3 namespaces`. 273 are in `CheatIncremental`
+(the game's own code name), 5 in the global namespace (`Demo`, `Readme`,
+Unity generated), 1 in `KedyGames` (`KedySplash`).
+
+The names, grouped by what they read as (names only; nothing below is
+checked beyond the name):
+
+- Cheats: `CheatManager`, `CheatInventory`, `CheatDefinition`, `CheatState`,
+  `CheatOption`, `CheatTune`, `CheatSettings`, `AimbotAd`, `WallhackCheat`,
+  `HitboxCheat`, `EspOverlay`, `NoRecoilAd`, `SpeedhackAd`, `BunnyhopAd`, `RageAd`
+- Matches and bots: `MatchManager`, `MatchResult`, `MatchRanking`,
+  `MatchScoreboard`, `BotManager`, `BotController`, `BotSkill`, `BotBounty`,
+  `DefendSite`, `SpawnPoint`, `TargetDummy`
+- Player and weapons: `FPSController`, `PlayerHealth`, `PlayerWeapon`,
+  `WeaponDefinition`, `WeaponInventory`, `WeaponModifiers`, `Hitbox`, `DamageInfo`
+- Money and cases: `Money`, `MoneyHud`, `Bounty`, `BountyOdds`, `CaseOpener`,
+  `CaseDefinition`, `CaseDrop`, `Skin`, `SkinRarity`, `Rarity`
+- Desktop shell: `Os`, `OsDesktop`, `OsWindow`, `HubUI`, `ShopTab`, `NodeView`
+- Save and settings: `SaveSystem`, `SaveData`, `GameSession`, `GameSettings`,
+  `BalanceConfig`
