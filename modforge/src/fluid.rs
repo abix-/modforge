@@ -121,7 +121,15 @@ mod tests {
     }
 
     fn stack(item: &str, litres: f32) -> ItemStack {
-        ItemStack { item: item.to_string(), count: 1, quality: None, note: None, layers: Vec::new(), litres }
+        ItemStack {
+            item: item.to_string(),
+            count: 1,
+            quality: None,
+            note: None,
+            layers: Vec::new(),
+            litres,
+            affixes: Vec::new(),
+        }
     }
 
     /// Filled at a river, a bottle takes its size; at a source drawn from

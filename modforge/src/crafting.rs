@@ -211,6 +211,7 @@ mod tests {
                 note: None,
                 layers: Vec::new(),
                 litres: 0.0,
+                affixes: Vec::new(),
             },
             20,
         );

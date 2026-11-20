@@ -475,6 +475,7 @@ mod tests {
         assert_eq!(
             stats.eat_from_slot(&mut inv, 1, &registry),
             Err(SurvivalError::NotFood("scrap".to_string()))
+            affixes: Vec::new(),
         );
         assert_eq!(
             stats.eat_from_slot(&mut inv, 2, &registry),

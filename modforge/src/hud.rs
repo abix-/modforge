@@ -894,6 +894,7 @@ mod tests {
         let mut state = HudState::new();
         let r = interact(InteractKind::Container, &mut inv, None, 10, &mut state);
         assert_eq!(r, InteractResult::OpenContainer);
+            affixes: Vec::new(),
         assert_eq!(state.open_panel, OpenPanel::Inventory);
     }
 

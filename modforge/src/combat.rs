@@ -777,6 +777,7 @@ mod tests {
                     max_stack: 1,
                     quality_siblings: 1,
                     combat: None,
+            affixes: Vec::new(),
                     food: None,
                     storage: None,
                     armor: Some(crate::item::Armor { amount, area }),

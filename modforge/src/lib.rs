@@ -37,6 +37,7 @@ pub mod hot_reload;
 pub mod hud;
 pub mod inject;
 pub mod input;
+pub mod affix;
 pub mod item;
 #[cfg(feature = "keen")]
 pub mod keen;

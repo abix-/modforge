@@ -378,13 +378,20 @@ pub struct ItemStack {
     /// (crate::fluid); 0 for everything that holds none.
     #[serde(default)]
     pub litres: f32,
+    /// Its affixes (crate::affix), rolled when it entered existence.
+    #[serde(default)]
+    pub affixes: Vec<crate::affix::Affix>,
 }
 
 impl ItemStack {
     /// Whether `other` may merge into this stack: containers only when they
     /// hold the same.
     pub fn stacks_with(&self, other: &ItemStack) -> bool {
-        self.item == other.item && self.quality == other.quality && self.layers == other.layers && self.litres == other.litres
+        self.item == other.item
+            && self.quality == other.quality
+            && self.layers == other.layers
+            && self.litres == other.litres
+            && self.affixes == other.affixes
     }
 }
 
@@ -406,6 +413,7 @@ pub fn create(def: &ItemDef, count: u32, odds: &[u64], now: f32, salt: u64) -> I
         note: None,
         layers: Vec::new(),
         litres: 0.0,
+        affixes: Vec::new(),
     }
 }
 
@@ -465,7 +473,19 @@ pub fn numbers_of(def: &ItemDef, stack: &ItemStack, layers: &LayerRegistry) -> N
         combat.spread_degrees = (combat.spread_degrees + layer.spread_degrees).max(0.0);
         combat.delay = (combat.delay + layer.delay).max(0.05);
     }
-    Numbers { combat, armor: def.armor }
+    // Then its affixes, over its layers.
+    for affix in &stack.affixes {
+        let Some(combat) = combat.as_mut() else {
+            break;
+        };
+        combat.reach = (combat.reach + affix.reach).max(0.0);
+        combat.spread_degrees = (combat.spread_degrees + affix.spread_degrees).max(0.0);
+        combat.delay = (combat.delay + affix.delay).max(0.05);
+    }
+    Numbers {
+        combat,
+        armor: def.armor,
+    }
 }
 
 /// The one way a note comes to exist: a single `Note` item through
@@ -721,6 +741,7 @@ mod tests {
     fn a_note_is_written_once_and_only_on_a_note_def() {
         let mut paper = def("note");
         paper.kind = ItemKind::Note;
+            affixes: Vec::new(),
         let note = Note {
             text: "do not go outside".to_string(),
             signed: "M.".to_string(),
@@ -857,6 +878,36 @@ mod tests {
                 damage: damage.to_string(),
                 delay: 0.6,
                 reach,
+    #[test]
+    fn affixes_change_the_numbers_and_keep_stacks_apart() {
+        let pipe = ItemDef {
+            kind: ItemKind::Weapon,
+            combat: Some(CombatStats {
+                damage: "pipe swing".to_string(),
+                delay: 0.6,
+                reach: 2.0,
+                pellets: 1,
+                spread_degrees: 0.0,
+                ammo: None,
+            }),
+            ..def("pipe")
+        };
+        let plain = create(&pipe, 1, &[], 0.0, 1);
+        let mut light = plain.clone();
+        light.affixes.push(crate::affix::Affix {
+            name: "lightweight".to_string(),
+            reach: 0.0,
+            spread_degrees: 0.0,
+            delay: -0.1,
+            power: 1.0,
+        });
+        let layers = LayerRegistry::default();
+        let delay = |s: &ItemStack| numbers_of(&pipe, s, &layers).combat.unwrap().delay;
+        assert!((delay(&plain) - 0.6).abs() < 1e-5);
+        assert!((delay(&light) - 0.5).abs() < 1e-5);
+        assert!(!plain.stacks_with(&light));
+    }
+
                 pellets: 1,
                 spread_degrees: 0.0,
                 ammo: None,
