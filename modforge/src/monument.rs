@@ -239,6 +239,26 @@ pub static AUTHORED_ROOMS: &[AuthoredRoom] = &[
             ("bunker complex", 100),
         ],
     },
+    // A collapsed stairwell with a body (todo 10j2): a fallen flight
+    // lying corner to corner, rubble heaped against it, and a body lying
+    // at its foot.
+    AuthoredRoom {
+        name: "collapsed stairwell",
+        furniture: &[
+            ([0.1, -0.1], [1.2, 0.9, 3.0], [0.5, 0.48, 0.45]),
+            ([-0.3, 0.3], [1.4, 1.1, 1.2], [0.45, 0.43, 0.4]),
+            ([0.32, -0.35], [0.9, 0.6, 0.9], [0.45, 0.43, 0.4]),
+            ([-0.2, -0.3], [0.5, 0.25, 1.75], [0.35, 0.3, 0.28]),
+        ],
+        barred: false,
+        chances: &[
+            ("office building", 150),
+            ("apartment block", 100),
+            ("hospital", 100),
+            ("lab", 120),
+            ("barracks", 80),
+        ],
+    },
 ];
 
 pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef {
