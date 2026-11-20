@@ -329,6 +329,7 @@ mod tests {
                                 count: (1, 2),
                                 radius: 4.0,
                                 picture: None,
+                                centred: false,
                             }]
                         } else {
                             vec![]

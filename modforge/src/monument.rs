@@ -601,6 +601,10 @@ pub struct PropDef {
     pub count: (u32, u32),
     pub radius: f32,
     pub picture: Option<String>,
+    /// Stands on the site's middle instead (a ridge, topside design.md
+    /// "The triangle rule"), and a site with no buildings keeps its loot
+    /// just past its far (+z) side: behind it.
+    pub centred: bool,
 }
 
 /// One monument type as data (design.md "Monument types"). `name`
@@ -775,10 +779,12 @@ impl MonumentRegistry {
             }
         }
 
-        // A site with no buildings keeps its loot at the origin.
+        // A site with no buildings keeps its loot at the origin, or just
+        // behind a prop standing there.
         if members.is_empty() {
+            let behind = def.props.iter().filter(|p| p.centred).map(|p| p.size.z / 2.0 + 1.5).fold(0.0, f32::max);
             loot_spots.push(LootSpot {
-                position: Vec3::new(0.0, 0.35, 0.0),
+                position: Vec3::new(0.0, 0.35, behind),
                 danger: def.danger,
             });
         }
@@ -790,6 +796,15 @@ impl MonumentRegistry {
             let count = roll.between(spec.count.0, spec.count.1);
             let clear = Vec2::new(spec.size.x, spec.size.z).length() / 2.0 + 1.5 * std::f32::consts::SQRT_2;
             for _ in 0..count {
+                if spec.centred {
+                    props.push(crate::structure::Prop {
+                        position: Vec3::new(0.0, spec.size.y / 2.0, 0.0),
+                        size: spec.size,
+                        color: spec.color,
+                        picture: spec.picture.clone(),
+                    });
+                    continue;
+                }
                 let angle = roll.measure(0.0, std::f32::consts::TAU);
                 let distance = roll.measure(clear.max(spec.radius * 0.4 + 1.0), spec.radius.max(clear));
                 props.push(crate::structure::Prop {
@@ -1384,6 +1399,7 @@ mod tests {
                     count: (1, 3),
                     radius: 5.0,
                     picture: Some("car wreck".into()),
+                    centred: false,
                 }],
                 good_for: Default::default(),
                 height: 2.0,

@@ -1142,6 +1142,7 @@ mod tests {
                         count: (1, 2),
                         radius: 4.0,
                         picture: None,
+                        centred: false,
                     }],
                     good_for: Default::default(),
                     height: 1.4,
