@@ -13,6 +13,7 @@ pub mod annex;
 pub mod args;
 pub mod biome;
 pub mod brain;
+pub mod building;
 pub mod buying;
 pub mod chance;
 pub mod client;
