@@ -20,6 +20,13 @@ pub enum Weather {
 }
 
 impl Weather {
+    /// A weather by the name a biome's table gives it (any case).
+    pub fn from_name(name: &str) -> Option<Weather> {
+        [Weather::Clear, Weather::Rain, Weather::Fog, Weather::HeatWave, Weather::ColdSnap, Weather::RadiationStorm]
+            .into_iter()
+            .find(|w| w.name().eq_ignore_ascii_case(name))
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Weather::Clear => "Clear",
