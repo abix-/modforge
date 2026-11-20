@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use crate::walk::Cell;
+use crate::path::Cell;
 
 /// One river's tiles from `source`, in order, at most `most` long:
 /// downhill on `elevation` until `ends` says it reached water or the edge.
