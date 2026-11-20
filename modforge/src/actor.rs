@@ -84,7 +84,9 @@ impl ActorRegistry {
 /// The one persistent identity of an actor: issued once by the
 /// `ActorMap`, never reused, kept across save and load. The host's
 /// runtime handle and the GPU row are bookkeeping; this is the name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct ActorId(pub u64);
 
 /// A record of one live actor: its host handle and its GPU row.
@@ -167,7 +169,12 @@ impl<H: Copy + Eq + std::hash::Hash> ActorMap<H> {
     /// (`new_of`), ids and rows kept; an actor whose handle has no new one
     /// is forgotten and its row freed.
     pub fn map_handles(&mut self, new_of: impl Fn(H) -> Option<H>) {
-        let gone: Vec<ActorId> = self.by_id.iter().filter(|(_, r)| new_of(r.handle).is_none()).map(|(id, _)| *id).collect();
+        let gone: Vec<ActorId> = self
+            .by_id
+            .iter()
+            .filter(|(_, r)| new_of(r.handle).is_none())
+            .map(|(id, _)| *id)
+            .collect();
         for id in gone {
             self.remove(id);
         }
@@ -302,7 +309,8 @@ impl Personality {
             let mut picked = Vec::new();
             let mut salt = 10;
             while picked.len() < count {
-                let axis = (((crate::genome::jitter(key, salt, 1.0) + 1.0) / 2.0) * SIGNED_AXES as f64) as usize;
+                let axis = (((crate::genome::jitter(key, salt, 1.0) + 1.0) / 2.0)
+                    * SIGNED_AXES as f64) as usize;
                 let axis = axis.min(SIGNED_AXES - 1);
                 salt += 1;
                 if picked.contains(&axis) {
@@ -321,7 +329,8 @@ impl Personality {
             // Fear of not having enough, on its own: one in six afraid,
             // from a little (0.3) to wholly (1.0); the rest not at all.
             if (crate::genome::jitter(key, 1000, 1.0) + 1.0) / 2.0 < 1.0 / 6.0 {
-                axes[Axis::Fear as usize] = 0.3 + 0.7 * ((crate::genome::jitter(key, 1001, 1.0) + 1.0) / 2.0);
+                axes[Axis::Fear as usize] =
+                    0.3 + 0.7 * ((crate::genome::jitter(key, 1001, 1.0) + 1.0) / 2.0);
             }
             axes
         });
@@ -454,22 +463,73 @@ pub fn roll_name(names: &[&str], id: ActorId, world_seed: u64) -> String {
     names.get(at).map_or_else(String::new, |n| n.to_string())
 }
 
+/// A hostile's rolled traits beyond its genome's axes (topside design
+/// "Enemy randomization", Diablo 2's monster modifiers): armored, it wears
+/// armor; a pack leader, it brings friends. Fast, tough, aggressive and
+/// cautious are the axes (`Personality`). Rolled from who they are, as
+/// `Personality::seed` is: the same id and seed give the same traits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostileTraits {
+    pub armored: bool,
+    pub pack_leader: bool,
+}
+
+impl HostileTraits {
+    /// Each trait comes to one hostile in this many. Claude's, for the
+    /// operator to change.
+    pub const ONE_IN: f64 = 5.0;
+
+    pub fn roll(id: ActorId, world_seed: u64) -> HostileTraits {
+        let key = (id.0 as i64) ^ (world_seed as i64).rotate_left(41);
+        let hit = |salt| (crate::genome::jitter(key, salt, 1.0) + 1.0) / 2.0 < 1.0 / Self::ONE_IN;
+        HostileTraits {
+            armored: hit(1),
+            pack_leader: hit(2),
+        }
+    }
+
+    /// The traits' names, as a player would read them.
+    pub fn names(&self) -> Vec<&'static str> {
+        [(self.armored, "armored"), (self.pack_leader, "pack leader")]
+            .into_iter()
+            .filter_map(|(on, name)| on.then_some(name))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hostile_traits_roll_the_same_for_the_same_one_and_come_to_some() {
+        let rolls: Vec<_> = (0..1000).map(|id| HostileTraits::roll(ActorId(id), 9)).collect();
+        assert!(
+            (0..1000).all(|id| HostileTraits::roll(ActorId(id), 9) == rolls[id as usize])
+        );
+        let armored = rolls.iter().filter(|t| t.armored).count();
+        let leaders = rolls.iter().filter(|t| t.pack_leader).count();
+        assert!((130..270).contains(&armored), "armored {armored}");
+        assert!((130..270).contains(&leaders), "leaders {leaders}");
+    }
 
     const NAMES: [&str; 6] = ["Ada", "Bo", "Cy", "Di", "Ed", "Flo"];
 
     #[test]
     fn the_same_person_always_gets_the_same_name() {
         for id in 0..50 {
-            assert_eq!(roll_name(&NAMES, ActorId(id), 7), roll_name(&NAMES, ActorId(id), 7));
+            assert_eq!(
+                roll_name(&NAMES, ActorId(id), 7),
+                roll_name(&NAMES, ActorId(id), 7)
+            );
         }
     }
 
     #[test]
     fn people_get_different_names_from_the_list() {
-        let rolled: std::collections::HashSet<String> = (0..50).map(|id| roll_name(&NAMES, ActorId(id), 7)).collect();
+        let rolled: std::collections::HashSet<String> = (0..50)
+            .map(|id| roll_name(&NAMES, ActorId(id), 7))
+            .collect();
         assert!(rolled.len() > 3, "{rolled:?}");
         assert!(rolled.iter().all(|n| NAMES.contains(&n.as_str())));
     }
@@ -478,8 +538,17 @@ mod tests {
         let slot = |names: &[Option<&str>]| names.iter().map(|n| n.map(str::to_string)).collect();
         LookDef {
             bodies: vec![
-                BodyLook { name: "a".to_string(), slots: vec![slot(&[Some("short"), Some("long"), None]), slot(&[Some("beard"), None])] },
-                BodyLook { name: "b".to_string(), slots: vec![slot(&[Some("buns"), None])] },
+                BodyLook {
+                    name: "a".to_string(),
+                    slots: vec![
+                        slot(&[Some("short"), Some("long"), None]),
+                        slot(&[Some("beard"), None]),
+                    ],
+                },
+                BodyLook {
+                    name: "b".to_string(),
+                    slots: vec![slot(&[Some("buns"), None])],
+                },
             ],
             skins: vec![[0.9, 0.7, 0.6], [0.5, 0.35, 0.25], [0.3, 0.2, 0.15]],
             hair: vec![[0.1, 0.08, 0.06], [0.6, 0.45, 0.2]],
@@ -491,16 +560,29 @@ mod tests {
     #[test]
     fn a_look_is_the_same_for_the_same_person_and_people_differ() {
         let def = looks();
-        assert_eq!(Look::roll(ActorId(7), 3, &def), Look::roll(ActorId(7), 3, &def));
+        assert_eq!(
+            Look::roll(ActorId(7), 3, &def),
+            Look::roll(ActorId(7), 3, &def)
+        );
         let all: Vec<Look> = (0..400).map(|i| Look::roll(ActorId(i), 3, &def)).collect();
         for body in ["a", "b"] {
             assert!(all.iter().any(|l| l.body == body), "no body {body}");
         }
         for piece in ["short", "long", "beard", "buns"] {
-            assert!(all.iter().any(|l| l.pieces.iter().any(|p| p == piece)), "no {piece}");
+            assert!(
+                all.iter().any(|l| l.pieces.iter().any(|p| p == piece)),
+                "no {piece}"
+            );
         }
-        assert!(all.iter().any(|l| l.pieces.is_empty()), "nobody goes without");
-        assert!(all.iter().all(|l| l.body == "a" || !l.pieces.iter().any(|p| p == "beard")), "a piece only on the body it fits");
+        assert!(
+            all.iter().any(|l| l.pieces.is_empty()),
+            "nobody goes without"
+        );
+        assert!(
+            all.iter()
+                .all(|l| l.body == "a" || !l.pieces.iter().any(|p| p == "beard")),
+            "a piece only on the body it fits"
+        );
         for skin in &def.skins {
             assert!(all.iter().any(|l| l.skin == *skin), "no skin {skin:?}");
         }
@@ -610,14 +692,21 @@ mod tests {
         let mut with_traits = 0;
         for id in 1..=100u64 {
             let p = Personality::seed(ActorId(id), 42);
-            let set: Vec<f32> = p.axes[..SIGNED_AXES].iter().copied().filter(|v| *v != 0.0).collect();
+            let set: Vec<f32> = p.axes[..SIGNED_AXES]
+                .iter()
+                .copied()
+                .filter(|v| *v != 0.0)
+                .collect();
             assert!(set.len() <= 2, "{id}: {:?}", p.axes);
             for v in &set {
                 assert!((0.5..=1.5).contains(&v.abs()), "{id}: {v}");
             }
             // Fear of not having enough, on its own: none, or 0.3 to 1.
             let fear = p.get(Axis::Fear);
-            assert!(fear == 0.0 || (0.3..=1.0).contains(&fear), "{id}: fear {fear}");
+            assert!(
+                fear == 0.0 || (0.3..=1.0).contains(&fear),
+                "{id}: fear {fear}"
+            );
             if !set.is_empty() {
                 with_traits += 1;
             }
