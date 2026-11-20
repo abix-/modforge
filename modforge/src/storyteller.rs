@@ -654,16 +654,18 @@ pub enum When {
 }
 
 /// One way of saying something, picked from the seed and `salt` among
-/// the ways whose every {slot} is in `slots`, its slots filled; None when
-/// no way can be filled.
+/// the ways whose every {slot} is in `slots` and that fill the most of
+/// them, its slots filled; None when no way can be filled. A way that
+/// leaves out what the speaker knows is said only when they know no more
+/// (topside the-tap.md "The lines": the way with no {landmark} is "when
+/// Dell knows no landmark on the way").
 pub fn say(ways: &[String], slots: &[(&str, &str)], seed: u64, salt: u64) -> Option<String> {
     let fillable: Vec<&String> = ways
         .iter()
         .filter(|way| slots_of(way).all(|slot| slots.iter().any(|(name, _)| *name == slot)))
         .collect();
-    if fillable.is_empty() {
-        return None;
-    }
+    let most = fillable.iter().map(|way| slots_of(way).count()).max()?;
+    let fillable: Vec<&String> = fillable.into_iter().filter(|way| slots_of(way).count() == most).collect();
     let way = fillable[crate::roll::salted_index(seed, salt, fillable.len() as u64) as usize];
     let mut words = way.clone();
     for (name, value) in slots {
@@ -2090,7 +2092,9 @@ mod tests {
             assert!(!said.contains('{'), "{said}");
         }
         let all: HashSet<String> = (0..60).map(|seed| say(&ways(), &slots, seed, 1).unwrap()).collect();
-        assert_eq!(all.len(), 3, "every way gets said");
+        // Only the way that says the most of what is known: the landmark.
+        assert_eq!(all.len(), 1, "{all:?}");
+        assert!(all.iter().all(|said| said.contains("radio tower")), "{all:?}");
     }
 
     #[test]
