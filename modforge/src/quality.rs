@@ -34,8 +34,8 @@ pub fn roll_sibling(siblings: u64, now: f32, salt: u64) -> u64 {
 }
 
 /// One quality tier of a game's table (best first): its name, its
-/// per-mille odds, and how much harder a weapon of it hits and how much
-/// more a worn piece of it protects (1 is the base tier's).
+/// per-mille odds, and how much harder a weapon of it hits (1 is the base
+/// tier's).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tier {
     pub name: String,
@@ -48,8 +48,8 @@ pub fn odds(tiers: &[Tier]) -> Vec<u64> {
     tiers.iter().map(|t| t.per_mille).collect()
 }
 
-/// How much a stack of `tier` (None the base tier) multiplies its hits
-/// and its protection: the one place quality changes an item's numbers.
+/// How much a stack of `tier` (None the base tier) multiplies its hits:
+/// the one place quality changes an item's numbers.
 pub fn power(tier: Option<usize>, tiers: &[Tier]) -> f32 {
     tier.and_then(|t| tiers.get(t)).map_or(1.0, |t| t.power)
 }
