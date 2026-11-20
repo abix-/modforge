@@ -79,6 +79,31 @@ fn first_handle_opts<S: DeserializeOwned>(
     }
 }
 
+/// Every class in the IL2CPP assembly `assembly` with its parent,
+/// fields (type, name, offset) and methods (static flag, return and
+/// parameter types), as the text Il2CppBridge.AssemblyMembers builds
+/// in one shim call: a `class ...` line per class, then indented
+/// `field ...` and `method ...` lines. None when no loaded assembly
+/// has that name or the running shim predates the method.
+pub fn assembly_members<S: DeserializeOwned>(api: &Api<S>, assembly: &str) -> Option<String> {
+    let r = api.op(
+        "invoke_static",
+        // Thousands of classes can take longer than invoke_static's 2 s default.
+        json!({"class": "Unityforge.Shim.Il2CppBridge", "method": "AssemblyMembers", "args": [assembly], "timeout_s": 60}),
+    );
+    match r.result.as_str() {
+        Some("") => {
+            println!("{assembly}: no loaded assembly by that name");
+            None
+        }
+        Some(text) => Some(text.to_string()),
+        None => {
+            println!("{assembly}: AssemblyMembers failed: {}", r.error.unwrap_or_default());
+            None
+        }
+    }
+}
+
 /// Full names of every type in the IL2CPP assembly whose simple name
 /// is `assembly` (for example "Assembly-CSharp"), compiler-generated
 /// closures left out. None when no loaded assembly has that name.

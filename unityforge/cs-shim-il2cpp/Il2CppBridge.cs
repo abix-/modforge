@@ -673,28 +673,126 @@ namespace Unityforge.Shim
         /// Called through invoke_static. Empty when no assembly has
         /// that name.
         /// </summary>
-        public static unsafe string AssemblyTypeNames(string assembly)
+        public static string AssemblyTypeNames(string assembly)
+        {
+            var image = FindImage(assembly);
+            if (image == IntPtr.Zero) return "";
+            var sb = new StringBuilder();
+            var n = Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class_count(image);
+            for (uint c = 0; c < n; c++)
+            {
+                var full = NativeClassName(Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class(image, c));
+                if (full == null || full.Contains("<")) continue;
+                sb.Append(full).Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Every class in one IL2CPP assembly with its parent, fields
+        /// and methods, read straight from the runtime in one call
+        /// (the same image walk as AssemblyTypeNames). Text, one line
+        /// each:
+        ///   class Ns.Name : Parent.Full [enum] [struct] [interface] [abstract]
+        ///     field [static] [const] Type name @0xOFFSET
+        ///     method [static] Ret Name(Type a, Type b)
+        /// Compiler-generated classes (a '<' in the name) are left
+        /// out; their fields (backing fields) are kept. Generic
+        /// definitions (a '`' in the name) are listed with no members:
+        /// their fields and methods are open types. Called through
+        /// invoke_static. Empty when no assembly has that name.
+        /// </summary>
+        public static string AssemblyMembers(string assembly)
+        {
+            var image = FindImage(assembly);
+            if (image == IntPtr.Zero) return "";
+            var sb = new StringBuilder();
+            var n = Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class_count(image);
+            for (uint c = 0; c < n; c++)
+            {
+                var klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class(image, c);
+                var full = NativeClassName(klass);
+                if (full == null || full.Contains("<")) continue;
+                sb.Append("class ").Append(full);
+                var parent = NativeClassName(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_parent(klass));
+                if (parent != null) sb.Append(" : ").Append(parent);
+                if (Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_enum(klass)) sb.Append(" [enum]");
+                else if (Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_valuetype(klass)) sb.Append(" [struct]");
+                if (Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_interface(klass)) sb.Append(" [interface]");
+                else if (Il2CppInterop.Runtime.IL2CPP.il2cpp_class_is_abstract(klass)) sb.Append(" [abstract]");
+                sb.Append('\n');
+                if (full.Contains("`")) continue;
+
+                var iter = IntPtr.Zero;
+                IntPtr field;
+                while ((field = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_fields(klass, ref iter)) != IntPtr.Zero)
+                {
+                    var flags = Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_flags(field);
+                    sb.Append("  field ");
+                    if ((flags & 0x10) != 0) sb.Append("static ");
+                    if ((flags & 0x40) != 0) sb.Append("const ");
+                    sb.Append(NativeTypeName(Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_type(field))).Append(' ')
+                        .Append(Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_name(field)));
+                    if ((flags & 0x50) == 0)
+                        sb.Append(" @0x").Append(Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(field).ToString("X"));
+                    sb.Append('\n');
+                }
+
+                iter = IntPtr.Zero;
+                IntPtr method;
+                while ((method = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_methods(klass, ref iter)) != IntPtr.Zero)
+                {
+                    uint iflags = 0;
+                    var flags = Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_flags(method, ref iflags);
+                    sb.Append("  method ");
+                    if ((flags & 0x10) != 0) sb.Append("static ");
+                    sb.Append(NativeTypeName(Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_return_type(method))).Append(' ')
+                        .Append(Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_name(method))).Append('(');
+                    var pc = Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_param_count(method);
+                    for (uint p = 0; p < pc; p++)
+                    {
+                        if (p > 0) sb.Append(", ");
+                        sb.Append(NativeTypeName(Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_param(method, p))).Append(' ')
+                            .Append(Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_param_name(method, p)));
+                    }
+                    sb.Append(")\n");
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The runtime image of the loaded assembly named `assembly`
+        /// ("GRClient" or "GRClient.dll"); zero when none is loaded.
+        /// </summary>
+        private static unsafe IntPtr FindImage(string assembly)
         {
             var domain = Il2CppInterop.Runtime.IL2CPP.il2cpp_domain_get();
             uint count = 0;
             var asms = Il2CppInterop.Runtime.IL2CPP.il2cpp_domain_get_assemblies(domain, ref count);
             var want = assembly + ".dll";
-            var sb = new StringBuilder();
             for (uint i = 0; i < count; i++)
             {
                 var image = Il2CppInterop.Runtime.IL2CPP.il2cpp_assembly_get_image(asms[i]);
                 var imageName = Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_name(image));
-                if (imageName != want && imageName != assembly) continue;
-                var n = Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class_count(image);
-                for (uint c = 0; c < n; c++)
-                {
-                    var full = NativeClassName(Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class(image, c));
-                    if (full == null || full.Contains("<")) continue;
-                    sb.Append(full).Append('\n');
-                }
-                break;
+                if (imageName == want || imageName == assembly) return image;
             }
-            return sb.ToString();
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// The runtime's own name for an Il2CppType ("System.Int32",
+        /// "CheatIncremental.Money"). The runtime allocates the string;
+        /// it is freed here.
+        /// </summary>
+        private static string NativeTypeName(IntPtr type)
+        {
+            if (type == IntPtr.Zero) return "?";
+            var p = Il2CppInterop.Runtime.IL2CPP.il2cpp_type_get_name(type);
+            if (p == IntPtr.Zero) return "?";
+            var s = Marshal.PtrToStringAnsi(p);
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_free(p);
+            return s;
         }
 
         /// <summary>

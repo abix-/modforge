@@ -81,3 +81,22 @@ checked beyond the name):
 - Desktop shell: `Os`, `OsDesktop`, `OsWindow`, `HubUI`, `ShopTab`, `NodeView`
 - Save and settings: `SaveSystem`, `SaveData`, `GameSession`, `GameSettings`,
   `BalanceConfig`
+
+## every field and method
+
+`tests/research_members.rs`, 2026-11-20, one shim call
+(`Il2CppBridge.AssemblyMembers`):
+`Assembly-CSharp: 279 classes, 3230 fields, 2563 methods, read in 228.8955ms`.
+Each class with its parent, each field with type and offset, each method
+with return and parameter types. Not kept in the repo; rerun the test
+to get the full listing (about 6000 lines). Sample:
+
+```
+class CheatIncremental.CheatManager : UnityEngine.MonoBehaviour
+  field System.Collections.Generic.List<CheatIncremental.ICheat> _active @0x20
+  method System.Collections.Generic.IReadOnlyList<CheatIncremental.ICheat> get_Active()
+  method System.Void ActivateLoaded(CheatIncremental.CheatContext context)
+```
+
+Generic definitions (`CheatBehaviour`1`, `CheatDefinition`1`) are listed
+without members.

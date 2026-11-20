@@ -4,6 +4,13 @@ Abiotic Factor history is maintained in [its project changelog](../abioticfactor
 The Walking Trade history is maintained in [its project changelog](../thewalkingtrade-mod/docs/changelog.md).
 Obenseuer history is maintained in [its project changelog](../obenseuer-mod/docs/changelog.md).
 
+## 2026-11-20
+
+| Area | Shipped | Verification |
+|---|---|---|
+| `unityforge` | [x] Every field and method of an IL2CPP assembly in one shim call (`Il2CppBridge.AssemblyMembers`, client `assembly_members`): parent, field types and offsets, method signatures | Pure Skill `research_members`: 279 classes, 3230 fields, 2563 methods in 229 ms, game kept running; MelonLoader shim still builds (0 errors) |
+| `pureskill-mod` | [x] `research_types` and `research_members` list the game's 279 classes and all their members | both passed against the live demo |
+
 ## 2026-11-19
 
 | Area | Shipped | Verification |
