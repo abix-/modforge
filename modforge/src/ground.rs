@@ -227,7 +227,7 @@ impl GroundGen {
     }
 
     /// The hidden elevation at a tile, -1 to 1.
-    fn elevation(&self, t: Cell) -> f32 {
+    pub fn elevation(&self, t: Cell) -> f32 {
         fbm(&self.elevation, crate::walk::centre(t) / self.def.feature_size)
     }
 
