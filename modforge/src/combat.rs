@@ -461,6 +461,10 @@ pub struct FireTimer {
     /// The last pull was a melee move: until it ends the person is
     /// committed to it (topside combat.md "Commitment").
     pub melee: bool,
+    /// A swing is winding up and has not landed yet (topside combat.md
+    /// "Simple to use": every attack shows a wind-up before it lands).
+    #[serde(default)]
+    pub winding: bool,
 }
 
 impl Default for FireTimer {
@@ -471,9 +475,15 @@ impl Default for FireTimer {
             swing: Swing::Overhead,
             released: true,
             melee: false,
+            winding: false,
         }
     }
 }
+
+/// How far through a swing's delay its hit lands: the wind-up is the part
+/// before, seen before the hit (topside combat.md "Simple to use"). Half,
+/// where the drawn swing peaks (Claude's, for the operator to change).
+pub const WIND_UP: f32 = 0.5;
 
 /// Quake 3: an empty click costs half a second.
 pub const EMPTY_DELAY: f32 = 0.5;
@@ -532,16 +542,28 @@ impl FireTimer {
             return Trigger::Waiting;
         }
         let delay = if swing == Swing::Block { BLOCK_TIME } else { delay };
+        };
         self.released = false;
         self.melee = true;
         self.ready_in = delay;
         self.delay = delay;
         self.swing = swing;
+        self.winding = swing != Swing::Block;
         if swing == Swing::Block {
             Trigger::Block
         } else {
             Trigger::Fire
         }
+    }
+
+    /// Whether the swing winding up lands this step: once `WIND_UP` of its
+    /// delay has passed, once.
+    pub fn lands(&mut self) -> bool {
+        if self.winding && self.ready_in <= self.delay * (1.0 - WIND_UP) {
+            self.winding = false;
+            return true;
+        }
+        false
     }
 
     /// Mid swing or mid block: the person is committed and can do
@@ -617,6 +639,23 @@ mod tests {
         assert!(r.rolling() && !r.safe(), "open in the second half");
         r.tick(0.4);
         assert!(!r.rolling(), "over by 0.7 s");
+    }
+
+    #[test]
+    fn a_swing_lands_after_its_wind_up_once_and_a_block_never() {
+        let mut t = FireTimer::default();
+        assert_eq!(t.pull_melee(1.0, Swing::Overhead, true), Trigger::Fire);
+        assert!(!t.lands(), "not at the press");
+        t.tick(0.4);
+        assert!(!t.lands(), "still winding up at 0.4 s");
+        t.tick(0.1);
+        assert!(t.lands(), "lands at half the delay");
+        t.tick(0.1);
+        assert!(!t.lands(), "lands once");
+        let mut b = FireTimer::default();
+        assert_eq!(b.pull_melee(1.0, Swing::Block, true), Trigger::Block);
+        b.tick(0.6);
+        assert!(!b.lands(), "a block never lands a hit");
     }
 
     fn pipe() -> DamageDef {
