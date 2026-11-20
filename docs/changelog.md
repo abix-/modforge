@@ -4,6 +4,13 @@ Abiotic Factor history is maintained in [its project changelog](../abioticfactor
 The Walking Trade history is maintained in [its project changelog](../thewalkingtrade-mod/docs/changelog.md).
 Obenseuer history is maintained in [its project changelog](../obenseuer-mod/docs/changelog.md).
 
+## 2026-11-19
+
+| Area | Shipped | Verification |
+|---|---|---|
+| `pureskill-mod` | [x] New mod for Pure Skill Demo (Unity 6000.3.13f1, IL2CPP, metadata v39) on unityforge through BepInEx 6 be.793, control plane on port 17187; restart.ps1 installs BepInEx, builds the shim and deploys. MelonLoader 0.7.3 crashed the game in its method cross-reference scan (MelonLoader issue #1159) | `restart.ps1` exit 0, control plane answered; `research_engine` 2 passed (ping, 4 cameras found) |
+| `unityforge` | [x] BepInEx IL2CPP shim builds: added the `Il2Cppmscorlib` reference it lacked | `dotnet build -c Release -p:BepInExDir=...` 0 errors; loaded in Pure Skill |
+
 ## 2026-11-13
 
 | Area | Shipped | Verification |
