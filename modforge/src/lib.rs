@@ -27,6 +27,7 @@ pub mod debug;
 pub mod duel;
 pub mod edge;
 pub mod envelope;
+pub mod exposure;
 pub mod faction;
 pub mod fluid;
 pub mod genome;
