@@ -100,6 +100,7 @@ pub mod unknown;
 pub mod upgrade;
 pub mod valid;
 pub mod vanilla;
+pub mod vehicle;
 pub mod vendor;
 pub mod walk;
 pub mod weather;
