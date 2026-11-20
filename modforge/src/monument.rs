@@ -193,8 +193,58 @@ impl BuildingRegistry {
 /// windows on exterior walls by chance, a full-height stairwell
 /// east of the front row when there is a second floor, furniture
 /// and lights by chance. Every result passes [`validate`].
+/// A hand-made room (topside design.md "Monument composition", third
+/// layer; ToME's vaults): what stands in it, each piece placed by where
+/// it sits as a share of the room's width and length from its middle
+/// (-0.5 to 0.5) and its size; whether it is barred (no window and no
+/// breach: its doors are the only ways in); and the chance in a
+/// thousand, per building type, that a room
+/// of that type is swapped for it.
+pub struct AuthoredRoom {
+    pub name: &'static str,
+    pub furniture: &'static [([f32; 2], [f32; 3], Rgb)],
+    pub barred: bool,
+    pub chances: &'static [(&'static str, u64)],
+}
+
+impl AuthoredRoom {
+    /// Its chance in a thousand in a building of `kind`; None when it is
+    /// never found there.
+    pub fn chance(&self, kind: &str) -> Option<u64> {
+        self.chances.iter().find(|(k, _)| *k == kind).map(|(_, c)| *c)
+    }
+}
+
+/// The library of hand-made rooms. A building takes at most one. The
+/// chances are Claude's, for the operator to change.
+pub static AUTHORED_ROOMS: &[AuthoredRoom] = &[
+    // A barred storeroom: shelves along three walls, crates in the
+    // middle, every way in a shut door, no windows (todo 10j1).
+    AuthoredRoom {
+        name: "barred storeroom",
+        furniture: &[
+            ([-0.42, 0.0], [0.5, 1.8, 2.4], [0.35, 0.3, 0.25]),
+            ([0.42, 0.0], [0.5, 1.8, 2.4], [0.35, 0.3, 0.25]),
+            ([0.0, -0.42], [2.4, 1.8, 0.5], [0.35, 0.3, 0.25]),
+            ([0.1, 0.1], [0.8, 0.8, 0.8], [0.45, 0.35, 0.2]),
+            ([-0.1, 0.15], [0.6, 0.6, 0.6], [0.45, 0.35, 0.2]),
+        ],
+        barred: true,
+        chances: &[
+            ("warehouse", 150),
+            ("supermarket", 150),
+            ("workshop", 150),
+            ("barracks", 100),
+            ("industrial plant", 80),
+            ("bunker complex", 100),
+        ],
+    },
+];
+
 pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef {
     let p = def;
+    // Whether this building has taken its one hand-made room yet.
+    let mut swapped = false;
     let columns = roll.between(p.columns.0, p.columns.1) as usize;
     let rows = roll.between(p.rows.0, p.rows.1) as usize;
     let floors = roll.between(p.floors.0, p.floors.1) as i32;
@@ -321,6 +371,21 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                         ..door(Side::East, 0.0)
                     });
                 }
+                // A hand-made room in place of a rolled one, by its
+                // chance for this building type: never the front room or
+                // the stair tower's, at most one a building.
+                let authored = if front || stair_door || swapped {
+                    None
+                } else {
+                    AUTHORED_ROOMS
+                        .iter()
+                        .find(|a| a.chance(&p.name).is_some_and(|c| roll.chance(c)))
+                };
+                // Every doorway between rooms already has its one door
+                // (hung from one side); a barred room has no window and
+                // no breach, so the doors are the only ways in.
+                swapped |= authored.is_some();
+                let barred = authored.is_some_and(|a| a.barred);
                 // Exterior walls above ground: windows by chance,
                 // breaches by damage. A window sits off-centre; a
                 // breach is a ragged gap down near the floor.
@@ -331,7 +396,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                     (Side::East, !east && !stair_door, l),
                 ];
                 for (side, free, run) in exterior {
-                    if !free || !exterior_level {
+                    if !free || !exterior_level || barred {
                         continue;
                     }
                     if run >= 2.0 * WINDOW_WIDTH + 1.0 && roll.chance(p.windows) {
@@ -360,7 +425,19 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                     // missing with damage.
                     ceiling: top && !roll.chance(p.damage),
                 });
-                let parts = roll.between(0, 2) as usize + usize::from(roll.chance(p.clutter));
+                if let Some(a) = authored {
+                    for &([fx, fz], [sx, sy, sz], color) in a.furniture {
+                        let size = Vec3::new(sx.min(w - 0.4), sy, sz.min(l - 0.4));
+                        let dx = (fx * w).clamp(-(w / 2.0 - size.x / 2.0 - 0.1), w / 2.0 - size.x / 2.0 - 0.1);
+                        let dz = (fz * l).clamp(-(l / 2.0 - size.z / 2.0 - 0.1), l / 2.0 - size.z / 2.0 - 0.1);
+                        furniture.push(SolidDef {
+                            center: origin + Vec3::new(dx, size.y / 2.0, dz),
+                            size,
+                            color,
+                        });
+                    }
+                }
+                let parts = if authored.is_some() { 0 } else { roll.between(0, 2) as usize + usize::from(roll.chance(p.clutter)) };
                 for _ in 0..parts.min(3) {
                     let size = Vec3::new(
                         roll.measure(0.5, 1.6),
