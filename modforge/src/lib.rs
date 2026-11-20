@@ -65,6 +65,7 @@ pub mod process_ops;
 pub mod quality;
 pub mod read_once;
 pub mod reality;
+pub mod randy;
 pub mod relationship;
 pub mod research;
 pub mod ring;
