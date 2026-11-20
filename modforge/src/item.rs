@@ -381,6 +381,10 @@ pub struct ItemStack {
     /// Its affixes (crate::affix), rolled when it entered existence.
     #[serde(default)]
     pub affixes: Vec<crate::affix::Affix>,
+    /// The game day it was made on, for spoiling (`spoiled`); a stack
+    /// joining another keeps that one's day.
+    #[serde(default)]
+    pub made_day: f32,
 }
 
 impl ItemStack {
@@ -414,7 +418,16 @@ pub fn create(def: &ItemDef, count: u32, odds: &[u64], now: f32, salt: u64) -> I
         layers: Vec::new(),
         litres: 0.0,
         affixes: Vec::new(),
+        made_day: 0.0,
     }
+}
+
+/// Whether food made on `made_day` has spoiled by `today` (game days)
+/// when it keeps `keeps_days` (topside design.md "Survival pressures":
+/// food spoils over time, so nobody stockpiles forever; Don't Starve's
+/// food left too long turns to rot).
+pub fn spoiled(stack: &ItemStack, today: f32, keeps_days: f32) -> bool {
+    today - stack.made_day >= keeps_days
 }
 
 /// The one way an item comes to exist with layers: through `create`,
@@ -734,6 +747,8 @@ mod tests {
             note: None,
             layers: Vec::new(),
             litres: 0.0,
+            affixes: Vec::new(),
+            made_day: 0.0,
         }
     }
 
@@ -741,7 +756,6 @@ mod tests {
     fn a_note_is_written_once_and_only_on_a_note_def() {
         let mut paper = def("note");
         paper.kind = ItemKind::Note;
-            affixes: Vec::new(),
         let note = Note {
             text: "do not go outside".to_string(),
             signed: "M.".to_string(),

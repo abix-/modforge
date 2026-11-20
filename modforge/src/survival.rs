@@ -462,6 +462,8 @@ mod tests {
             note: None,
             layers: Vec::new(),
             litres: 0.0,
+            affixes: Vec::new(),
+            made_day: 0.0,
         });
         let mut stats = SurvivalStats {
             hunger: 10.0,
@@ -475,7 +477,6 @@ mod tests {
         assert_eq!(
             stats.eat_from_slot(&mut inv, 1, &registry),
             Err(SurvivalError::NotFood("scrap".to_string()))
-            affixes: Vec::new(),
         );
         assert_eq!(
             stats.eat_from_slot(&mut inv, 2, &registry),

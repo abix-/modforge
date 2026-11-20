@@ -752,6 +752,8 @@ mod tests {
             note: None,
             layers: Vec::new(),
             litres: 0.0,
+            affixes: Vec::new(),
+            made_day: 0.0,
         };
         let armors = [
             ("shirt", 2.0, BodyArea::Chest),
@@ -777,7 +779,6 @@ mod tests {
                     max_stack: 1,
                     quality_siblings: 1,
                     combat: None,
-            affixes: Vec::new(),
                     food: None,
                     storage: None,
                     armor: Some(crate::item::Armor { amount, area }),
