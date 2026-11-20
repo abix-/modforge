@@ -254,11 +254,15 @@ impl ItemLedger {
     }
 }
 
-/// What a worn item does: the protection it adds. Any wearable goes in any
+/// What a worn item does: the protection it adds, on the part of the body
+/// it is worn on and nowhere else (topside combat.md "How deadly": worn
+/// armor protects only the part it is worn on). Any wearable goes in any
 /// free equipment slot.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Armor {
     pub amount: f32,
+    #[serde(default)]
+    pub area: crate::combat::BodyArea,
 }
 
 /// The collection of checked-in ItemDefs. Consumers register their

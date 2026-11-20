@@ -166,9 +166,11 @@ pub struct Hit<'a> {
 /// Where on a body a hit landed, by height up the body (Rust: head
 /// shots hurt double, legs less). Each area is guarded by the gear
 /// worn in its equipment slot.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum BodyArea {
     Head,
+    /// The middle of the body, where a hit with no height lands (Claude's).
+    #[default]
     Chest,
     Legs,
 }
@@ -194,19 +196,19 @@ impl BodyArea {
             BodyArea::Legs => 0.75,
         }
     }
-
 }
 
 impl Protection {
-    /// This actor's protection with no body parts (topside combat.md
-    /// "How deadly"): the base plus the armor of every item worn, added
-    /// into one total that every hit goes through.
+    /// This actor's protection where a hit lands (topside combat.md "How
+    /// deadly": worn armor protects only the part it is worn on): the base
+    /// plus the armor of every item worn on `area`.
     /// Each item's armor comes from `item::numbers_of`, the one place an
     /// item's numbers are worked out from its layers.
     pub fn worn(
         &self,
         worn: &crate::item::Equipment,
         items: &crate::item::ItemRegistry,
+        area: BodyArea,
         layers: &crate::item::LayerRegistry,
     ) -> Protection {
         let worn_armor: f32 = worn
@@ -214,6 +216,7 @@ impl Protection {
             .filter_map(|stack| {
                 let def = items.def(&stack.item)?;
                 crate::item::numbers_of(def, stack, layers).armor
+            .filter(|armor| armor.area == area)
             })
             .map(|armor| armor.amount)
             .sum();
@@ -741,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    fn every_worn_piece_adds_into_one_total() {
+    fn worn_armor_guards_only_the_area_it_is_worn_on() {
         let stack = |name: &str| crate::item::ItemStack {
             item: name.to_string(),
             count: 1,
@@ -750,16 +753,21 @@ mod tests {
             layers: Vec::new(),
             litres: 0.0,
         };
-        let armors = [("shirt", 2.0), ("vest", 30.0), ("hat", 1.0), ("helmet", 10.0)];
+        let armors = [
+            ("shirt", 2.0, BodyArea::Chest),
+            ("vest", 30.0, BodyArea::Chest),
+            ("hat", 1.0, BodyArea::Head),
+            ("helmet", 10.0, BodyArea::Head),
+        ];
         // Any wearable in any free slot: a hat and a helmet together, no
         // layers, nothing taken off.
         let mut worn = crate::item::Equipment::default();
-        for (name, _) in armors {
+        for (name, ..) in armors {
             worn.wear(stack(name)).unwrap();
         }
         // Each piece's armor is on its def, read through `numbers_of`.
         let mut items = crate::item::ItemRegistry::default();
-        for (name, amount) in armors {
+        for (name, amount, area) in armors {
             items
                 .register(crate::item::ItemDef {
                     name: name.to_string(),
@@ -771,7 +779,7 @@ mod tests {
                     combat: None,
                     food: None,
                     storage: None,
-                    armor: Some(crate::item::Armor { amount }),
+                    armor: Some(crate::item::Armor { amount, area }),
                     good_for: Default::default(),
                     picture: None,
                     layer_slots: Vec::new(),
@@ -785,11 +793,14 @@ mod tests {
             armor: 5.0,
             resistances: vec![],
         };
-        // Every item worn adds its protection: 5 + 2 + 30 + 1 + 10.
-        assert_eq!(base.worn(&worn, &items, &layers).armor, 48.0);
+        // Only what is worn on the area hit guards it: the chest 5 + 2 +
+        // 30, the head 5 + 1 + 10, the legs nothing worn.
+        assert_eq!(base.worn(&worn, &items, &layers, BodyArea::Chest).armor, 37.0);
+        assert_eq!(base.worn(&worn, &items, &layers, BodyArea::Head).armor, 16.0);
+        assert_eq!(base.worn(&worn, &items, &layers, BodyArea::Legs).armor, 5.0);
         // Taking one off takes its protection with it.
         worn.take_off(1);
-        assert_eq!(base.worn(&worn, &items, &layers).armor, 18.0);
+        assert_eq!(base.worn(&worn, &items, &layers, BodyArea::Chest).armor, 7.0);
     }
 
     #[test]

@@ -1036,7 +1036,7 @@ mod tests {
             combat: None,
             food: None,
             storage: None,
-            armor: Some(crate::item::Armor { amount: 40.0 }),
+            armor: Some(crate::item::Armor { amount: 40.0, area: crate::combat::BodyArea::Chest }),
             good_for: Default::default(),
             picture: None,
             layer_slots: Vec::new(),
