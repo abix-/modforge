@@ -74,6 +74,15 @@ pub struct World2d {
 /// Tries at a spot for one topside person before they are left out.
 const PEOPLE_TRIES: u64 = 64;
 
+/// The most secrets a world rolls (operator, 2026-08-21: 0 to 5).
+pub const SECRETS_MOST: u64 = 5;
+/// How far a secret keeps from every road, site and bunker clearing,
+/// metres (Claude's, for the operator to change).
+pub const SECRET_OFF: f32 = 40.0;
+/// Tries at a spot for one secret before it is left out.
+const SECRET_TRIES: u64 = 64;
+const SECRETS_SALT: u64 = 0x5EC2_E700;
+
 impl World2d {
     pub fn new(ground: GroundGen, places: Places, bunkers: Vec<Clearing>) -> Self {
         Self {
@@ -124,6 +133,39 @@ impl World2d {
             }
         }
         self.people_spots = Some(out.clone());
+        out
+    }
+
+    /// Where this world's secrets are (topside design.md "The unknown" rule
+    /// 7: "every map should have the possibility to have 0-5 secrets"): 0
+    /// to `SECRETS_MOST` rolled from the seed, each a land tile in the
+    /// chunks from `lo` to `hi` (chunk keys, both ways) taken only if no
+    /// road, site or bunker clearing comes within `SECRET_OFF` of it. A
+    /// secret with no such tile in its tries is left out. The same every
+    /// time for a seed.
+    pub fn secrets(&mut self, r: Registries, (lo, hi): (i32, i32)) -> Vec<Vec2> {
+        let seed = self.ground.seed;
+        let count = tile_hash(seed, (0, 0), SECRETS_SALT) % (SECRETS_MOST + 1);
+        let (lo, span) = (lo * CHUNK, ((hi - lo) * CHUNK).max(1));
+        let off = (SECRET_OFF / TILE).ceil() as i32;
+        let mut out = Vec::new();
+        for k in 0..count as i32 {
+            for a in 0..SECRET_TRIES {
+                let h = tile_hash(seed, (k, 0), SECRETS_SALT + 1 + a);
+                let t = (lo + (h % span as u64) as i32, lo + ((h >> 32) % span as u64) as i32);
+                let at = centre(t);
+                let chunk = self.chunk(r, (t.0.div_euclid(CHUNK), t.1.div_euclid(CHUNK)));
+                let land = chunk.ground_at(t).is_land() && chunk.ground_at(t) != Ground::Road;
+                let clear = land
+                    && !self.bunkers.iter().any(|c| c.at.distance(at) < c.radius + SECRET_OFF)
+                    && self.sites_touching(r, at - SECRET_OFF, at + SECRET_OFF).is_empty()
+                    && self.road_tiles(r, (t.0 - off, t.1 - off), (t.0 + off, t.1 + off)).is_empty();
+                if clear {
+                    out.push(at);
+                    break;
+                }
+            }
+        }
         out
     }
 
@@ -366,6 +408,29 @@ mod tests {
         let bunker = Clearing { at: Vec2::ZERO, radius: 20.0, gap: None };
         let places = Places::new(vec![SiteKind { monument: "stop".to_string(), chance: 0.7 }], vec![(bunker.at, bunker.radius)]);
         World2d::new(ground, places, vec![bunker])
+    }
+
+    /// A world's secrets are 0 to 5, each on land off every road, site
+    /// and bunker clearing, the same every time for the seed.
+    #[test]
+    fn secrets_are_few_and_off_every_road_and_site() {
+        let (biomes, monuments, buildings) = registries();
+        let r = Registries {
+            biomes: &biomes,
+            monuments: &monuments,
+            buildings: &buildings,
+        };
+        let mut w = world(&biomes);
+        let found = w.secrets(r, (-6, 6));
+        assert!(found.len() as u64 <= SECRETS_MOST);
+        for at in &found {
+            assert!(at.length() >= 20.0 + SECRET_OFF, "a secret by the bunker at {at}");
+            assert!(w.sites_touching(r, *at - SECRET_OFF, *at + SECRET_OFF).is_empty(), "a secret by a site at {at}");
+            let t = cell_of(*at);
+            let off = (SECRET_OFF / TILE).ceil() as i32;
+            assert!(w.road_tiles(r, (t.0 - off, t.1 - off), (t.0 + off, t.1 + off)).is_empty(), "a secret by a road at {at}");
+        }
+        assert_eq!(world(&biomes).secrets(r, (-6, 6)), found, "the same for the seed");
     }
 
     #[test]
