@@ -98,6 +98,7 @@ pub mod valid;
 pub mod vanilla;
 pub mod vendor;
 pub mod walk;
+pub mod weather;
 pub mod winproc;
 pub mod worker;
 pub mod world2d;
