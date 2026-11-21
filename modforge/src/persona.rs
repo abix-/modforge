@@ -141,9 +141,123 @@ pub fn key_of(name: &str) -> u64 {
     name.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
 }
 
+/// What a game writes to host a Persona (authority.md "Binder": eyes and
+/// hands into one world, never deciding): what the person senses there,
+/// what a thing of that game is worth for a need, and the brain's actions
+/// carried out with the game's own hands. The brain decides; the binder
+/// only senses and acts.
+pub trait PersonaBinder {
+    /// What the person senses now in this game, filled from its world;
+    /// `worth` is this binder's own `worth`, handed back for the brain.
+    fn perceive<'a>(
+        &'a self,
+        persona: &'a Persona,
+        worth: &'a dyn Fn(&crate::memory::Known, crate::survival::Need) -> f32,
+    ) -> crate::brain::Perception<'a>;
+
+    /// What a remembered thing of this game is worth for a need (the
+    /// game's registry answers; memory only remembers the kind).
+    fn worth(&self, known: &crate::memory::Known, need: crate::survival::Need) -> f32;
+
+    /// Carry out what the brain decided this think.
+    fn act(&mut self, actions: Vec<crate::actions::Action>, do_now: Option<crate::brain::Do>);
+}
+
+/// One think of a person hosted by a game: the binder senses, the game's
+/// tree decides (seeded by `roll`), what they chose goes to what they
+/// learn from, and the binder carries out the actions.
+pub fn think<B: PersonaBinder>(
+    binder: &mut B,
+    persona: &mut Persona,
+    tree: &crate::statetree::StateTree<crate::brain::Brain>,
+    roll: &mut crate::monument::Roll,
+) {
+    let mut doing = persona.doing;
+    let (actions, do_now, situation, chose) = {
+        let worth = |k: &crate::memory::Known, n| binder.worth(k, n);
+        let perception = binder.perceive(persona, &worth);
+        let situation = crate::brain::situation(&perception);
+        let mut thought = crate::brain::Think::new(&perception, roll);
+        let chose = tree.think(&mut thought, &mut doing);
+        (thought.actions, thought.do_now, situation, chose)
+    };
+    persona.doing = doing;
+    for choice in chose {
+        persona.memory.learned.chose(situation, choice);
+    }
+    binder.act(actions, do_now);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::brain::{self, Brain, Do, Perception};
+    use crate::statetree::{Enter, ROOT, Select, StateDef, StateTree, Task};
+    use crate::survival::Need;
+
+    /// A game with nothing in it but what the person carries.
+    #[derive(Default)]
+    struct Empty {
+        did: Vec<Option<Do>>,
+    }
+
+    impl PersonaBinder for Empty {
+        fn perceive<'a>(
+            &'a self,
+            persona: &'a Persona,
+            worth: &'a dyn Fn(&crate::memory::Known, Need) -> f32,
+        ) -> Perception<'a> {
+            Perception {
+                now: 1,
+                position: glam::Vec3::ZERO,
+                yaw: 0.0,
+                health_fraction: 1.0,
+                needs: persona.needs,
+                home: None,
+                behaviour: crate::actor::Behaviour::Hunter,
+                at_home: false,
+                asleep: false,
+                hostile: None,
+                game: &(),
+                night: false,
+                carries_food: true,
+                carries_drink: false,
+                bags_full: false,
+                memory: &persona.memory,
+                personality: &persona.personality,
+                worth,
+                standable: &|_| true,
+                reachable: &Vec::new,
+                unknown: &|_| true,
+                asked: None,
+                trader: None,
+            }
+        }
+
+        fn worth(&self, _: &crate::memory::Known, _: Need) -> f32 {
+            0.0
+        }
+
+        fn act(&mut self, _: Vec<crate::actions::Action>, do_now: Option<Do>) {
+            self.did.push(do_now);
+        }
+    }
+
+    fn state(name: &'static str, parent: Option<usize>) -> StateDef<Brain> {
+        StateDef { name, parent, choice: None, enter: None, select: Select::InOrder, task: None, transitions: Vec::new() }
+    }
+
+    #[test]
+    fn a_binder_drives_a_persona_through_one_think() {
+        let mut eat = state("eat what they carry", Some(ROOT));
+        eat.enter = Some(brain::enter_eat_carried as Enter<Brain>);
+        eat.task = Some(brain::eat_carried as Task<Brain>);
+        let tree = StateTree { states: vec![state("root", None), eat] };
+        let mut persona = Persona::default();
+        persona.needs.hunger = 20.0;
+        let mut game = Empty::default();
+        think(&mut game, &mut persona, &tree, &mut crate::monument::Roll::new(1));
+        assert_eq!(game.did, vec![Some(Do::EatCarried { need: Need::Hunger })], "hungry, carrying food: they eat it");    }
 
     fn scratch(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!("persona-{tag}-{:016x}", fastrand::u64(..)))
