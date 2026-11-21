@@ -3,6 +3,7 @@ mod deposit;
 mod first_copy_wins;
 mod investigate;
 mod kept_loaded;
+mod police_person;
 mod save_timing;
 mod settings;
 mod tweaks;
@@ -32,6 +33,7 @@ fn on_init() {
     first_copy_wins::install();
     investigate::install();
     kept_loaded::install();
+    police_person::install();
     settings::get().register_hud_op();
 
     unityforge::mono::log(unityforge::mono::LogLevel::Info, "obenseuer-mod: ready");
@@ -39,6 +41,7 @@ fn on_init() {
 
 fn on_tick(_now: f32) {
     kept_loaded::tick();
+    police_person::tick();
 }
 
 fn on_shutdown() {

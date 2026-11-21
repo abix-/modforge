@@ -1917,6 +1917,7 @@ name = "obenseuer-mod"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "glam 0.32.1",
  "modforge",
  "parking_lot",
  "serde",

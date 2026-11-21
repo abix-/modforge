@@ -21,6 +21,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }
+glam = "0.32"
 
 [lints]
 workspace = true
