@@ -627,6 +627,16 @@ pub unsafe fn call(
 ) -> Result<Value, String> {
     let uclass =
         crate::ue::find_class_fast(class).ok_or_else(|| format!("class '{class}' not found"))?;
+    // A native function run on an object of another class reads its
+    // fields at the wrong offsets: SkinnedMeshComponent::GetNumBones on
+    // a WidgetComponent crashed Wicked Island on 2026-11-21 (access
+    // violation reading 0x2, the widget in rdi).
+    if !target.is_a(uclass) {
+        return Err(format!(
+            "{} is not a {class}; {class}::{function} refused",
+            target.full_name()
+        ));
+    }
     let func = uclass
         .get_function(class, function)
         .ok_or_else(|| format!("function '{class}::{function}' not found"))?;
