@@ -339,15 +339,15 @@ fn start(args: &Value) -> Result<Value, String> {
     );
     // The current spawn operation creates an ally. Orders themselves do not
     // require human allegiance or a Follow assignment.
-    let defaults = modforge::ai_orders::OrdersDef {
-        assignment: modforge::ai_orders::Assignment::Follow {
+    let defaults = crate::orders::OrdersDef {
+        assignment: crate::orders::Assignment::Follow {
             player: reply["near_player"]
                 .as_str()
                 .ok_or("spawn has no human")?
                 .into(),
         },
-        stance: modforge::ai_orders::Stance::Defensive,
-        limits: modforge::ai_orders::Limits {
+        stance: crate::orders::Stance::Defensive,
+        limits: crate::orders::Limits {
             follow_distance: 150.0,
             hold_radius: 75.0,
             chase_distance: 1200.0,

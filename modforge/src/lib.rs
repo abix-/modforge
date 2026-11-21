@@ -9,7 +9,6 @@
 pub mod actions;
 pub mod actor;
 pub mod acts;
-pub mod ai_orders;
 pub mod annex;
 pub mod args;
 pub mod biome;

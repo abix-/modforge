@@ -522,7 +522,7 @@ fn assignments_and_native_melee() {
             serde_json::from_value(status["pawn"]["location"].clone()).unwrap();
         let post: [f64; 3] = serde_json::from_value(hold["position"].clone()).unwrap();
         assert!(
-            modforge::ai_orders::distance(position, post) < 100.0,
+            position.iter().zip(post).map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt() < 100.0,
             "wandered away: {status}"
         );
     }

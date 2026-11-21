@@ -1,18 +1,268 @@
-//! Abiotic perception, damage and native melee adapter for shared AI player orders.
-//! K8s slot: Def=modforge::ai_orders::OrdersDef, Registry=PLAYERS,
-//! Instance=PlayerOrders, Controller=tick.
+//! Sophia's PersonaBinder in Abiotic Factor: her senses (her own
+//! perception, damage, hostility, where she is asked to be) fill her
+//! modforge Perception; her modforge Persona decides through the brain's
+//! shared states; what it decides is carried out by her NPC controller
+//! (native movement and melee). Her orders (follow, hold, attack, recall,
+//! stance) are what she is asked and whom she counts as a threat.
+//! K8s slot: Def=OrdersDef, Registry=PLAYERS, Instance=PlayerOrders,
+//! Controller=tick.
 use crate::ai_player::{addr, object_ptr, session_controller};
-use modforge::ai_orders::{Action, Assignment, Observation, OrdersDef, OrdersTracker, Target};
+use glam::Vec3;
+use modforge::actor::ActorId;
+use modforge::brain::{Brain, Do, Perception};
+use modforge::memory::Known;
+use modforge::persona::{Persona, PersonaBinder};
+use modforge::statetree::StateTree;
+use modforge::survival::Need;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     time::{Duration, Instant},
 };
+use ueforge::behavior_tree::Action;
 use ueforge::{
     reflect,
     ue::{UObject, uobject::ObjectIdentity},
 };
+
+pub type Position = [f64; 3];
+
+pub fn distance(a: Position, b: Position) -> f64 {
+    a.into_iter().zip(b).map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt()
+}
+
+/// Where she is asked to be: by a human she follows, or at a spot.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Assignment {
+    Follow { player: String },
+    Hold { position: Position, protected_player: Option<String> },
+}
+
+/// Whom she counts as a threat: nobody, whoever attacked her or the one
+/// she protects, or every hostile she sees.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Stance {
+    Passive,
+    Defensive,
+    Aggressive,
+}
+
+/// In Unreal units (cm): how near counts as following and holding, and how
+/// far from where she is asked to be a hostile still counts.
+/// `pursuit_timeout` is kept so saved orders load; the brain's leash and
+/// flee line decide how long she fights.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Limits {
+    pub follow_distance: f64,
+    pub hold_radius: f64,
+    pub chase_distance: f64,
+    pub pursuit_timeout: f64,
+}
+
+impl Limits {
+    pub fn validate(&self) -> Result<(), String> {
+        for (name, value) in [
+            ("follow distance", self.follow_distance),
+            ("hold radius", self.hold_radius),
+            ("chase distance", self.chase_distance),
+            ("pursuit timeout", self.pursuit_timeout),
+        ] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(format!("{name} must be finite and positive"));
+            }
+        }
+        if self.chase_distance < self.follow_distance.max(self.hold_radius) {
+            return Err("chase distance must cover the follow distance and hold radius".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OrdersDef {
+    pub assignment: Assignment,
+    pub stance: Stance,
+    pub limits: Limits,
+    pub groups: Vec<String>,
+}
+
+impl OrdersDef {
+    /// Settings from the UI and the command op.
+    pub fn configure(&mut self, command: &str, args: &Value) -> Result<bool, String> {
+        let mut next = self.clone();
+        match command {
+            "stance" => next.stance = serde_json::from_value(args["stance"].clone()).map_err(|e| e.to_string())?,
+            "groups" => {
+                next.groups = serde_json::from_value(args["groups"].clone()).map_err(|e| e.to_string())?;
+                if next.groups.iter().any(|g| g.trim().is_empty()) {
+                    return Err("group names cannot be empty".into());
+                }
+                next.groups.sort();
+                next.groups.dedup();
+            }
+            "limits" => {
+                let mut values = serde_json::to_value(&next.limits).map_err(|e| e.to_string())?;
+                for (key, value) in args["limits"].as_object().ok_or("limits object required")? {
+                    if values.get(key).is_none() {
+                        return Err(format!("unknown limit {key}"));
+                    }
+                    values[key] = value.clone();
+                }
+                next.limits = serde_json::from_value(values).map_err(|e| e.to_string())?;
+            }
+            _ => return Ok(false),
+        }
+        next.limits.validate()?;
+        *self = next;
+        Ok(true)
+    }
+}
+
+/// The AI players a command names: one, several, a group, or all.
+fn recipients<'a>(args: &Value, players: impl Iterator<Item = (&'a str, &'a OrdersDef)>) -> Result<Vec<String>, String> {
+    let players: BTreeMap<_, _> = players.collect();
+    let mut names: Vec<String> = if args["all"] == true {
+        players.keys().map(|n| (*n).into()).collect()
+    } else if let Some(group) = args["group"].as_str() {
+        players.iter().filter(|(_, def)| def.groups.iter().any(|g| g == group)).map(|(n, _)| (*n).into()).collect()
+    } else if let Some(names) = args["players"].as_array() {
+        names
+            .iter()
+            .map(|n| n.as_str().map(str::to_owned).ok_or("players must contain names".into()))
+            .collect::<Result<_, String>>()?
+    } else if let Some(name) = args["player"].as_str() {
+        vec![name.into()]
+    } else if players.len() == 1 {
+        players.keys().map(|n| (*n).into()).collect()
+    } else {
+        return Err("select one AI player, a group, or all AI players".into());
+    };
+    names.sort();
+    names.dedup();
+    if names.is_empty() {
+        return Err("no AI players selected".into());
+    }
+    for name in &names {
+        if !players.contains_key(name.as_str()) {
+            return Err(format!("{name} has no active orders"));
+        }
+    }
+    Ok(names)
+}
+
+/// A hostile character she knows of this tick, in Unreal units.
+#[derive(Clone, Copy, Debug)]
+struct Target {
+    id: u64,
+    position: Position,
+    perceived: bool,
+    threatens_self: bool,
+    threatens_protected: bool,
+}
+
+/// Unreal's cm (x and y on the ground, z up) as the brain's metres (y up,
+/// the ground x and z).
+fn to_brain(p: Position) -> Vec3 {
+    Vec3::new(p[0] as f32, p[2] as f32, p[1] as f32) / 100.0
+}
+
+fn to_unreal(p: Vec3) -> Position {
+    [f64::from(p.x) * 100.0, f64::from(p.z) * 100.0, f64::from(p.y) * 100.0]
+}
+
+/// Her tree: the states every game shares (modforge brain), nothing of
+/// Abiotic Factor's own yet.
+fn brain_tree() -> StateTree<Brain> {
+    let mut s = vec![modforge::brain::root()];
+    modforge::brain::fighting_states(&mut s);
+    modforge::brain::eat_carried_state(&mut s);
+    modforge::brain::need_states(&mut s);
+    modforge::brain::trade_states(&mut s);
+    modforge::brain::asked_states(&mut s);
+    modforge::brain::look_states(&mut s);
+    modforge::brain::wander_state(&mut s);
+    StateTree { states: s }
+}
+
+/// Sophia's senses this tick, read on the game thread, and what her brain
+/// decided.
+struct AbioticBinder {
+    now: u64,
+    position: Vec3,
+    health_fraction: f32,
+    hostile: Option<(ActorId, Vec3)>,
+    asked: Option<Vec3>,
+    decided: Vec<modforge::actions::Action>,
+}
+
+impl PersonaBinder for AbioticBinder {
+    fn perceive<'a>(&'a self, persona: &'a Persona, worth: &'a dyn Fn(&Known, Need) -> f32) -> Perception<'a> {
+        Perception {
+            now: self.now,
+            position: self.position,
+            yaw: 0.0,
+            health_fraction: self.health_fraction,
+            needs: persona.needs,
+            home: None,
+            behaviour: modforge::actor::Behaviour::Hunter,
+            at_home: false,
+            asleep: false,
+            hostile: self.hostile,
+            game: &(),
+            night: false,
+            carries_food: false,
+            carries_drink: false,
+            bags_full: false,
+            memory: &persona.memory,
+            personality: &persona.personality,
+            worth,
+            standable: &|_| true,
+            reachable: &Vec::new,
+            unknown: &|_| false,
+            asked: self.asked,
+            trader: None,
+        }
+    }
+
+    /// Nothing in Abiotic Factor answers her needs yet.
+    fn worth(&self, _: &Known, _: Need) -> f32 {
+        0.0
+    }
+
+    fn act(&mut self, actions: Vec<modforge::actions::Action>, _: Option<Do>) {
+        self.decided = actions;
+    }
+}
+
+impl AbioticBinder {
+    /// What her NPC controller carries out: the fight when the brain fights
+    /// the hostile (attacking, or going to where it stands), else the walk
+    /// the brain asked for, else staying where she is asked to be.
+    fn order(&self, anchor: Position, radius: f64, returning: bool, following: bool) -> Action {
+        use modforge::actions::Action as Did;
+        let go = self.decided.iter().rev().find_map(|a| match *a {
+            Did::Go { x, y, z } => Some(Vec3::new(x, y, z)),
+            _ => None,
+        });
+        if let Some((who, at)) = self.hostile {
+            if self.decided.contains(&Did::Attack) || go.is_some_and(|g| g.distance(at) < 0.5) {
+                return Action::Attacking { target: who.0 };
+            }
+        }
+        let position = go.map_or(anchor, to_unreal);
+        if returning {
+            Action::Returning { position, radius }
+        } else if following {
+            Action::Following { position, radius }
+        } else {
+            Action::Holding { position, radius }
+        }
+    }
+}
 
 struct KnownTarget {
     identity: ObjectIdentity,
@@ -21,13 +271,22 @@ struct KnownTarget {
 }
 struct PlayerOrders {
     def: OrdersDef,
-    tracker: OrdersTracker,
+    /// Her whole person, from her folder while she has orders.
+    persona: Persona,
+    brain: StateTree<Brain>,
+    roll: modforge::monument::Roll,
+    /// The hostile she was told to attack.
+    explicit: Option<u64>,
+    /// Recalled: no fighting until she is back where she is asked to be.
+    returning: bool,
+    /// The most health seen on her; her health is a fraction of it.
+    most_health: f64,
+    ticks: u64,
     execution: ueforge::behavior_tree::AiOrderExecution,
     tree: Option<ObjectIdentity>,
     targets: BTreeMap<u64, KnownTarget>,
     damage_cursor: u64,
     action: Action,
-    started: Instant,
     sources_at: Option<Instant>,
     available: Vec<Value>,
 }
@@ -47,8 +306,21 @@ pub(crate) fn snapshot() -> Value {
 }
 pub(crate) fn stop(name: &str) {
     ueforge::loops::stop(&crate::ai_player::loop_name(name, "orders"));
-    PLAYERS.lock().remove(name);
+    if let Some(orders) = PLAYERS.lock().remove(name) {
+        save_persona(name, &orders.persona);
+    }
 }
+
+/// Her person back to her folder.
+fn save_persona(name: &str, persona: &Persona) {
+    let saved = crate::ai_player::session_directory(name).and_then(|d| persona.save(&d).map_err(|e| e.to_string()));
+    if let Err(error) = saved {
+        ueforge::log!("AI player {name} persona: {error}");
+    }
+}
+
+/// Save her person every this many order ticks (10 s at 250 ms). Claude's number.
+const SAVE_EVERY: u64 = 40;
 
 pub(crate) fn start(name: &str, defaults: OrdersDef) -> Result<(), String> {
     if active(name) {
@@ -63,11 +335,19 @@ pub(crate) fn start(name: &str, defaults: OrdersDef) -> Result<(), String> {
         Err(e) => return Err(format!("read AI player orders: {e}")),
     };
     def.limits.validate()?;
+    let directory = crate::ai_player::session_directory(name)?;
+    let persona = Persona::load(&directory).map_err(|e| format!("AI player persona: {e}"))?;
     PLAYERS.lock().insert(
         name.into(),
         PlayerOrders {
             def,
-            tracker: OrdersTracker::default(),
+            persona,
+            brain: brain_tree(),
+            roll: modforge::monument::Roll::new(modforge::persona::key_of(name)),
+            explicit: None,
+            returning: false,
+            most_health: 0.0,
+            ticks: 0,
             execution: Default::default(),
             tree: None,
             targets: BTreeMap::new(),
@@ -75,7 +355,6 @@ pub(crate) fn start(name: &str, defaults: OrdersDef) -> Result<(), String> {
             action: Action::Blocked {
                 reason: "initializing".into(),
             },
-            started: Instant::now(),
             sources_at: None,
             available: Vec::new(),
         },
@@ -104,9 +383,6 @@ unsafe fn remember(
     protected_attack: bool,
 ) {
     let id = object as *const UObject as u64;
-    if self_attack || protected_attack {
-        orders.tracker.attacked_by(id);
-    }
     let target = orders.targets.entry(id).or_insert_with(|| KnownTarget {
         identity: ObjectIdentity::capture(object),
         self_attack: false,
@@ -114,6 +390,72 @@ unsafe fn remember(
     });
     target.self_attack |= self_attack;
     target.protected_attack |= protected_attack;
+}
+
+/// One think of Sophia's brain from what she senses this tick, turned into
+/// what her NPC controller carries out. Her orders say where she is asked
+/// to be and whom she counts as a threat; the brain decides.
+fn decide(
+    name: &str,
+    orders: &mut PlayerOrders,
+    here: Position,
+    health: f64,
+    anchor: Option<Position>,
+    targets: &[Target],
+) -> Action {
+    if health <= 0.0 {
+        orders.explicit = None;
+        return Action::Dead;
+    }
+    let Some(anchor) = anchor else {
+        orders.explicit = None;
+        return Action::Blocked { reason: "assignment destination unavailable".into() };
+    };
+    let (radius, following) = match orders.def.assignment {
+        Assignment::Follow { .. } => (orders.def.limits.follow_distance, true),
+        Assignment::Hold { .. } => (orders.def.limits.hold_radius, false),
+    };
+    if orders.returning && distance(here, anchor) <= radius {
+        orders.returning = false;
+    }
+    let limits = &orders.def.limits;
+    let in_bounds = |t: &&Target| {
+        distance(t.position, anchor) <= limits.chase_distance && distance(here, anchor) <= limits.chase_distance
+    };
+    if orders.explicit.is_some_and(|id| !targets.iter().any(|t| t.id == id)) {
+        orders.explicit = None;
+    }
+    let stance = orders.def.stance;
+    let threat = |t: &&Target| match stance {
+        Stance::Passive => false,
+        Stance::Defensive => t.threatens_self || t.threatens_protected,
+        Stance::Aggressive => t.perceived,
+    };
+    let hostile = if orders.returning {
+        None
+    } else if let Some(id) = orders.explicit {
+        targets.iter().find(|t| t.id == id).filter(in_bounds)
+    } else {
+        targets
+            .iter()
+            .filter(in_bounds)
+            .filter(threat)
+            .min_by(|a, b| distance(a.position, here).total_cmp(&distance(b.position, here)))
+    };
+    let mut binder = AbioticBinder {
+        now: crate::explore::now(),
+        position: to_brain(here),
+        health_fraction: (health / orders.most_health.max(1.0)) as f32,
+        hostile: hostile.map(|t| (ActorId(t.id), to_brain(t.position))),
+        asked: Some(to_brain(anchor)),
+        decided: Vec::new(),
+    };
+    modforge::persona::think(&mut binder, &mut orders.persona, &orders.brain, &mut orders.roll);
+    orders.ticks += 1;
+    if orders.ticks % SAVE_EVERY == 0 {
+        save_persona(name, &orders.persona);
+    }
+    binder.order(anchor, radius, orders.returning, following)
 }
 
 unsafe fn hostile_character(
@@ -201,11 +543,13 @@ unsafe fn update(name: &str, orders: &mut PlayerOrders) -> Result<(), String> {
             .as_ref()
             .and_then(|t| t.resolve())
             .ok_or("AI player tree disappeared")? as *const UObject as u64;
-        let alive =
+        let health =
             reflect::get_fields(body, &["TotalCombinedHealth".into()])?["TotalCombinedHealth"]
                 .as_f64()
-                .ok_or("health unavailable")?
-                > 0.0;
+                .ok_or("health unavailable")?;
+        // Her greatest health is not read from the game yet: the most seen
+        // on her stands for it (Claude's).
+        orders.most_health = orders.most_health.max(health);
         let protected = match &orders.def.assignment {
             Assignment::Follow { player } => Some(player.clone()),
             Assignment::Hold {
@@ -323,16 +667,8 @@ unsafe fn update(name: &str, orders: &mut PlayerOrders) -> Result<(), String> {
                 threatens_protected: known.protected_attack,
             });
         }
-        let action = orders.tracker.decide(
-            &orders.def,
-            &Observation {
-                now: orders.started.elapsed().as_secs_f64(),
-                position: location(body)?,
-                anchor,
-                alive,
-                targets: &targets,
-            },
-        );
+        let here = location(body)?;
+        let action = decide(name, orders, here, health, anchor, &targets);
         let target = match action {
             Action::Attacking { target } => Some(target),
             _ => None,
@@ -396,7 +732,7 @@ pub(crate) fn command(args: &Value) -> Result<Value, String> {
         crate::DRAIN_HINT,
         move || {
             let mut all = PLAYERS.lock();
-            let names = modforge::ai_orders::recipients(
+            let names = recipients(
                 &args,
                 all.iter()
                     .map(|(name, orders)| (name.as_str(), &orders.def)),
@@ -456,10 +792,14 @@ pub(crate) fn command(args: &Value) -> Result<Value, String> {
                             return Err("attack target must be a living hostile character".into());
                         }
                         unsafe { remember(orders, target, false, false) };
-                        orders.tracker.attack(target as *const UObject as u64);
+                        orders.explicit = Some(target as *const UObject as u64);
+                        orders.returning = false;
                     }
-                    "recall" => orders.tracker.recall(),
-                    "cancel_attack" => orders.tracker.cancel_attack(),
+                    "recall" => {
+                        orders.explicit = None;
+                        orders.returning = true;
+                    }
+                    "cancel_attack" => orders.explicit = None,
                     _ => {
                         if !def.configure(command, &args)? {
                             return Err(format!("unknown AI player command {command}"));

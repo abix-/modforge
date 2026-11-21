@@ -22,6 +22,25 @@ use crate::reflect;
 use crate::ue::UObject;
 use serde_json::{Value, json};
 
+/// What an NPC controller is told to carry out, in the game's units: walk to
+/// a point (following, holding, returning), fight a target, or stop. The
+/// person's brain decides it; the game's binder turns the brain's actions
+/// into one of these.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Action {
+    Following { position: [f64; 3], radius: f64 },
+    Holding { position: [f64; 3], radius: f64 },
+    Attacking { target: u64 },
+    Returning { position: [f64; 3], radius: f64 },
+    Blocked { reason: String },
+    Dead,
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a.into_iter().zip(b).map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt()
+}
+
 /// Transfer movement ownership between native combat and assignment movement.
 /// The caller prepares game-specific combat keys before entering combat.
 #[derive(Default)]
@@ -39,9 +58,8 @@ impl AiOrderExecution {
         &mut self,
         controller: &UObject,
         combat_tree: u64,
-        action: &modforge::ai_orders::Action,
+        action: &Action,
     ) -> Result<(), String> {
-        use modforge::ai_orders::Action;
         let attacking = matches!(action, Action::Attacking { .. });
         let fields = unsafe { reflect::get_fields(controller, &["BrainComponent".into()])? };
         let brain = fields["BrainComponent"]["addr"]
@@ -163,7 +181,7 @@ impl AiOrderExecution {
         if moving
             && self.destination.is_some_and(|(previous, old_radius)| {
                 old_radius == radius
-                    && modforge::ai_orders::distance(previous, position) < radius * 0.5
+                    && distance(previous, position) < radius * 0.5
             })
         {
             return Ok(());
