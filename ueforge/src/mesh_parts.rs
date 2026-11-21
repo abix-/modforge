@@ -19,6 +19,8 @@
 //!   mesh, by SkinnedMeshComponent::ShowMaterialSection on every LOD.
 //! - parts.scale {component, scale}: SceneComponent::SetRelativeScale3D,
 //!   the same factor on all three axes.
+//! - parts.morph {component, name, value}: one morph target of a
+//!   skeletal mesh, SkeletalMeshComponent::SetMorphTarget.
 
 use crate::reflect;
 use crate::ue::{UObject, actor, find_class_fast};
@@ -120,7 +122,76 @@ pub unsafe fn describe(c: &UObject) -> Value {
             "hidden_in_game": fields["bHiddenInGame"],
             "scale": fields["RelativeScale3D"],
             "slots": slots,
+            "morphs": morphs(c),
         })
+    }
+}
+
+/// A skeletal mesh's morph targets with their current values, as
+/// [name, value] pairs: the mesh asset's names
+/// (SkeletalMesh::K2_GetAllMorphTargetNames), each read back through
+/// SkeletalMeshComponent::GetMorphTarget. Empty for any other mesh.
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn morphs(c: &UObject) -> Value {
+    if !is(c, "SkeletalMeshComponent") {
+        return json!([]);
+    }
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let Some(mesh) = reflect::get_fields(c, &["SkinnedAsset".into()])
+            .ok()
+            .and_then(|v| v["SkinnedAsset"]["addr"].as_str().map(str::to_owned))
+            .and_then(|a| crate::selector::resolve(&format!("addr:{a}")).ok())
+        else {
+            return json!([]);
+        };
+        let names = call(mesh, "SkeletalMesh", "K2_GetAllMorphTargetNames", json!({}))
+            .map(|v| v["ReturnValue"].as_array().cloned().unwrap_or_default())
+            .unwrap_or_default();
+        let pairs: Vec<Value> = names
+            .into_iter()
+            .map(|n| {
+                let value = call(
+                    c,
+                    "SkeletalMeshComponent",
+                    "GetMorphTarget",
+                    json!({"MorphTargetName": n}),
+                )
+                .map(|v| v["ReturnValue"].clone())
+                .unwrap_or(Value::Null);
+                json!([n, value])
+            })
+            .collect();
+        Value::Array(pairs)
+    }
+}
+
+/// Set one morph target on a skeletal mesh
+/// (SkeletalMeshComponent::SetMorphTarget). Values below 0 push the
+/// shape the other way.
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn morph(component: &UObject, name: &str, value: f64) -> Result<Value, String> {
+    // SAFETY: the caller's.
+    unsafe {
+        call(
+            component,
+            "SkeletalMeshComponent",
+            "SetMorphTarget",
+            json!({"MorphTargetName": name, "Value": value, "bRemoveZeroWeight": false}),
+        )?;
+        let now = call(
+            component,
+            "SkeletalMeshComponent",
+            "GetMorphTarget",
+            json!({"MorphTargetName": name}),
+        )?;
+        Ok(
+            json!({"component": hex(component), "morph": name, "set": value, "reads": now["ReturnValue"]}),
+        )
     }
 }
 
@@ -269,6 +340,12 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
             let s = args["slot"].as_i64().ok_or("slot is required")?;
             let show = args["show"].as_bool().ok_or("show: bool is required")?;
             job(drain, hint, format!("slot {c} {s} show {show}"), Box::new(move || unsafe { slot(crate::selector::resolve(&c)?, s, show) }))
+        }),
+        OpDef::new("parts.morph", "Set one morph target of a skeletal mesh (SetMorphTarget); below 0 pushes the shape the other way", "{component: 0x addr, name: str, value: f64}", move |args| {
+            let c = component(args)?;
+            let name = args["name"].as_str().ok_or("name is required")?.to_owned();
+            let v = args["value"].as_f64().ok_or("value is required")?;
+            job(drain, hint, format!("morph {c} {name} {v}"), Box::new(move || unsafe { morph(crate::selector::resolve(&c)?, &name, v) }))
         }),
         OpDef::new("parts.scale", "Scale a whole mesh component by one factor on all axes (SetRelativeScale3D)", "{component: 0x addr, scale: f64}", move |args| {
             let c = component(args)?;
