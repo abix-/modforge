@@ -1,0 +1,279 @@
+//! The mesh parts of the actors near the player: list them, hide or
+//! show a whole mesh or one material slot of it, and scale a mesh.
+//! Every step is an engine function called through reflection
+//! (reflect::call, which refuses a function of a class the object is
+//! not), on the game thread, so nothing here reads engine memory by
+//! offset. Prior art: UEVR's pawn library (github jbusfield/uevrlib
+//! libs/pawn.lua) hides body meshes with SetHiddenInGame and arms with
+//! HideBoneByName.
+//!
+//! Nothing is saved: hiding, showing and scale live on the component
+//! until the actor unloads.
+//!
+//! Ops (register_ops):
+//! - parts.list {class, max_distance?}: actors of `class` within
+//!   max_distance (cm) of the player, nearest first, each with its mesh
+//!   components and their material slots.
+//! - parts.hide {component, hidden}: SceneComponent::SetHiddenInGame.
+//! - parts.slot {component, slot, show}: one material slot of a skinned
+//!   mesh, by SkinnedMeshComponent::ShowMaterialSection on every LOD.
+//! - parts.scale {component, scale}: SceneComponent::SetRelativeScale3D,
+//!   the same factor on all three axes.
+
+use crate::reflect;
+use crate::ue::{UObject, actor, find_class_fast};
+use serde_json::{Value, json};
+
+fn hex(o: &UObject) -> String {
+    format!("0x{:X}", o as *const UObject as usize)
+}
+
+/// SAFETY of callers: game thread, `o` live.
+unsafe fn call(o: &UObject, class: &str, function: &str, params: Value) -> Result<Value, String> {
+    let params = params.as_object().cloned().unwrap_or_default();
+    // SAFETY: the caller's.
+    unsafe { reflect::call(o, class, function, &params) }
+}
+
+fn vector(v: &Value) -> Option<(f64, f64, f64)> {
+    Some((v["X"].as_f64()?, v["Y"].as_f64()?, v["Z"].as_f64()?))
+}
+
+fn is(o: &UObject, class: &str) -> bool {
+    find_class_fast(class).is_some_and(|c| o.is_a(c))
+}
+
+/// The player's pawn, through GameplayStatics::GetPlayerPawn.
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn player_pawn() -> Result<&'static UObject, String> {
+    let ctx = actor::any_world_actor().ok_or("no level loaded")?;
+    let statics = crate::selector::resolve("singleton:GameplayStatics")?;
+    // SAFETY: game thread; the context is a live level actor.
+    let r = unsafe {
+        call(
+            statics,
+            "GameplayStatics",
+            "GetPlayerPawn",
+            json!({"WorldContextObject": format!("0x{:X}", ctx as usize), "PlayerIndex": 0}),
+        )?
+    };
+    let addr = r["ReturnValue"]["addr"]
+        .as_str()
+        .and_then(|s| usize::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+        .ok_or("no player pawn")?;
+    crate::selector::resolve(&format!("addr:0x{addr:X}"))
+}
+
+/// One mesh component: what it is, whether it shows, its scale, its
+/// mesh asset and its material slots.
+///
+/// # Safety
+/// Game thread, `c` live.
+pub unsafe fn describe(c: &UObject) -> Value {
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let class = c.class().map(|k| k.as_object().name()).unwrap_or_default();
+        let visible = call(c, "SceneComponent", "IsVisible", json!({}))
+            .map(|v| v["ReturnValue"].clone())
+            .unwrap_or(Value::Null);
+        let fields = reflect::get_fields(c, &["bHiddenInGame".into(), "RelativeScale3D".into()])
+            .unwrap_or(Value::Null);
+        let asset_field = if is(c, "SkinnedMeshComponent") {
+            Some("SkinnedAsset")
+        } else if is(c, "StaticMeshComponent") {
+            Some("StaticMesh")
+        } else {
+            None
+        };
+        let asset = asset_field
+            .and_then(|f| {
+                reflect::get_fields(c, &[f.into()])
+                    .ok()
+                    .map(|v| v[f]["name"].clone())
+            })
+            .unwrap_or(Value::Null);
+        let n = call(c, "PrimitiveComponent", "GetNumMaterials", json!({}))
+            .ok()
+            .and_then(|v| v["ReturnValue"].as_i64())
+            .unwrap_or(0);
+        let slots: Vec<Value> = (0..n)
+            .map(|i| {
+                call(
+                    c,
+                    "PrimitiveComponent",
+                    "GetMaterial",
+                    json!({"ElementIndex": i}),
+                )
+                .map(|v| v["ReturnValue"]["name"].clone())
+                .unwrap_or(Value::Null)
+            })
+            .collect();
+        json!({
+            "component": hex(c),
+            "name": c.name(),
+            "class": class,
+            "skinned": is(c, "SkinnedMeshComponent"),
+            "asset": asset,
+            "visible": visible,
+            "hidden_in_game": fields["bHiddenInGame"],
+            "scale": fields["RelativeScale3D"],
+            "slots": slots,
+        })
+    }
+}
+
+/// Actors of `class` within `max_distance` of the player, nearest
+/// first, each with its mesh components.
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn list(class: &str, max_distance: f64) -> Result<Value, String> {
+    let uclass = find_class_fast(class).ok_or_else(|| format!("class {class} not loaded"))?;
+    let mesh = find_class_fast("MeshComponent").ok_or("MeshComponent not loaded")?;
+    // SAFETY: game thread, for every call below.
+    unsafe {
+        let pawn = player_pawn()?;
+        let here = vector(&call(pawn, "Actor", "K2_GetActorLocation", json!({}))?["ReturnValue"])
+            .ok_or("player location unreadable")?;
+        let mut out = Vec::new();
+        for a in actor::actors_of_class(pawn, uclass)? {
+            let a = &*a;
+            let Some(at) =
+                vector(&call(a, "Actor", "K2_GetActorLocation", json!({}))?["ReturnValue"])
+            else {
+                continue;
+            };
+            let d = ((at.0 - here.0).powi(2) + (at.1 - here.1).powi(2) + (at.2 - here.2).powi(2))
+                .sqrt();
+            if d > max_distance {
+                continue;
+            }
+            let parts: Vec<Value> = actor::components_by_class(a, mesh)?
+                .into_iter()
+                .map(|c| describe(&*c))
+                .collect();
+            out.push(json!({
+                "actor": hex(a),
+                "name": a.name(),
+                "class": a.class().map(|k| k.as_object().name()).unwrap_or_default(),
+                "distance": d,
+                "parts": parts,
+            }));
+        }
+        out.sort_by(|x, y| {
+            x["distance"]
+                .as_f64()
+                .partial_cmp(&y["distance"].as_f64())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(json!({"actors": out}))
+    }
+}
+
+/// # Safety
+/// Game thread.
+pub unsafe fn hide(component: &UObject, hidden: bool) -> Result<Value, String> {
+    // SAFETY: the caller's.
+    unsafe {
+        call(
+            component,
+            "SceneComponent",
+            "SetHiddenInGame",
+            json!({"NewHidden": hidden, "bPropagateToChildren": false}),
+        )?;
+        Ok(describe(component))
+    }
+}
+
+/// One material slot on or off, on every LOD of a skinned mesh.
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn slot(component: &UObject, slot: i64, show: bool) -> Result<Value, String> {
+    // SAFETY: the caller's.
+    unsafe {
+        let lods = call(component, "SkinnedMeshComponent", "GetNumLODs", json!({}))?["ReturnValue"]
+            .as_i64()
+            .unwrap_or(1)
+            .max(1);
+        for lod in 0..lods {
+            call(
+                component,
+                "SkinnedMeshComponent",
+                "ShowMaterialSection",
+                json!({"MaterialID": slot, "SectionIndex": slot, "bShow": show, "LODIndex": lod}),
+            )?;
+        }
+        Ok(json!({"component": hex(component), "slot": slot, "show": show, "lods": lods}))
+    }
+}
+
+/// # Safety
+/// Game thread.
+pub unsafe fn scale(component: &UObject, factor: f64) -> Result<Value, String> {
+    // SAFETY: the caller's.
+    unsafe {
+        call(
+            component,
+            "SceneComponent",
+            "SetRelativeScale3D",
+            json!({"NewScale3D": {"X": factor, "Y": factor, "Z": factor}}),
+        )?;
+        Ok(describe(component))
+    }
+}
+
+/// parts.list, parts.hide, parts.slot, parts.scale on the game thread
+/// through `drain`. Each logs what it was asked and what it returned.
+pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static str) {
+    use crate::ops::{OP_REGISTRY, OpDef};
+    fn job(
+        drain: &'static crate::pe_queue::GameThread,
+        hint: &'static str,
+        what: String,
+        f: Box<dyn FnOnce() -> Result<Value, String> + Send>,
+    ) -> Result<Value, String> {
+        crate::log!("parts: {what}");
+        let r = crate::debug::enqueue_pe(drain, std::time::Duration::from_secs(10), hint, f);
+        match &r {
+            Ok(v) if what.starts_with("list") => crate::log!(
+                "parts: {what}: {} actors",
+                v["actors"].as_array().map_or(0, Vec::len)
+            ),
+            Ok(v) => crate::log!("parts: {what}: {v}"),
+            Err(e) => crate::log!("parts: {what}: failed: {e}"),
+        }
+        r
+    }
+    fn component(args: &Value) -> Result<String, String> {
+        let c = args["component"]
+            .as_str()
+            .ok_or("component: 0x address is required")?;
+        Ok(format!("addr:{c}"))
+    }
+    OP_REGISTRY.register_many([
+        OpDef::new("parts.list", "Actors of a class near the player, nearest first, with their mesh components (asset, shown, scale, material slots)", "{class: str, max_distance?: f64 (cm, default 5000)}", move |args| {
+            let class = args["class"].as_str().ok_or("class is required")?.to_owned();
+            let max = args["max_distance"].as_f64().unwrap_or(5000.0);
+            job(drain, hint, format!("list {class} within {max}"), Box::new(move || unsafe { list(&class, max) }))
+        }),
+        OpDef::new("parts.hide", "Hide or show a whole mesh component (SetHiddenInGame)", "{component: 0x addr, hidden: bool}", move |args| {
+            let c = component(args)?;
+            let hidden = args["hidden"].as_bool().ok_or("hidden: bool is required")?;
+            job(drain, hint, format!("hide {c} {hidden}"), Box::new(move || unsafe { hide(crate::selector::resolve(&c)?, hidden) }))
+        }),
+        OpDef::new("parts.slot", "Show or hide one material slot of a skinned mesh on every LOD (ShowMaterialSection)", "{component: 0x addr, slot: i64, show: bool}", move |args| {
+            let c = component(args)?;
+            let s = args["slot"].as_i64().ok_or("slot is required")?;
+            let show = args["show"].as_bool().ok_or("show: bool is required")?;
+            job(drain, hint, format!("slot {c} {s} show {show}"), Box::new(move || unsafe { slot(crate::selector::resolve(&c)?, s, show) }))
+        }),
+        OpDef::new("parts.scale", "Scale a whole mesh component by one factor on all axes (SetRelativeScale3D)", "{component: 0x addr, scale: f64}", move |args| {
+            let c = component(args)?;
+            let f = args["scale"].as_f64().ok_or("scale is required")?;
+            job(drain, hint, format!("scale {c} {f}"), Box::new(move || unsafe { scale(crate::selector::resolve(&c)?, f) }))
+        }),
+    ]);
+}
