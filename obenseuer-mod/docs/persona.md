@@ -45,6 +45,14 @@ Claude's reading, for the operator to change.
 | stop and start moving | `NPCController.DisableMoving(gameObject)`, `EnableMoving(gameObject)` |
 | start or stop an activity | `NPCController.StartActivity(activity, interrupt)`, `ForceStartActivity`, `ForceStopActivity` |
 
-Not found yet: its health and needs (the `Stats` an NPC carries), what
-it carries, and how the brain's Attack becomes an arrest (Act_Police
-arrests within 1.25 m while chasing, [`crime.md`](crime.md)).
+Health and needs: `NPC.NPCStats` (NPC/NPCStats.cs, a MonoBehaviour) has
+`Health`/`MaxHealth`, `Hunger`/`Maxhunger`, `Thirst`/`MaxThirst`,
+bowel, bladder, intoxication, depression, money and a `Storage`, each
+with activity triggers. No code in Assembly-CSharp reads or writes it
+(only Unity's type registry names it), and human NPCs' `Stats.Damage` is
+the empty base. Whether a police NPC carries an NPCStats is not seen yet.
+The binder reads its health from it when there is one.
+
+Not found yet: what it carries, and how the brain's Attack becomes an
+arrest (Act_Police arrests within 1.25 m while chasing,
+[`crime.md`](crime.md)).

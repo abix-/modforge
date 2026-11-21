@@ -160,6 +160,7 @@ fn think(person: &mut Hosted) -> Result<(), String> {
     let mut binder = PoliceBinder {
         now,
         position: here,
+        health_fraction: health_fraction(&npc)?,
         hostile: player.filter(|_| chasing).map(|at| (ActorId(key_of("player")), at)),
         decided: Vec::new(),
     };
@@ -180,6 +181,19 @@ fn think(person: &mut Hosted) -> Result<(), String> {
     Ok(())
 }
 
+/// Its health as a part of its most: the game's `NPC.NPCStats` (Health,
+/// MaxHealth) when the NPC carries one, else whole. No game code changes
+/// NPCStats (read in the decompiled code), so this stays 1 until
+/// something hurts it.
+fn health_fraction(npc: &MonoObject) -> Result<f32, String> {
+    let Some(stats) = obj(&npc.invoke("GetComponent", &json!(["NPCStats"]))?) else {
+        return Ok(1.0);
+    };
+    let health = stats.read_field("Health")?.as_f64().ok_or("NPCStats Health is not a number")?;
+    let most = stats.read_field("MaxHealth")?.as_f64().ok_or("NPCStats MaxHealth is not a number")?;
+    Ok(if most > 0.0 { (health / most) as f32 } else { 1.0 })
+}
+
 fn save(person: &Hosted) -> Result<(), String> {
     let directory = modforge::persona::directory(&format!("police {}", person.id)).map_err(|e| e.to_string())?;
     person.persona.save(&directory).map_err(|e| e.to_string())
@@ -189,6 +203,7 @@ fn save(person: &Hosted) -> Result<(), String> {
 struct PoliceBinder {
     now: u64,
     position: Vec3,
+    health_fraction: f32,
     hostile: Option<(ActorId, Vec3)>,
     decided: Vec<modforge::actions::Action>,
 }
@@ -199,8 +214,7 @@ impl PersonaBinder for PoliceBinder {
             now: self.now,
             position: self.position,
             yaw: 0.0,
-            // Its health is not found yet (docs/persona.md).
-            health_fraction: 1.0,
+            health_fraction: self.health_fraction,
             needs: persona.needs,
             home: None,
             behaviour: modforge::actor::Behaviour::Hunter,
