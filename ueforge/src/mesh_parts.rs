@@ -296,8 +296,44 @@ pub unsafe fn scale(component: &UObject, factor: f64) -> Result<Value, String> {
     }
 }
 
-/// parts.list, parts.hide, parts.slot, parts.scale on the game thread
-/// through `drain`. Each logs what it was asked and what it returned.
+/// Pause the tick of the `class` component on `component`'s owner, so
+/// a component that rewrites the mesh every tick does not undo a
+/// change. Wicked Island's OptimizationProxyComponent put a mesh's
+/// scale back within 100 ms, and with its tick paused a scale held
+/// 20 s (tests/research_parts.rs scale_reset_timing, 2026-11-21).
+/// Returns the paused component's address, or None when the owner has
+/// no such component.
+///
+/// # Safety
+/// Game thread, `component` live.
+pub unsafe fn pause_on_owner(component: &UObject, class: &str) -> Result<Option<String>, String> {
+    let uclass = find_class_fast(class).ok_or_else(|| format!("class {class} not loaded"))?;
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let owner = call(component, "ActorComponent", "GetOwner", json!({}))?;
+        let Some(owner) = owner["ReturnValue"]["addr"].as_str() else {
+            return Ok(None);
+        };
+        let owner = crate::selector::resolve(&format!("addr:{owner}"))?;
+        let Some(found) = actor::component_by_class(owner, uclass)? else {
+            return Ok(None);
+        };
+        let found = &*found;
+        call(
+            found,
+            "ActorComponent",
+            "SetComponentTickEnabled",
+            json!({"bEnabled": false}),
+        )?;
+        crate::log!("parts: paused {class} {} on {}", hex(found), owner.name());
+        Ok(Some(hex(found)))
+    }
+}
+
+/// parts.list, parts.hide, parts.slot, parts.morph, parts.scale on the
+/// game thread through `drain`. Each logs what it was asked and what it
+/// returned. The changing ops take `pause?: class`: that component on
+/// the mesh's owner gets its tick paused first (pause_on_owner).
 pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static str) {
     use crate::ops::{OP_REGISTRY, OpDef};
     fn job(
@@ -324,33 +360,49 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
             .ok_or("component: 0x address is required")?;
         Ok(format!("addr:{c}"))
     }
+    /// The component, after pausing `pause` on its owner when asked.
+    fn target(c: &str, pause: &Option<String>) -> Result<&'static UObject, String> {
+        let o = crate::selector::resolve(c)?;
+        if let Some(p) = pause {
+            // SAFETY: game thread (inside the job); `o` just resolved.
+            unsafe { pause_on_owner(o, p)? };
+        }
+        Ok(o)
+    }
+    fn pause(args: &Value) -> Option<String> {
+        args["pause"].as_str().map(str::to_owned)
+    }
     OP_REGISTRY.register_many([
         OpDef::new("parts.list", "Actors of a class near the player, nearest first, with their mesh components (asset, shown, scale, material slots)", "{class: str, max_distance?: f64 (cm, default 5000)}", move |args| {
             let class = args["class"].as_str().ok_or("class is required")?.to_owned();
             let max = args["max_distance"].as_f64().unwrap_or(5000.0);
             job(drain, hint, format!("list {class} within {max}"), Box::new(move || unsafe { list(&class, max) }))
         }),
-        OpDef::new("parts.hide", "Hide or show a whole mesh component (SetHiddenInGame)", "{component: 0x addr, hidden: bool}", move |args| {
+        OpDef::new("parts.hide", "Hide or show a whole mesh component (SetHiddenInGame)", "{component: 0x addr, hidden: bool, pause?: class}", move |args| {
             let c = component(args)?;
+            let p = pause(args);
             let hidden = args["hidden"].as_bool().ok_or("hidden: bool is required")?;
-            job(drain, hint, format!("hide {c} {hidden}"), Box::new(move || unsafe { hide(crate::selector::resolve(&c)?, hidden) }))
+            job(drain, hint, format!("hide {c} {hidden}"), Box::new(move || unsafe { hide(target(&c, &p)?, hidden) }))
         }),
-        OpDef::new("parts.slot", "Show or hide one material slot of a skinned mesh on every LOD (ShowMaterialSection)", "{component: 0x addr, slot: i64, show: bool}", move |args| {
+        OpDef::new("parts.slot", "Show or hide one material slot of a skinned mesh on every LOD (ShowMaterialSection)", "{component: 0x addr, slot: i64, show: bool, pause?: class}", move |args| {
             let c = component(args)?;
+            let p = pause(args);
             let s = args["slot"].as_i64().ok_or("slot is required")?;
             let show = args["show"].as_bool().ok_or("show: bool is required")?;
-            job(drain, hint, format!("slot {c} {s} show {show}"), Box::new(move || unsafe { slot(crate::selector::resolve(&c)?, s, show) }))
+            job(drain, hint, format!("slot {c} {s} show {show}"), Box::new(move || unsafe { slot(target(&c, &p)?, s, show) }))
         }),
-        OpDef::new("parts.morph", "Set one morph target of a skeletal mesh (SetMorphTarget); below 0 pushes the shape the other way", "{component: 0x addr, name: str, value: f64}", move |args| {
+        OpDef::new("parts.morph", "Set one morph target of a skeletal mesh (SetMorphTarget); below 0 pushes the shape the other way", "{component: 0x addr, name: str, value: f64, pause?: class}", move |args| {
             let c = component(args)?;
+            let p = pause(args);
             let name = args["name"].as_str().ok_or("name is required")?.to_owned();
             let v = args["value"].as_f64().ok_or("value is required")?;
-            job(drain, hint, format!("morph {c} {name} {v}"), Box::new(move || unsafe { morph(crate::selector::resolve(&c)?, &name, v) }))
+            job(drain, hint, format!("morph {c} {name} {v}"), Box::new(move || unsafe { morph(target(&c, &p)?, &name, v) }))
         }),
-        OpDef::new("parts.scale", "Scale a whole mesh component by one factor on all axes (SetRelativeScale3D)", "{component: 0x addr, scale: f64}", move |args| {
+        OpDef::new("parts.scale", "Scale a whole mesh component by one factor on all axes (SetRelativeScale3D)", "{component: 0x addr, scale: f64, pause?: class}", move |args| {
             let c = component(args)?;
+            let p = pause(args);
             let f = args["scale"].as_f64().ok_or("scale is required")?;
-            job(drain, hint, format!("scale {c} {f}"), Box::new(move || unsafe { scale(crate::selector::resolve(&c)?, f) }))
+            job(drain, hint, format!("scale {c} {f}"), Box::new(move || unsafe { scale(target(&c, &p)?, f) }))
         }),
     ]);
 }
