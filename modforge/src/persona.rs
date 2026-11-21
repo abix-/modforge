@@ -14,10 +14,66 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
     pub appearance: String,
+}
+
+/// One person, whole, the same in every game that hosts them: who they are,
+/// what they remember, their needs, their personality, their skills, and
+/// what they are doing now. A game keeps one for each person it hosts and
+/// hands it to the brain each think.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Persona {
+    pub profile: Profile,
+    pub memory: Memory,
+    pub needs: crate::survival::SurvivalStats,
+    pub personality: crate::actor::Personality,
+    pub skills: crate::practice::Skills,
+    /// What they are doing now: the brain's state and what it is about.
+    pub doing: crate::statetree::Record,
+}
+
+/// What a persona keeps besides its profile and memory (persona.json).
+#[derive(Default, Serialize, Deserialize)]
+struct Rest {
+    needs: crate::survival::SurvivalStats,
+    personality: crate::actor::Personality,
+    skills: crate::practice::Skills,
+    doing: crate::statetree::Record,
+}
+
+impl Persona {
+    /// The person kept in this folder: their profile (which must be there),
+    /// their memory, and the rest; what was never saved starts fresh.
+    pub fn load(directory: &Path) -> io::Result<Self> {
+        let profile = Profile::load(directory)?;
+        let memory = load_memory(directory)?;
+        let rest: Rest = match fs::read(directory.join("persona.json")) {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Rest::default(),
+            Err(error) => return Err(error),
+        };
+        Ok(Self { profile, memory, needs: rest.needs, personality: rest.personality, skills: rest.skills, doing: rest.doing })
+    }
+
+    /// Save the whole person in their folder, each file written beside and
+    /// then moved in.
+    pub fn save(&self, directory: &Path) -> io::Result<()> {
+        fs::create_dir_all(directory)?;
+        write_whole(directory, "profile.json", &serde_json::to_vec_pretty(&self.profile)?)?;
+        save_memory(directory, &self.memory)?;
+        let rest = Rest { needs: self.needs, personality: self.personality, skills: self.skills.clone(), doing: self.doing };
+        write_whole(directory, "persona.json", &serde_json::to_vec(&rest)?)
+    }
+}
+
+/// Write a file beside its place, then move it in.
+fn write_whole(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<()> {
+    let temporary = directory.join(format!("{name}.new"));
+    fs::write(&temporary, bytes)?;
+    fs::rename(temporary, directory.join(name))
 }
 
 impl Profile {
@@ -75,9 +131,7 @@ pub fn load_memory(directory: &Path) -> io::Result<Memory> {
 /// moved in, so a crash never leaves half of it.
 pub fn save_memory(directory: &Path, memory: &Memory) -> io::Result<()> {
     fs::create_dir_all(directory)?;
-    let temporary = directory.join("memory.json.new");
-    fs::write(&temporary, serde_json::to_vec(memory)?)?;
-    fs::rename(temporary, directory.join("memory.json"))
+    write_whole(directory, "memory.json", &serde_json::to_vec(memory)?)
 }
 
 /// The key a thing a game knows only by name is remembered under in
@@ -121,6 +175,22 @@ mod tests {
         memory.visited(7, 12);
         save_memory(&directory, &memory).unwrap();
         assert_eq!(load_memory(&directory).unwrap(), memory);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn a_whole_persona_saved_loads_the_same() {
+        let directory = scratch("persona");
+        let mut persona = Persona {
+            profile: Profile { name: "Sophia".into(), appearance: "female".into() },
+            personality: crate::actor::Personality::seed(crate::actor::ActorId(3), 9),
+            ..Persona::default()
+        };
+        persona.memory.see(1, "pest", glam::Vec3::ONE, 4);
+        persona.needs.hunger = 40.0;
+        persona.skills.practise("combat", 5);
+        persona.save(&directory).unwrap();
+        assert_eq!(Persona::load(&directory).unwrap(), persona);
         fs::remove_dir_all(directory).unwrap();
     }
 
