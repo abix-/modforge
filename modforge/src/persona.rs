@@ -58,6 +58,14 @@ impl Persona {
         Ok(Self { profile, memory, needs: rest.needs, personality: rest.personality, skills: rest.skills, doing: rest.doing })
     }
 
+    /// The named person in their folder, made on first use: every game
+    /// that opens the same name in the same folder hosts the same person
+    /// (what one game saved, the next loads).
+    pub fn open(directory: &Path, name: &str, appearance: &str) -> io::Result<Self> {
+        Profile::load_or_create(directory, name, appearance)?;
+        Self::load(directory)
+    }
+
     /// Save the whole person in their folder, each file written beside and
     /// then moved in.
     pub fn save(&self, directory: &Path) -> io::Result<()> {
@@ -161,11 +169,19 @@ pub trait PersonaBinder {
 
     /// Carry out what the brain decided this think.
     fn act(&mut self, actions: Vec<crate::actions::Action>, do_now: Option<crate::brain::Do>);
+
+    /// The game's rates for the person's needs and the seconds since the
+    /// last think, when the Persona's needs drain in this game; None
+    /// when the game keeps the needs itself (topside's survival tick).
+    fn needs_drain(&self) -> Option<(crate::survival::SurvivalRates, f32)> {
+        None
+    }
 }
 
 /// One think of a person hosted by a game: the binder senses, the game's
 /// tree decides (seeded by `roll`), what they chose goes to what they
-/// learn from, and the binder carries out the actions.
+/// learn from, the needs drain for the time since the last think when the
+/// game asks (`needs_drain`), and the binder carries out the actions.
 pub fn think<B: PersonaBinder>(
     binder: &mut B,
     persona: &mut Persona,
@@ -173,15 +189,24 @@ pub fn think<B: PersonaBinder>(
     roll: &mut crate::monument::Roll,
 ) {
     let mut doing = persona.doing;
-    let (actions, do_now, situation, chose) = {
+    let (actions, do_now, situation, chose, condition) = {
         let worth = |k: &crate::memory::Known, n| binder.worth(k, n);
         let perception = binder.perceive(persona, &worth);
         let situation = crate::brain::situation(&perception);
+        let condition = crate::survival::Condition {
+            asleep: perception.asleep,
+            at_home: perception.at_home,
+            threat_in_sight: perception.hostile.is_some(),
+            night: perception.night,
+        };
         let mut thought = crate::brain::Think::new(&perception, roll);
         let chose = tree.think(&mut thought, &mut doing);
-        (thought.actions, thought.do_now, situation, chose)
+        (thought.actions, thought.do_now, situation, chose, condition)
     };
     persona.doing = doing;
+    if let Some((rates, seconds)) = binder.needs_drain() {
+        persona.needs.tick(rates, condition, seconds);
+    }
     for choice in chose {
         persona.memory.learned.chose(situation, choice);
     }
@@ -199,6 +224,7 @@ mod tests {
     #[derive(Default)]
     struct Empty {
         did: Vec<Option<Do>>,
+        drain: Option<(crate::survival::SurvivalRates, f32)>,
     }
 
     impl PersonaBinder for Empty {
@@ -241,6 +267,39 @@ mod tests {
         fn act(&mut self, _: Vec<crate::actions::Action>, do_now: Option<Do>) {
             self.did.push(do_now);
         }
+
+        fn needs_drain(&self) -> Option<(crate::survival::SurvivalRates, f32)> {
+            self.drain
+        }
+    }
+
+    #[test]
+    fn needs_drain_through_a_think_only_when_the_game_asks() {
+        let tree = StateTree { states: vec![state("root", None)] };
+        let rates = crate::survival::SurvivalRates::lasting(100.0, 50.0, 1000.0);
+        let mut kept = Persona::default();
+        think(&mut Empty::default(), &mut kept, &tree, &mut crate::monument::Roll::new(1));
+        assert_eq!(kept.needs, crate::survival::SurvivalStats::default(), "the game keeps the needs: untouched");
+        let mut drained = Persona::default();
+        let mut game = Empty { drain: Some((rates, 10.0)), ..Empty::default() };
+        think(&mut game, &mut drained, &tree, &mut crate::monument::Roll::new(1));
+        let mut expected = crate::survival::SurvivalStats::default();
+        expected.tick(rates, crate::survival::Condition::default(), 10.0);
+        assert_eq!(drained.needs, expected, "10 s of the game's rates");
+        assert_eq!((drained.needs.hunger, drained.needs.thirst), (90.0, 80.0));
+    }
+
+    #[test]
+    fn two_games_opening_the_same_name_host_the_same_person() {
+        let directory = scratch("open");
+        let mut in_topside = Persona::open(&directory, "Sophia", "female").unwrap();
+        assert_eq!(in_topside.profile, Profile { name: "Sophia".into(), appearance: "female".into() });
+        in_topside.memory.see(9, "well", glam::Vec3::ONE, 3);
+        in_topside.needs.thirst = 30.0;
+        in_topside.save(&directory).unwrap();
+        let in_abiotic = Persona::open(&directory, "Sophia", "other").unwrap();
+        assert_eq!(in_abiotic, in_topside, "what one game saved, the other opens");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     fn state(name: &'static str, parent: Option<usize>) -> StateDef<Brain> {
