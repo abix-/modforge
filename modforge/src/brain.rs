@@ -17,7 +17,9 @@ use crate::actor::{ActorId, Behaviour, Personality};
 use crate::learn::{Band, Choice, Situation};
 use crate::memory::{Known, Memory};
 use crate::monument::Roll;
-use crate::statetree::{Context, Status, Target};
+use crate::statetree::{
+    Context, Enter, Holds, ROOT, Select, StateDef, StateId, Status, Target, Task, Transition, When,
+};
 use crate::survival::{Need, SurvivalStats};
 
 /// What the consumer saw this think. Positions are world metres; y
@@ -1032,6 +1034,145 @@ pub fn walk_toward(from: Vec3, to: Vec3) -> Vec<Action> {
         y: to.y,
         z: to.z,
     }]
+}
+
+// The states every game shares. A game's tree is these, pushed in the
+// order it wants, plus its own (topside: the storm and the bunker); each
+// pushes its states at the end of the tree's list and leaves the root's
+// choices to the game.
+
+/// A state of the brain's tree, entered by `enter`, doing `task`.
+pub fn state(
+    name: &'static str,
+    parent: Option<StateId>,
+    enter: Option<Enter<Brain>>,
+    task: Option<Task<Brain>>,
+) -> StateDef<Brain> {
+    StateDef {
+        name,
+        parent,
+        choice: None,
+        enter,
+        select: Select::InOrder,
+        task,
+        transitions: Vec::new(),
+    }
+}
+
+/// Leave for `to` when this holds.
+pub fn when(holds: Holds<Brain>, to: StateId) -> Transition<Brain> {
+    Transition {
+        when: When::<Brain>::Holds(holds),
+        to,
+    }
+}
+
+/// Go on to `to` when the task succeeds.
+pub fn then(to: StateId) -> Transition<Brain> {
+    Transition {
+        when: When::Succeeded,
+        to,
+    }
+}
+
+/// A choice at the root: what it means to the learning.
+pub fn choice(mut state: StateDef<Brain>, choice: Choice) -> StateDef<Brain> {
+    state.choice = Some(choice);
+    state
+}
+
+/// The root: it picks by what the person learned (`learned`).
+pub fn root() -> StateDef<Brain> {
+    let mut root = state("root", None, None, None);
+    root.select = Select::<Brain>::Learned(learned);
+    root
+}
+
+/// An errand: a parent entered by `enter`, going there, then `doing`;
+/// returns the parent's id.
+pub fn errand(
+    states: &mut Vec<StateDef<Brain>>,
+    name: &'static str,
+    parent: StateId,
+    enter: Enter<Brain>,
+    doing_name: &'static str,
+    doing: Task<Brain>,
+) -> StateId {
+    let at = states.len();
+    states.push(state(name, Some(parent), Some(enter), None));
+    let mut going = state("going", Some(at), None, Some(going));
+    going.transitions.push(then(at + 2));
+    states.push(going);
+    states.push(state(doing_name, Some(at), None, Some(doing)));
+    at
+}
+
+/// Flee, break off, fight: a threat in sight or just remembered.
+pub fn fighting_states(s: &mut Vec<StateDef<Brain>>) {
+    s.push(choice(state("flee", Some(ROOT), Some(enter_flee), Some(flee)), Choice::Flee));
+    s.push(choice(state("break off", Some(ROOT), Some(enter_break_off), Some(break_off)), Choice::BreakOff));
+    let mut fight = choice(state("fight", Some(ROOT), Some(enter_combat), Some(fight)), Choice::Fight);
+    fight.transitions.push(when(hurt, ROOT));
+    fight.transitions.push(when(past_leash, ROOT));
+    s.push(fight);
+}
+
+/// Eat or drink what they carry.
+pub fn eat_carried_state(s: &mut Vec<StateDef<Brain>>) {
+    s.push(choice(
+        state("eat what they carry", Some(ROOT), Some(enter_eat_carried), Some(eat_carried)),
+        Choice::EatCarried,
+    ));
+}
+
+/// Go to a known thing that answers a need, then use it.
+pub fn need_states(s: &mut Vec<StateDef<Brain>>) {
+    let need = errand(s, "go to a need", ROOT, enter_need, "using it", use_it);
+    s[need].choice = Some(Choice::GoToNeed);
+    s[need].transitions.push(when(danger, ROOT));
+    s[need].transitions.push(when(worse_need, ROOT));
+}
+
+/// Trade for a need with someone carrying extra of it.
+pub fn trade_states(s: &mut Vec<StateDef<Brain>>) {
+    let trade = errand(s, "trade for a need", ROOT, enter_trade, "trading", trade_with);
+    s[trade].choice = Some(Choice::Trade);
+    s[trade].transitions.push(when(danger, ROOT));
+}
+
+/// Do what they were asked: go there and wait. A critical need they can
+/// answer takes them off it (`NEED_CRITICAL`); met, they choose what was
+/// asked again.
+pub fn asked_states(s: &mut Vec<StateDef<Brain>>) {
+    let asked = errand(s, "do what was asked", ROOT, enter_asked, "waiting", wait);
+    s[asked].choice = Some(Choice::Asked);
+    s[asked].transitions.push(when(danger, ROOT));
+    s[asked].transitions.push(when(worse_need, ROOT));
+    s[asked].transitions.push(when(critical_need, ROOT));
+    s[asked].transitions.push(when(not_asked, ROOT));
+}
+
+/// A need pressing hard with nothing known to answer it: look at the
+/// nearest unchecked thing, else head out.
+pub fn look_states(s: &mut Vec<StateDef<Brain>>) {
+    let look = s.len();
+    let mut parent = choice(state("look", Some(ROOT), Some(enter_look), None), Choice::Look);
+    parent.transitions.push(when(danger, ROOT));
+    parent.transitions.push(when(asked_now, ROOT));
+    s.push(parent);
+    errand(s, "look at", look, enter_unchecked, "checking", check);
+    let mut head_out = state("head out", Some(look), Some(enter_head_out_need), Some(going));
+    head_out.transitions.push(when(knows_better, ROOT));
+    s.push(head_out);
+}
+
+/// Nothing presses: stand, or stroll.
+pub fn wander_state(s: &mut Vec<StateDef<Brain>>) {
+    let mut wander = choice(state("wander", Some(ROOT), Some(enter_wander), Some(wander)), Choice::Wander);
+    wander.transitions.push(when(danger, ROOT));
+    wander.transitions.push(when(pressing, ROOT));
+    wander.transitions.push(when(asked_now, ROOT));
+    s.push(wander);
 }
 
 #[cfg(test)]
