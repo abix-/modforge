@@ -34,6 +34,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 ueforge = { path = "../ueforge" }
 modforge = { path = "../modforge" }
+glam = { version = "0.32", features = ["serde"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
