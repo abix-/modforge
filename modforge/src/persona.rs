@@ -12,6 +12,7 @@
 //! This is the persistent record. The in-RAM working memory a brain reads
 //! each tick is [`crate::memory::Memory`]; a game crate feeds one from the
 //! other. Unifying the two is an open design item.
+use crate::memory::Memory;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -62,6 +63,26 @@ pub fn directory(name: &str) -> io::Result<PathBuf> {
     std::env::var_os("LOCALAPPDATA")
         .map(|path| PathBuf::from(path).join("Modforge").join(name))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "set PERSONA_HOME or LOCALAPPDATA"))
+}
+
+/// A person's memory as it was last saved in their folder (memory.json):
+/// the same `Memory` a brain reads each think, so what they knew in one
+/// session or one game they know in the next. Empty the first time.
+pub fn load_memory(directory: &Path) -> io::Result<Memory> {
+    match fs::read(directory.join("memory.json")) {
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Memory::default()),
+        Err(error) => Err(error),
+    }
+}
+
+/// Save a person's memory in their folder, whole, written beside and then
+/// moved in, so a crash never leaves half of it.
+pub fn save_memory(directory: &Path, memory: &Memory) -> io::Result<()> {
+    fs::create_dir_all(directory)?;
+    let temporary = directory.join("memory.json.new");
+    fs::write(&temporary, serde_json::to_vec(memory)?)?;
+    fs::rename(temporary, directory.join("memory.json"))
 }
 
 /// Journal one observed event.
@@ -186,6 +207,18 @@ mod tests {
             (thing.times_seen, thing.location, thing.visited),
             (2, [4.0, 5.0, 6.0], false)
         );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn memory_saved_in_the_persona_folder_loads_the_same() {
+        let directory = scratch("memory");
+        assert_eq!(load_memory(&directory).unwrap(), Memory::default(), "empty the first time");
+        let mut memory = Memory::default();
+        memory.see(7, "pest", glam::Vec3::new(1.0, 2.0, 3.0), 10);
+        memory.visited(7, 12);
+        save_memory(&directory, &memory).unwrap();
+        assert_eq!(load_memory(&directory).unwrap(), memory);
         fs::remove_dir_all(directory).unwrap();
     }
 
