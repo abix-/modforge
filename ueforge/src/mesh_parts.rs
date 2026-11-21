@@ -21,6 +21,11 @@
 //!   the same factor on all three axes.
 //! - parts.morph {component, name, value}: one morph target of a
 //!   skeletal mesh, SkeletalMeshComponent::SetMorphTarget.
+//! - parts.size {actor, scale}: the whole actor, Actor::SetActorScale3D.
+//! - parts.bones {component}: a skinned mesh's bones with parent and
+//!   hidden.
+//! - parts.bone {component, bone, hidden}: HideBoneByName or
+//!   UnHideBoneByName, the bone and every bone below it.
 
 use crate::reflect;
 use crate::ue::{UObject, actor, find_class_fast};
@@ -225,11 +230,15 @@ pub unsafe fn list(class: &str, max_distance: f64) -> Result<Value, String> {
                 .into_iter()
                 .map(|c| describe(&*c))
                 .collect();
+            let size = call(a, "Actor", "GetActorScale3D", json!({}))
+                .map(|v| v["ReturnValue"]["X"].clone())
+                .unwrap_or(Value::Null);
             out.push(json!({
                 "actor": hex(a),
                 "name": a.name(),
                 "class": a.class().map(|k| k.as_object().name()).unwrap_or_default(),
                 "distance": d,
+                "size": size,
                 "parts": parts,
             }));
         }
@@ -296,44 +305,115 @@ pub unsafe fn scale(component: &UObject, factor: f64) -> Result<Value, String> {
     }
 }
 
-/// Pause the tick of the `class` component on `component`'s owner, so
-/// a component that rewrites the mesh every tick does not undo a
-/// change. Wicked Island's OptimizationProxyComponent put a mesh's
-/// scale back within 100 ms, and with its tick paused a scale held
-/// 20 s (tests/research_parts.rs scale_reset_timing, 2026-11-21).
-/// Returns the paused component's address, or None when the owner has
-/// no such component.
+/// The whole actor's size, the same factor on all three axes
+/// (Actor::SetActorScale3D), as the Onset client scales a character
+/// (github OALM-Team/YRPF-Client character_api.lua:124). In Wicked
+/// Island this holds where a body mesh's own scale is put back within
+/// about 100 ms (wickedisland-mod tests/research_parts.rs actor_scale
+/// and scale_reset_timing, 2026-11-21).
 ///
 /// # Safety
-/// Game thread, `component` live.
-pub unsafe fn pause_on_owner(component: &UObject, class: &str) -> Result<Option<String>, String> {
-    let uclass = find_class_fast(class).ok_or_else(|| format!("class {class} not loaded"))?;
-    // SAFETY: the caller's, for every call below.
+/// Game thread.
+pub unsafe fn actor_scale(a: &UObject, factor: f64) -> Result<Value, String> {
+    // SAFETY: the caller's.
     unsafe {
-        let owner = call(component, "ActorComponent", "GetOwner", json!({}))?;
-        let Some(owner) = owner["ReturnValue"]["addr"].as_str() else {
-            return Ok(None);
-        };
-        let owner = crate::selector::resolve(&format!("addr:{owner}"))?;
-        let Some(found) = actor::component_by_class(owner, uclass)? else {
-            return Ok(None);
-        };
-        let found = &*found;
         call(
-            found,
-            "ActorComponent",
-            "SetComponentTickEnabled",
-            json!({"bEnabled": false}),
+            a,
+            "Actor",
+            "SetActorScale3D",
+            json!({"NewScale3D": {"X": factor, "Y": factor, "Z": factor}}),
         )?;
-        crate::log!("parts: paused {class} {} on {}", hex(found), owner.name());
-        Ok(Some(hex(found)))
+        let now = call(a, "Actor", "GetActorScale3D", json!({}))?;
+        Ok(json!({"actor": hex(a), "set": factor, "reads": now["ReturnValue"]["X"]}))
     }
 }
 
-/// parts.list, parts.hide, parts.slot, parts.morph, parts.scale on the
-/// game thread through `drain`. Each logs what it was asked and what it
-/// returned. The changing ops take `pause?: class`: that component on
-/// the mesh's owner gets its tick paused first (pause_on_owner).
+/// A skinned mesh's bones, in index order, each as [name, parent,
+/// hidden] (GetNumBones, GetBoneName, GetParentBone,
+/// IsBoneHiddenByName). Only for skinned meshes: GetNumBones on another
+/// class crashed the game (reflect::call now refuses that).
+///
+/// # Safety
+/// Game thread, `c` live.
+pub unsafe fn bones(c: &UObject) -> Result<Value, String> {
+    if !is(c, "SkinnedMeshComponent") {
+        return Err(format!("{} is not a skinned mesh", c.name()));
+    }
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let n = call(c, "SkinnedMeshComponent", "GetNumBones", json!({}))?["ReturnValue"]
+            .as_i64()
+            .unwrap_or(0);
+        let mut out = Vec::new();
+        for i in 0..n {
+            let name = call(
+                c,
+                "SkinnedMeshComponent",
+                "GetBoneName",
+                json!({"BoneIndex": i}),
+            )?["ReturnValue"]
+                .clone();
+            let parent = call(
+                c,
+                "SkinnedMeshComponent",
+                "GetParentBone",
+                json!({"BoneName": name}),
+            )?["ReturnValue"]
+                .clone();
+            let hidden = call(
+                c,
+                "SkinnedMeshComponent",
+                "IsBoneHiddenByName",
+                json!({"BoneName": name}),
+            )?["ReturnValue"]
+                .clone();
+            out.push(json!([name, parent, hidden]));
+        }
+        Ok(json!({"component": hex(c), "bones": out}))
+    }
+}
+
+/// Hide or show one bone and every bone below it
+/// (SkinnedMeshComponent::HideBoneByName with PhysBodyOption 0, and
+/// UnHideBoneByName), as UEVR's pawn library hides arms (github
+/// jbusfield/uevrlib libs/pawn.lua:146,153).
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn bone(c: &UObject, name: &str, hidden: bool) -> Result<Value, String> {
+    if !is(c, "SkinnedMeshComponent") {
+        return Err(format!("{} is not a skinned mesh", c.name()));
+    }
+    // SAFETY: the caller's.
+    unsafe {
+        if hidden {
+            call(
+                c,
+                "SkinnedMeshComponent",
+                "HideBoneByName",
+                json!({"BoneName": name, "PhysBodyOption": 0}),
+            )?;
+        } else {
+            call(
+                c,
+                "SkinnedMeshComponent",
+                "UnHideBoneByName",
+                json!({"BoneName": name}),
+            )?;
+        }
+        let now = call(
+            c,
+            "SkinnedMeshComponent",
+            "IsBoneHiddenByName",
+            json!({"BoneName": name}),
+        )?;
+        Ok(json!({"component": hex(c), "bone": name, "hidden": now["ReturnValue"]}))
+    }
+}
+
+/// parts.list, parts.hide, parts.slot, parts.morph, parts.scale,
+/// parts.size, parts.bones, parts.bone on the game thread through
+/// `drain`. Each logs what it was asked and what it returned.
 pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static str) {
     use crate::ops::{OP_REGISTRY, OpDef};
     fn job(
@@ -360,17 +440,8 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
             .ok_or("component: 0x address is required")?;
         Ok(format!("addr:{c}"))
     }
-    /// The component, after pausing `pause` on its owner when asked.
-    fn target(c: &str, pause: &Option<String>) -> Result<&'static UObject, String> {
-        let o = crate::selector::resolve(c)?;
-        if let Some(p) = pause {
-            // SAFETY: game thread (inside the job); `o` just resolved.
-            unsafe { pause_on_owner(o, p)? };
-        }
-        Ok(o)
-    }
-    fn pause(args: &Value) -> Option<String> {
-        args["pause"].as_str().map(str::to_owned)
+    fn target(c: &str) -> Result<&'static UObject, String> {
+        crate::selector::resolve(c)
     }
     OP_REGISTRY.register_many([
         OpDef::new("parts.list", "Actors of a class near the player, nearest first, with their mesh components (asset, shown, scale, material slots)", "{class: str, max_distance?: f64 (cm, default 5000)}", move |args| {
@@ -378,31 +449,42 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
             let max = args["max_distance"].as_f64().unwrap_or(5000.0);
             job(drain, hint, format!("list {class} within {max}"), Box::new(move || unsafe { list(&class, max) }))
         }),
-        OpDef::new("parts.hide", "Hide or show a whole mesh component (SetHiddenInGame)", "{component: 0x addr, hidden: bool, pause?: class}", move |args| {
+        OpDef::new("parts.hide", "Hide or show a whole mesh component (SetHiddenInGame)", "{component: 0x addr, hidden: bool}", move |args| {
             let c = component(args)?;
-            let p = pause(args);
             let hidden = args["hidden"].as_bool().ok_or("hidden: bool is required")?;
-            job(drain, hint, format!("hide {c} {hidden}"), Box::new(move || unsafe { hide(target(&c, &p)?, hidden) }))
+            job(drain, hint, format!("hide {c} {hidden}"), Box::new(move || unsafe { hide(target(&c)?, hidden) }))
         }),
-        OpDef::new("parts.slot", "Show or hide one material slot of a skinned mesh on every LOD (ShowMaterialSection)", "{component: 0x addr, slot: i64, show: bool, pause?: class}", move |args| {
+        OpDef::new("parts.slot", "Show or hide one material slot of a skinned mesh on every LOD (ShowMaterialSection)", "{component: 0x addr, slot: i64, show: bool}", move |args| {
             let c = component(args)?;
-            let p = pause(args);
             let s = args["slot"].as_i64().ok_or("slot is required")?;
             let show = args["show"].as_bool().ok_or("show: bool is required")?;
-            job(drain, hint, format!("slot {c} {s} show {show}"), Box::new(move || unsafe { slot(target(&c, &p)?, s, show) }))
+            job(drain, hint, format!("slot {c} {s} show {show}"), Box::new(move || unsafe { slot(target(&c)?, s, show) }))
         }),
-        OpDef::new("parts.morph", "Set one morph target of a skeletal mesh (SetMorphTarget); below 0 pushes the shape the other way", "{component: 0x addr, name: str, value: f64, pause?: class}", move |args| {
+        OpDef::new("parts.morph", "Set one morph target of a skeletal mesh (SetMorphTarget); below 0 pushes the shape the other way", "{component: 0x addr, name: str, value: f64}", move |args| {
             let c = component(args)?;
-            let p = pause(args);
             let name = args["name"].as_str().ok_or("name is required")?.to_owned();
             let v = args["value"].as_f64().ok_or("value is required")?;
-            job(drain, hint, format!("morph {c} {name} {v}"), Box::new(move || unsafe { morph(target(&c, &p)?, &name, v) }))
+            job(drain, hint, format!("morph {c} {name} {v}"), Box::new(move || unsafe { morph(target(&c)?, &name, v) }))
         }),
-        OpDef::new("parts.scale", "Scale a whole mesh component by one factor on all axes (SetRelativeScale3D)", "{component: 0x addr, scale: f64, pause?: class}", move |args| {
+        OpDef::new("parts.scale", "Scale a whole mesh component by one factor on all axes (SetRelativeScale3D); a game may put a body mesh's scale back, see parts.size", "{component: 0x addr, scale: f64}", move |args| {
             let c = component(args)?;
-            let p = pause(args);
             let f = args["scale"].as_f64().ok_or("scale is required")?;
-            job(drain, hint, format!("scale {c} {f}"), Box::new(move || unsafe { scale(target(&c, &p)?, f) }))
+            job(drain, hint, format!("scale {c} {f}"), Box::new(move || unsafe { scale(target(&c)?, f) }))
+        }),
+        OpDef::new("parts.size", "The whole actor's size, one factor on all axes (SetActorScale3D)", "{actor: 0x addr, scale: f64}", move |args| {
+            let a = format!("addr:{}", args["actor"].as_str().ok_or("actor: 0x address is required")?);
+            let f = args["scale"].as_f64().ok_or("scale is required")?;
+            job(drain, hint, format!("size {a} {f}"), Box::new(move || unsafe { actor_scale(target(&a)?, f) }))
+        }),
+        OpDef::new("parts.bones", "A skinned mesh's bones as [name, parent, hidden]", "{component: 0x addr}", move |args| {
+            let c = component(args)?;
+            job(drain, hint, format!("bones {c}"), Box::new(move || unsafe { bones(target(&c)?) }))
+        }),
+        OpDef::new("parts.bone", "Hide or show one bone of a skinned mesh and every bone below it (HideBoneByName, UnHideBoneByName)", "{component: 0x addr, bone: str, hidden: bool}", move |args| {
+            let c = component(args)?;
+            let b = args["bone"].as_str().ok_or("bone is required")?.to_owned();
+            let hidden = args["hidden"].as_bool().ok_or("hidden: bool is required")?;
+            job(drain, hint, format!("bone {c} {b} {hidden}"), Box::new(move || unsafe { bone(target(&c)?, &b, hidden) }))
         }),
     ]);
 }
