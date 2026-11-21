@@ -21,6 +21,7 @@
 | The tenement | [`tenement.md`](tenement.md) |
 | Building and furniture | [`building.md`](building.md) |
 | Crime, prison and police | [`crime.md`](crime.md) |
+| A police NPC as a modforge person: what its PersonaBinder reads and calls | [`persona.md`](persona.md) |
 | Weather | [`weather.md`](weather.md) |
 | Dialogue | [`dialogue.md`](dialogue.md) |
 | Lighting | [`lighting.md`](lighting.md) |

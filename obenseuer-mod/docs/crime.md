@@ -72,6 +72,9 @@ a police NPC ([`npcs.md`](npcs.md), Activity).
 | `OnPlayerArrested()` (126-153) | Stops pursuing, `ResetTransition`, back to a normal state |
 | `StartChase()`, `StartChaseQuestion()`, `SetState`, `StartNewState(state, seconds)`, `SuffleNewState()`, `StartState()`, `ChasingPlayer()`, `QuestionPlayer()`, `OnPlayerDetected`, `OnPlayerCommitingCrimeDetected` | State machine |
 | `ChasingPlayer()` (679-) | Arrests within 1.25 m unless a level change is active (`Changelevel.ChangeLevelActive`) or a dialogue is open |
+| `SetStartNPCSettings()` (225-) | Subscribes `OnPlayerDetected` to the NPC's `NPC_FOV.PlayerDetected` ([`npcs.md`](npcs.md), NPC_FOV) and sets the NPC's `Witness.onWitnessed = OnPlayerCommitingCrimeDetected` (chance 0.9) |
+| `OnPlayerDetected(npc, reference)` (340-383) | Not while talking or arresting. Searching -> QuestionPlayer; searching aggressively -> ChasePlayer; chasing or questioning -> 10 s more before it loses the player; else the player's crimes (`Crime.CountCrimes`) against a roll of 0 to 750 (350 with the Police start) -> `OnPlayerCommitingCrimeDetected` |
+| `OnPlayerCommitingCrimeDetected()` (385-) | `CheckCrimesForArrest` (1.5 with the Police start, else 0.25) -> `StartChase()`, else `StartChaseQuestion()`; a crime comment |
 | `StartStateOnLoad(string lastSeenEntryPointName)` (549-565) | After a load: if the player left through a different door than the one the police saw (`!= Changelevel.entrypointNameExit`): QuestionPlayer -> SearchingPlayer, ChasePlayer -> SearchingPlayerAgressive; else `StartState()` |
 | `MoveToMainScene()` (849-857) | Not in its `startScene`: `MoveToOtherLevel(startScene)` |
 | `RegisterDialogue()`, `UnregisterDialogue()` (410-447) | Lua functions while talking |

@@ -182,6 +182,38 @@ and activities of an NPC object.
 | `OnDestroy()` (682-685) | `Data.scheduler.OnDestroy()` (unsubscribes the schedule) |
 | `FollowPlayer(...)`, `StartFollowPlayer`, `StartPatrol`, `StartStand`, `StartDialogue`, `OnTalk`, `OnStopTalk`, `DisableMoving`, `EnableMoving` | Activity and talk helpers |
 
+`SetTargetPosition(Vector3 position, float minDistance = 0.5, Action
+onArrive = null)` (415-433) leaves the current node, clears following, and
+asks `NPCPathfinding.instance.SearchForPath(transform.position, position,
+...)`, which hands the path to `SetPath`. `int ID` (84) is
+`character?.ID ?? 0`.
+
+## NPC_FOV
+
+`public class NPC_FOV : MonoBehaviour` (NPC/NPC_FOV.cs). An NPC's sight,
+on the NPC object (`NPCInfo.npcFov`).
+
+| Member | Meaning |
+|---|---|
+| `float FOV` (90), `maxDistance` (30), `detectionPropabilityFocus` (1), `detectionPropabilityEdge` (0.15), `cooldown` (0.5) | Half-angle in degrees, metres, the chance to see at the centre and at the edge, seconds between looks |
+| `Transform headPosition`, `Vector3 axis`, `offset` | Where it looks from and which way |
+| `List<Transform> targetsToDetect` | Extra things it looks for (`NpcTargetCollector` adds and removes them by trigger) |
+| `event PlayerDetected(GameObject npc, NPCReference)`, `NPCsDetected(GameObject, NPCReference, List<NPCReference>)`, `TargetDetected(Transform)` | Raised when seen |
+| `Awake()` (51-55) | Adds a `Witness` (crimes seen) |
+| `Update()` (73-96) | Unless sleeping or cooling down: player seen -> `PlayerDetected`; with listeners, NPCs seen -> `NPCsDetected`; each `targetsToDetect` seen -> `TargetDetected` |
+| `bool CheckIfTargetIsDetected(Vector3, bool ignoreCooldown, bool player)` (136-176) | Within `maxDistance`, within `FOV` of the head's axis, a ray on `NPCManager.instance.fovMasks` reaches it, then a roll: the chance falls from focus to edge with the angle |
+| `CheckIfPlayerIsDetected()`, `CheckIfNPCsAreDetected(out List<NPCReference>)`, `CheckIfObjectIsDetected(GameObject)` | The same check for the player's head, every NPC's head, an object |
+
+`CheckIfNPCsAreDetected` (108-129) reads the looking NPC's own `NPC_FOV`
+for every NPC (`npcInfo.GetComponent`, not `item`'s), so it tests its own
+head each time (game bug, read from the code, not seen in the game).
+
+`NpcBehavior` (NPC/NpcBehavior.cs) listens to `PlayerDetected` and runs
+the first `PlayerDetectionReaction` that can trigger: Chase
+(`npcController.FollowPlayer(run, canBeInterrupted: true,
+visibilityTimeEnabled: true)`) or Talk
+(`interactableTalk.ForseStartDialogue`).
+
 ## Schedule
 
 `[Serializable] public class Schedule` (NPC/Schedule.cs).
