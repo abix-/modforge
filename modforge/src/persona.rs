@@ -7,14 +7,12 @@
 //! Files: profile.json (name, appearance), memory.json (her
 //! [`crate::memory::Memory`], the same one a brain reads each think:
 //! everything she has seen is its known things, a thing she walked up to
-//! is checked), memory.jsonl (an append-only journal of events).
-//! Engine-free.
+//! is checked, what she did is its things done). Engine-free.
 use crate::memory::Memory;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Profile {
@@ -82,33 +80,6 @@ pub fn save_memory(directory: &Path, memory: &Memory) -> io::Result<()> {
     fs::rename(temporary, directory.join("memory.json"))
 }
 
-/// Journal one observed event.
-pub fn remember(directory: &Path, event: &str, detail: &str) -> io::Result<()> {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(io::Error::other)?
-        .as_secs();
-    let entry = serde_json::json!({"time":seconds,"event":event,"detail":detail});
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(directory.join("memory.jsonl"))?;
-    writeln!(file, "{entry}")?;
-    file.sync_data()
-}
-
-/// The journal, oldest first.
-pub fn recall(directory: &Path) -> io::Result<Vec<serde_json::Value>> {
-    let text = match fs::read_to_string(directory.join("memory.jsonl")) {
-        Ok(text) => text,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error),
-    };
-    text.lines()
-        .map(|line| serde_json::from_str(line).map_err(io::Error::from))
-        .collect()
-}
-
 /// The key a thing a game knows only by name is remembered under in
 /// `Memory` (an Unreal actor's name): the same name, the same key, in every
 /// session (FNV-1a).
@@ -154,10 +125,12 @@ mod tests {
     }
 
     #[test]
-    fn a_named_character_and_her_journal_survive_reopening() {
+    fn a_named_character_and_what_she_did_survive_reopening() {
         let directory = scratch("profile");
         let first = Profile::load_or_create(&directory, "Charles", "male").unwrap();
-        remember(&directory, "joined", "hosted save").unwrap();
+        let mut memory = load_memory(&directory).unwrap();
+        memory.did(crate::memory::Did::Done("joined at hosted save".into()), 5);
+        save_memory(&directory, &memory).unwrap();
         let second = Profile::load_or_create(&directory, "Charles", "female").unwrap();
         assert_eq!(
             (
@@ -168,7 +141,10 @@ mod tests {
             ("Charles", "Charles", "male"),
             "the first creation wins; later calls only load"
         );
-        assert_eq!(recall(&directory).unwrap()[0]["event"], "joined");
+        assert_eq!(
+            load_memory(&directory).unwrap().done,
+            vec![(5, crate::memory::Did::Done("joined at hosted save".into()))]
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 }

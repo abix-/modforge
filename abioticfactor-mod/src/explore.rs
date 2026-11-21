@@ -31,7 +31,7 @@ const WANDER_TRIES: usize = 8;
 static WALKING_TO: Mutex<BTreeMap<String, Option<u64>>> = Mutex::new(BTreeMap::new());
 
 /// Her clock for memory: seconds since 1970, the same across sessions.
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 

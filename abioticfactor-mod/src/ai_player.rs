@@ -30,7 +30,7 @@ const TARGETS_PERIOD_MS: u64 = 1000;
 
 #[derive(Clone)]
 struct Session {
-    /// Her persona directory: identity, journal and what she has seen live here.
+    /// Her persona directory: her profile and her memory (what she has seen and done) live here.
     directory: std::path::PathBuf,
     controller: u64,
     identity: ueforge::ue::uobject::ObjectIdentity,
@@ -308,12 +308,14 @@ fn start(args: &Value) -> Result<Value, String> {
         },
     )?;
     let controller = addr(&reply["controller"]);
-    if let Err(error) = modforge::persona::remember(
-        &directory,
-        "joined",
-        reply["world_start"]["name"].as_str().unwrap_or(""),
-    ) {
-        ueforge::log!("AI player {name} journal: {error}");
+    // What she did goes in her memory, the same record a brain reads.
+    let joined = format!("joined at {}", reply["world_start"]["name"].as_str().unwrap_or("the world start"));
+    let remembered = modforge::persona::load_memory(&directory).and_then(|mut memory| {
+        memory.did(modforge::memory::Did::Done(joined), crate::explore::now());
+        modforge::persona::save_memory(&directory, &memory)
+    });
+    if let Err(error) = remembered {
+        ueforge::log!("AI player {name} memory: {error}");
     }
     let controller_index = reply["controller_index"]
         .as_i64()
