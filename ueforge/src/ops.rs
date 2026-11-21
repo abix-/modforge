@@ -220,7 +220,8 @@ pub fn register_builtins() {
             "watch_writes",
             "Arm a hardware breakpoint on an address (mode write/readwrite/exec) \
              and record which instruction and call chain hits it",
-            "{addr: u64, len?: u64, duration_ms?: u64, mode?: str}",
+            "{addr: u64, len?: u64, duration_ms?: u64, mode?: str, \
+             then?: {op: str, args?: obj, after_ms?: u64 (default 300)}}",
             |args| {
                 let addr = arg_u64(args, "addr", None)? as usize;
                 let len = arg_u64(args, "len", Some(8))? as u8;
@@ -230,12 +231,33 @@ pub fn register_builtins() {
                     .and_then(|m| m.as_str())
                     .unwrap_or("write")
                     .to_string();
-                Ok(crate::winproc::capture_write_watchpoint(
-                    addr,
-                    len,
-                    duration_ms,
-                    &mode,
-                ))
+                // `then` runs another op partway through the watch, so
+                // a change and whatever undoes it both land while the
+                // watch is armed. The control plane serves one request
+                // at a time, so a second request could not do it.
+                use serde_json::json;
+                let then = args.get("then").cloned();
+                let after = then.as_ref().map(|t| {
+                    let op = t["op"].as_str().unwrap_or("").to_owned();
+                    let a = t.get("args").cloned().unwrap_or(json!({}));
+                    let ms = t["after_ms"].as_u64().unwrap_or(300);
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                        match OP_REGISTRY.dispatch(&op, &a) {
+                            Some(Ok(v)) => json!({"op": op, "ok": v}),
+                            Some(Err(e)) => json!({"op": op, "error": e}),
+                            None => json!({"op": op, "error": "unknown op"}),
+                        }
+                    })
+                });
+                let mut r =
+                    crate::winproc::capture_write_watchpoint(addr, len, duration_ms, &mode);
+                if let Some(h) = after {
+                    r["then"] = h
+                        .join()
+                        .unwrap_or_else(|_| json!({"error": "then op panicked"}));
+                }
+                Ok(r)
             },
         ),
         // Scanner. Cheat-Engine-style memory search + freezes.
