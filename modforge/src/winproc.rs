@@ -897,7 +897,9 @@ pub fn loaded_modules() -> Vec<(u64, u64, String)> {
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-const WATCH_MAX_RECORDS: usize = 24;
+// 256: an exec watch on a function the engine calls every frame from
+// several places fills a small buffer before the call sought.
+const WATCH_MAX_RECORDS: usize = 256;
 const WATCH_MAX_FRAMES: usize = 64;
 const WATCH_STACK_BYTES: usize = 4096;
 
@@ -913,6 +915,11 @@ struct WatchRecord {
     rdx: u64,
     r8: u64,
     r9: u64,
+    // The first four qwords at rdx, read fault-safe. On an exec
+    // breakpoint at an Unreal native thunk (UObject* Context, FFrame&
+    // Stack, RESULT_DECL), rdx is the FFrame, whose +0x10 is the
+    // calling script function (Node) and +0x18 the object it runs on.
+    rdx_qwords: [u64; 4],
     // Data watchpoints trap after the instruction executes. Capturing the
     // watched bytes here identifies which hit actually wrote the sought
     // value when several instructions touch the same field.
@@ -939,6 +946,7 @@ static WATCH_BUF: WatchBuf = WatchBuf {
             rdx: 0,
             r8: 0,
             r9: 0,
+            rdx_qwords: [0; 4],
             value_after: [0; 8],
             value_after_len: 0,
             frame_count: 0,
@@ -995,6 +1003,18 @@ unsafe extern "system" fn watch_handler(
         slot.rdx = ctx.Rdx;
         slot.r8 = ctx.R8;
         slot.r9 = ctx.R9;
+        slot.rdx_qwords = [0; 4];
+        let mut got_rdx = 0usize;
+        // SAFETY: ReadProcessMemory is fault-safe for any rdx value.
+        let _ = unsafe {
+            windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory(
+                windows_sys::Win32::System::Threading::GetCurrentProcess(),
+                ctx.Rdx as *const _,
+                slot.rdx_qwords.as_mut_ptr() as *mut _,
+                std::mem::size_of_val(&slot.rdx_qwords),
+                &mut got_rdx,
+            )
+        };
         slot.value_after = [0; 8];
         slot.value_after_len = 0;
         slot.frame_count = 0;
@@ -1051,14 +1071,16 @@ unsafe extern "system" fn watch_handler(
 
     // Clear the debug status so the trap does not re-report.
     ctx.Dr6 = 0;
-    // Silence this thread's breakpoint once enough hits are captured,
-    // or on every hit in exec mode (where the fault would otherwise
-    // re-trap the same instruction forever).
-    if WATCH_MODE_EXEC.load(Ordering::Relaxed)
-        || WATCH_COUNT.load(Ordering::Acquire) >= WATCH_MAX_RECORDS
-    {
+    if WATCH_COUNT.load(Ordering::Acquire) >= WATCH_MAX_RECORDS {
+        // Enough hits: silence this thread's breakpoint.
         ctx.Dr0 = 0;
         ctx.Dr7 = 0;
+    } else if WATCH_MODE_EXEC.load(Ordering::Relaxed) {
+        // An exec breakpoint faults before the instruction runs; the
+        // resume flag (EFLAGS.RF, bit 16) lets that one instruction run
+        // without re-trapping and keeps the breakpoint armed for the
+        // next call, as debuggers do.
+        ctx.EFlags |= 0x1_0000;
     }
     EXCEPTION_CONTINUE_EXECUTION
 }
@@ -1278,6 +1300,7 @@ pub fn capture_write_watchpoint(
             "rdx": format!("0x{:x}", slot.rdx),
             "r8": format!("0x{:x}", slot.r8),
             "r9": format!("0x{:x}", slot.r9),
+            "rdx_qwords": slot.rdx_qwords.iter().map(|q| format!("0x{q:x}")).collect::<Vec<_>>(),
             "value_after_hex": hex::encode(&slot.value_after[..value_len]),
             "stack_return_addrs": frames,
         }));
