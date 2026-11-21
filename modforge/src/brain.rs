@@ -36,9 +36,9 @@ pub struct Perception<'a> {
     pub asleep: bool,
     /// The nearest hostile in sight, if any.
     pub hostile: Option<(ActorId, Vec3)>,
-    /// The storm is coming or here (topside design.md "The storm"):
-    /// hide or die.
-    pub storm_coming: bool,
+    /// What this game tells the brain beyond what every game senses (its
+    /// storm, its bunker, the water carried); `&()` for none.
+    pub game: &'a dyn GameFacts,
     /// It is night (the consumer's day clock): people with a home go
     /// home and sleep until morning (`sleeps_tonight`).
     pub night: bool,
@@ -46,21 +46,8 @@ pub struct Perception<'a> {
     /// eat and drink what they carry before going for more.
     pub carries_food: bool,
     pub carries_drink: bool,
-    /// Their bunker's store, if they have one: its key and where.
-    pub store: Option<(u64, Vec3)>,
-    /// What their bunker is short of, by what they remember of its store
-    /// and what they carry (topside design.md "Taking loot"): the needs
-    /// that send them topside for more, the shortest first.
-    pub bunker_short: Vec<Need>,
-    /// They carry food that belongs in the store.
-    pub carries_for_bunker: bool,
     /// Their bags hold no more.
     pub bags_full: bool,
-    /// The water in the containers they carry, and the room left in them,
-    /// in litres (crate::fluid): what they pour into their bunker's water,
-    /// and what they can still fill at a source.
-    pub carried_litres: f32,
-    pub water_room: f32,
     pub memory: &'a Memory,
     pub personality: &'a Personality,
     /// The registry's answer for a remembered thing: how much its
@@ -87,6 +74,43 @@ pub struct Perception<'a> {
     /// the need. The consumer finds them from what people carry.
     pub trader: Option<(ActorId, Vec3, Need)>,
 }
+
+/// What a game tells the brain that not every game has: topside's storm,
+/// its bunker's store and the water its people carry (topside design.md
+/// "The storm", "Taking loot"). The game's own type answers; a game with
+/// none of these gives `()`, and every answer is none.
+pub trait GameFacts {
+    /// The storm is coming or here: hide or die.
+    fn storm_coming(&self) -> bool {
+        false
+    }
+    /// Their bunker's store, if they have one: its key and where.
+    fn store(&self) -> Option<(u64, Vec3)> {
+        None
+    }
+    /// What their bunker is short of, by what they remember of its store
+    /// and what they carry: the needs that send them out for more, the
+    /// shortest first.
+    fn bunker_short(&self) -> &[Need] {
+        &[]
+    }
+    /// They carry food that belongs in the store.
+    fn carries_for_bunker(&self) -> bool {
+        false
+    }
+    /// The water in the containers they carry, in litres (crate::fluid):
+    /// what they pour into their bunker's water.
+    fn carried_litres(&self) -> f32 {
+        0.0
+    }
+    /// The room left in the containers they carry, in litres: what they
+    /// can still fill at a source.
+    fn water_room(&self) -> f32 {
+        0.0
+    }
+}
+
+impl GameFacts for () {}
 
 impl std::fmt::Debug for Perception<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -223,8 +247,8 @@ pub fn situation(p: &Perception) -> Situation {
         hostile_in_sight: p.hostile.is_some(),
         carries_food: p.carries_food || p.carries_drink,
         knows_food: knows(Need::Hunger) || knows(Need::Thirst),
-        storm_coming: p.storm_coming,
-        bunker_short: !p.bunker_short.is_empty(),
+        storm_coming: p.game.storm_coming(),
+        bunker_short: !p.game.bunker_short().is_empty(),
     }
 }
 
@@ -256,7 +280,7 @@ pub fn learned(t: &mut Think, offered: &[Choice]) -> usize {
 /// obeys the same storm). Home is the shelter a person knows; with no
 /// home there is nowhere to go.
 pub fn enter_hide(t: &mut Think, _: &Target) -> Option<Target> {
-    if !t.p.storm_coming {
+    if !t.p.game.storm_coming() {
         return None;
     }
     t.p.home.map(Target::Point)
@@ -267,13 +291,17 @@ pub fn hide(t: &mut Think, target: &Target) -> Status {
     let Target::Point(home) = *target else {
         return Status::Failed;
     };
-    let actions = if t.p.at_home { vec![] } else { walk_toward(t.p.position, home) };
+    let actions = if t.p.at_home {
+        vec![]
+    } else {
+        walk_toward(t.p.position, home)
+    };
     t.act(actions, None);
     Status::Running
 }
 
 pub fn storm_over(t: &mut Think, _: &Target) -> bool {
-    !t.p.storm_coming
+    !t.p.game.storm_coming()
 }
 
 // Fighting.
@@ -321,9 +349,9 @@ pub fn flee(t: &mut Think, _: &Target) -> Status {
         t.act(vec![], None);
         return Status::Succeeded;
     };
-    let to = p
-        .home
-        .unwrap_or_else(|| p.position + (p.position - from).with_y(0.0).normalize_or_zero() * FLEE_FAR);
+    let to = p.home.unwrap_or_else(|| {
+        p.position + (p.position - from).with_y(0.0).normalize_or_zero() * FLEE_FAR
+    });
     t.act(walk_toward(p.position, to), None);
     Status::Running
 }
@@ -390,7 +418,7 @@ pub fn fight(t: &mut Think, _: &Target) -> Status {
 
 /// The storm or a threat takes a person out of whatever they are doing.
 pub fn danger(t: &mut Think, _: &Target) -> bool {
-    (t.p.storm_coming && t.p.home.is_some()) || threat(t.p).is_some()
+    (t.p.game.storm_coming() && t.p.home.is_some()) || threat(t.p).is_some()
 }
 
 /// Asked to be somewhere takes a person out of their own errands
@@ -460,7 +488,12 @@ fn need_target(p: &Perception) -> Option<Target> {
             let (known, _) = p
                 .memory
                 .good_for(need, p.worth)
-                .map(|(known, gives)| (known, gives - known.position.distance(p.position) / METRES_PER_POINT * walk_cost))
+                .map(|(known, gives)| {
+                    (
+                        known,
+                        gives - known.position.distance(p.position) / METRES_PER_POINT * walk_cost,
+                    )
+                })
                 .filter(|(_, score)| *score > 0.0)
                 .max_by(|a, b| a.1.total_cmp(&b.1))?;
             Some(Target::Thing {
@@ -482,7 +515,11 @@ pub fn enter_need(t: &mut Think, _: &Target) -> Option<Target> {
 /// knowing the water). Hungrier than thirsty but not critical, they keep
 /// drinking.
 pub fn worse_need(t: &mut Think, target: &Target) -> bool {
-    let Target::Thing { need: Some(serving), .. } = *target else {
+    let Target::Thing {
+        need: Some(serving),
+        ..
+    } = *target
+    else {
         return false;
     };
     let needs = t.p.needs.needs_worst_first();
@@ -497,7 +534,9 @@ pub fn worse_need(t: &mut Think, target: &Target) -> bool {
 /// root). One they can do nothing about leaves them where they were asked.
 pub fn critical_need(t: &mut Think, target: &Target) -> bool {
     t.p.needs.worst_need().1 < NEED_CRITICAL
-        && (enter_eat_carried(t, target).is_some() || need_target(t.p).is_some() || enter_trade(t, target).is_some())
+        && (enter_eat_carried(t, target).is_some()
+            || need_target(t.p).is_some()
+            || enter_trade(t, target).is_some())
 }
 
 // Trade.
@@ -512,7 +551,12 @@ pub const TRADE_REACH: f32 = 2.5;
 /// other needs; operator, 2026-10-02).
 pub fn enter_trade(t: &mut Think, _: &Target) -> Option<Target> {
     let (who, at, need) = t.p.trader?;
-    let value = t.p.needs.needs_worst_first().into_iter().find(|(n, _)| *n == need).map(|(_, v)| v)?;
+    let value =
+        t.p.needs
+            .needs_worst_first()
+            .into_iter()
+            .find(|(n, _)| *n == need)
+            .map(|(_, v)| v)?;
     (value < NEED_LINE).then_some(Target::Trader { who, at, need })
 }
 
@@ -553,23 +597,31 @@ pub fn going(t: &mut Think, target: &Target) -> Status {
 /// Whether the known thing `key` is still believed to hold something for
 /// `need` (or has not been looked inside yet).
 fn holds_for(p: &Perception, key: u64, need: Need) -> bool {
-    p.memory
-        .known
-        .iter()
-        .any(|k| k.key == key && k.believed_to_hold() && (k.held.is_none() || (p.worth)(k, need) > 0.0))
+    p.memory.known.iter().any(|k| {
+        k.key == key && k.believed_to_hold() && (k.held.is_none() || (p.worth)(k, need) > 0.0)
+    })
 }
 
 /// At the thing, for the need that sent them, until that need is met
 /// (everything is for a need): eat or drink until fed or it holds nothing
 /// for it, sleep until rested, a place for safety is one look.
 pub fn use_it(t: &mut Think, target: &Target) -> Status {
-    let Target::Thing { key, need: Some(need), .. } = *target else {
+    let Target::Thing {
+        key,
+        need: Some(need),
+        ..
+    } = *target
+    else {
         return Status::Failed;
     };
     let p = t.p;
     match need {
         Need::Hunger | Need::Thirst => {
-            let now = if need == Need::Hunger { p.needs.hunger } else { p.needs.thirst };
+            let now = if need == Need::Hunger {
+                p.needs.hunger
+            } else {
+                p.needs.thirst
+            };
             if now >= FED || !holds_for(p, key, need) {
                 t.act(vec![], None);
                 return Status::Succeeded;
@@ -606,12 +658,17 @@ pub fn check(t: &mut Think, target: &Target) -> Status {
 /// is filled at a source (crate::fluid) until their containers are full
 /// or it gives no more.
 pub fn take(t: &mut Think, target: &Target) -> Status {
-    let Target::Thing { key, need: Some(need), .. } = *target else {
+    let Target::Thing {
+        key,
+        need: Some(need),
+        ..
+    } = *target
+    else {
         return Status::Failed;
     };
     let p = t.p;
     let (full, act) = match need {
-        Need::Thirst => (p.water_room <= 0.0, Do::Fill { key }),
+        Need::Thirst => (p.game.water_room() <= 0.0, Do::Fill { key }),
         _ => (p.bags_full, Do::Take { key }),
     };
     if full || !holds_for(p, key, need) {
@@ -628,9 +685,9 @@ pub fn stock(t: &mut Think, target: &Target) -> Status {
     let Target::Thing { key, .. } = *target else {
         return Status::Failed;
     };
-    let act = if t.p.carried_litres > 0.0 {
+    let act = if t.p.game.carried_litres() > 0.0 {
         Do::Pour { key }
-    } else if t.p.carries_for_bunker {
+    } else if t.p.game.carries_for_bunker() {
         Do::Stock { key }
     } else {
         t.act(vec![], None);
@@ -644,7 +701,7 @@ pub fn stock(t: &mut Think, target: &Target) -> Status {
 
 /// Their bunker's store, if they have one.
 pub fn enter_supply(t: &mut Think, _: &Target) -> Option<Target> {
-    t.p.store.map(|_| Target::None)
+    t.p.game.store().map(|_| Target::None)
 }
 
 /// The best known place for any need the bunker is short of: for water, a
@@ -652,15 +709,30 @@ pub fn enter_supply(t: &mut Think, _: &Target) -> Option<Target> {
 /// those have room; for food, a box seen holding something, since only
 /// what is inside can be carried home.
 fn supply_best(p: &Perception) -> Option<Target> {
-    let (store, _) = p.store?;
-    p.bunker_short
+    let (store, _) = p.game.store()?;
+    p.game
+        .bunker_short()
         .iter()
-        .filter(|&&need| if need == Need::Thirst { p.water_room > 0.0 } else { !p.bags_full })
+        .filter(|&&need| {
+            if need == Need::Thirst {
+                p.game.water_room() > 0.0
+            } else {
+                !p.bags_full
+            }
+        })
         .flat_map(|&need| {
             p.memory
                 .good_for(need, p.worth)
-                .filter(move |(k, _)| k.key != store && (k.held.is_some() != (need == Need::Thirst)))
-                .map(move |(k, gives)| (k, need, gives - k.position.distance(p.position) / METRES_PER_POINT))
+                .filter(move |(k, _)| {
+                    k.key != store && (k.held.is_some() != (need == Need::Thirst))
+                })
+                .map(move |(k, gives)| {
+                    (
+                        k,
+                        need,
+                        gives - k.position.distance(p.position) / METRES_PER_POINT,
+                    )
+                })
         })
         .max_by(|a, b| a.2.total_cmp(&b.2))
         .map(|(k, need, _)| Target::Thing {
@@ -672,12 +744,16 @@ fn supply_best(p: &Perception) -> Option<Target> {
 
 /// The nearest known box not yet looked inside, other than their store.
 fn unopened<'a>(p: &Perception<'a>) -> Option<&'a Known> {
-    let store = p.store.map(|(key, _)| key);
+    let store = p.game.store().map(|(key, _)| key);
     p.memory
         .known
         .iter()
         .filter(|k| k.checked_at.is_none() && Some(k.key) != store)
-        .min_by(|a, b| a.position.distance(p.position).total_cmp(&b.position.distance(p.position)))
+        .min_by(|a, b| {
+            a.position
+                .distance(p.position)
+                .total_cmp(&b.position.distance(p.position))
+        })
 }
 
 /// Carrying food or water home: when the bunker is no longer short, the
@@ -685,11 +761,12 @@ fn unopened<'a>(p: &Perception<'a>) -> Option<&'a Known> {
 /// left to look.
 pub fn enter_haul(t: &mut Think, _: &Target) -> Option<Target> {
     let p = t.p;
-    let (store, at) = p.store?;
-    let short = !p.bunker_short.is_empty();
+    let (store, at) = p.game.store()?;
+    let short = !p.game.bunker_short().is_empty();
     let nowhere_to_look = supply_best(p).is_none() && unopened(p).is_none();
-    let food = p.carries_for_bunker && (!short || p.bags_full || nowhere_to_look);
-    let water = p.carried_litres > 0.0 && (!p.bunker_short.contains(&Need::Thirst) || p.water_room <= 0.0 || nowhere_to_look);
+    let food = p.game.carries_for_bunker() && (!short || p.bags_full || nowhere_to_look);
+    let water = p.game.carried_litres() > 0.0
+        && (!p.game.bunker_short().contains(&Need::Thirst) || p.game.water_room() <= 0.0 || nowhere_to_look);
     (food || water).then_some(Target::Thing {
         key: store,
         at,
@@ -706,7 +783,7 @@ pub fn enter_fetch(t: &mut Think, _: &Target) -> Option<Target> {
 /// Short with no box known to hold it: look inside one not yet opened.
 pub fn enter_look_in(t: &mut Think, _: &Target) -> Option<Target> {
     let p = t.p;
-    if p.bags_full || p.bunker_short.is_empty() {
+    if p.bags_full || p.game.bunker_short().is_empty() {
         return None;
     }
     unopened(p).map(|k| Target::Thing {
@@ -718,7 +795,7 @@ pub fn enter_look_in(t: &mut Think, _: &Target) -> Option<Target> {
 
 /// Short with nothing known and nothing to open: head out to find out.
 pub fn enter_head_out_short(t: &mut Think, _: &Target) -> Option<Target> {
-    if t.p.bags_full || t.p.bunker_short.is_empty() {
+    if t.p.bags_full || t.p.game.bunker_short().is_empty() {
         return None;
     }
     head_out_spot(t)
@@ -734,11 +811,13 @@ pub fn enter_look(t: &mut Think, _: &Target) -> Option<Target> {
 /// The nearest known thing never checked.
 pub fn enter_unchecked(t: &mut Think, _: &Target) -> Option<Target> {
     let p = t.p;
-    p.memory.unchecked_nearest(p.position).map(|k| Target::Thing {
-        key: k.key,
-        at: k.position,
-        need: None,
-    })
+    p.memory
+        .unchecked_nearest(p.position)
+        .map(|k| Target::Thing {
+            key: k.key,
+            at: k.position,
+            need: None,
+        })
 }
 
 /// Food and water are out there to be found; rest and safety are not
@@ -766,7 +845,9 @@ fn head_out_spot(t: &mut Think) -> Option<Target> {
 /// Out looking, something known now answers: choose again.
 pub fn knows_better(t: &mut Think, _: &Target) -> bool {
     let p = t.p;
-    need_target(p).is_some() || supply_best(p).is_some() || (!p.bunker_short.is_empty() && unopened(p).is_some())
+    need_target(p).is_some()
+        || supply_best(p).is_some()
+        || (!p.game.bunker_short().is_empty() && unopened(p).is_some())
 }
 
 // Wandering.
@@ -785,7 +866,11 @@ pub fn enter_wander(t: &mut Think, _: &Target) -> Option<Target> {
         .into_iter()
         .filter(|s| s.distance(centre) <= radius && s.distance(t.p.position) > REACH)
         .collect();
-    let unknown: Vec<Vec3> = spots.iter().copied().filter(|s| (t.p.unknown)(*s)).collect();
+    let unknown: Vec<Vec3> = spots
+        .iter()
+        .copied()
+        .filter(|s| (t.p.unknown)(*s))
+        .collect();
     let pool = if unknown.is_empty() { spots } else { unknown };
     if pool.is_empty() {
         return Some(Target::None);
@@ -846,7 +931,11 @@ pub fn follows(follower: Vec3, leader: Vec3) -> bool {
 /// `follower`, `waiting` already or not.
 pub fn waits_for(leader: Vec3, follower: Vec3, waiting: bool) -> bool {
     let apart = leader.distance(follower);
-    if waiting { apart > LEAD_NEAR } else { apart > LEAD_WAIT }
+    if waiting {
+        apart > LEAD_NEAR
+    } else {
+        apart > LEAD_WAIT
+    }
 }
 
 /// Stand this think, or stroll to the spot.
@@ -863,7 +952,9 @@ pub fn wander(t: &mut Think, target: &Target) -> Status {
 /// A need or their bunker presses: a stroll gives way to it.
 pub fn pressing(t: &mut Think, _: &Target) -> bool {
     let p = t.p;
-    p.needs.worst_need().1 < NEED_LINE || (p.store.is_some() && (!p.bunker_short.is_empty() || p.carries_for_bunker || p.carried_litres > 0.0))
+    p.needs.worst_need().1 < NEED_LINE
+        || (p.game.store().is_some()
+            && (!p.game.bunker_short().is_empty() || p.game.carries_for_bunker() || p.game.carried_litres() > 0.0))
 }
 
 // Reaction.
@@ -881,7 +972,13 @@ pub const TIRED_SLOWEST: f32 = 1.5;
 /// awake), slower the more tired they are, quicker or slower by
 /// personality the way it sets their swing. Being hit does not shorten
 /// it: a person under fire is at the combat rate.
-pub fn reaction_ticks(asleep: bool, fighting: bool, rest: f32, personality: &Personality, ticks_per_sec: f32) -> u64 {
+pub fn reaction_ticks(
+    asleep: bool,
+    fighting: bool,
+    rest: f32,
+    personality: &Personality,
+    ticks_per_sec: f32,
+) -> u64 {
     let base = if asleep {
         ASLEEP_REACTION
     } else if fighting {
@@ -897,8 +994,14 @@ pub fn reaction_ticks(asleep: bool, fighting: bool, rest: f32, personality: &Per
 // Steering.
 
 /// The first rolled spot a person can stand on, within `SPOT_TRIES`.
-fn standable_spot(p: &Perception, roll: &mut Roll, mut spot: impl FnMut(&mut Roll) -> Vec3) -> Option<Vec3> {
-    (0..SPOT_TRIES).map(|_| spot(roll)).find(|to| (p.standable)(*to))
+fn standable_spot(
+    p: &Perception,
+    roll: &mut Roll,
+    mut spot: impl FnMut(&mut Roll) -> Vec3,
+) -> Option<Vec3> {
+    (0..SPOT_TRIES)
+        .map(|_| spot(roll))
+        .find(|to| (p.standable)(*to))
 }
 
 /// How near a person comes to hit, before their personality's range.
@@ -924,13 +1027,41 @@ pub fn walk_toward(from: Vec3, to: Vec3) -> Vec<Action> {
     if (to - from).length() <= REACH {
         return vec![];
     }
-    vec![Action::Go { x: to.x, y: to.y, z: to.z }]
+    vec![Action::Go {
+        x: to.x,
+        y: to.y,
+        z: to.z,
+    }]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::actor::Axis;
+
+    /// A game with a bunker and water carried, for the tests.
+    #[derive(Default)]
+    struct Bunker {
+        store: Option<(u64, Vec3)>,
+        short: Vec<Need>,
+        carried_litres: f32,
+        water_room: f32,
+    }
+
+    impl GameFacts for Bunker {
+        fn store(&self) -> Option<(u64, Vec3)> {
+            self.store
+        }
+        fn bunker_short(&self) -> &[Need] {
+            &self.short
+        }
+        fn carried_litres(&self) -> f32 {
+            self.carried_litres
+        }
+        fn water_room(&self) -> f32 {
+            self.water_room
+        }
+    }
 
     fn perception<'a>(memory: &'a Memory, personality: &'a Personality) -> Perception<'a> {
         Perception {
@@ -944,16 +1075,11 @@ mod tests {
             at_home: true,
             asleep: false,
             hostile: None,
-            storm_coming: false,
+            game: &(),
             night: false,
             carries_food: false,
             carries_drink: false,
-            store: None,
-            bunker_short: Vec::new(),
-            carries_for_bunker: false,
             bags_full: false,
-            carried_litres: 0.0,
-            water_room: 0.0,
             memory,
             personality,
             worth: &|_, _| 0.0,
@@ -998,14 +1124,35 @@ mod tests {
         p.trader = Some(trader);
         let mut roll = Roll::new(1);
         let mut t = Think::new(&p, &mut roll);
-        assert_eq!(enter_trade(&mut t, &Target::None), None, "not thirsty enough: no trade");
+        assert_eq!(
+            enter_trade(&mut t, &Target::None),
+            None,
+            "not thirsty enough: no trade"
+        );
         p.needs.thirst = NEED_LINE - 1.0;
         let mut t = Think::new(&p, &mut roll);
         let target = enter_trade(&mut t, &Target::None).expect("thirsty, a trader in sight");
-        assert_eq!(target, Target::Trader { who: ActorId(7), at: trader.1, need: Need::Thirst });
-        assert_eq!(going(&mut t, &target), Status::Running, "4 m off: walking there");
+        assert_eq!(
+            target,
+            Target::Trader {
+                who: ActorId(7),
+                at: trader.1,
+                need: Need::Thirst
+            }
+        );
+        assert_eq!(
+            going(&mut t, &target),
+            Status::Running,
+            "4 m off: walking there"
+        );
         assert_eq!(trade_with(&mut t, &target), Status::Succeeded);
-        assert_eq!(t.do_now, Some(Do::Trade { with: ActorId(7), need: Need::Thirst }));
+        assert_eq!(
+            t.do_now,
+            Some(Do::Trade {
+                with: ActorId(7),
+                need: Need::Thirst
+            })
+        );
     }
 
     /// Asked to be somewhere: they head there; asked somewhere else, or no
@@ -1017,18 +1164,36 @@ mod tests {
         let mut p = perception(&memory, &personality);
         let tap = Vec3::new(40.0, 0.0, 10.0);
         let mut roll = Roll::new(1);
-        assert_eq!(enter_asked(&mut Think::new(&p, &mut roll), &Target::None), None, "not asked");
+        assert_eq!(
+            enter_asked(&mut Think::new(&p, &mut roll), &Target::None),
+            None,
+            "not asked"
+        );
         p.asked = Some(tap);
         let target = enter_asked(&mut Think::new(&p, &mut roll), &Target::None).expect("asked");
         assert_eq!(target, Target::Point(tap));
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(going(&mut t, &target), Status::Running);
-        assert!(t.actions.contains(&Action::Go { x: 40.0, y: 0.0, z: 10.0 }), "going there: {:?}", t.actions);
+        assert!(
+            t.actions.contains(&Action::Go {
+                x: 40.0,
+                y: 0.0,
+                z: 10.0
+            }),
+            "going there: {:?}",
+            t.actions
+        );
         assert!(!not_asked(&mut Think::new(&p, &mut roll), &target));
         p.asked = Some(Vec3::new(-40.0, 0.0, 0.0));
-        assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "asked elsewhere");
+        assert!(
+            not_asked(&mut Think::new(&p, &mut roll), &target),
+            "asked elsewhere"
+        );
         p.asked = None;
-        assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "no longer asked");
+        assert!(
+            not_asked(&mut Think::new(&p, &mut roll), &target),
+            "no longer asked"
+        );
     }
 
     /// A need below NEED_CRITICAL that they can answer outranks being asked
@@ -1043,16 +1208,30 @@ mod tests {
         p.asked = Some(Vec3::new(40.0, 0.0, 10.0));
         p.needs.thirst = NEED_CRITICAL - 10.0;
         p.carries_drink = true;
-        assert!(critical_need(&mut Think::new(&p, &mut roll), &Target::None), "thirst {} carrying drink", p.needs.thirst);
+        assert!(
+            critical_need(&mut Think::new(&p, &mut roll), &Target::None),
+            "thirst {} carrying drink",
+            p.needs.thirst
+        );
         // Offered eating what they carry and what was asked: what was asked
         // is not offered while the need is critical.
         let offered = [Choice::EatCarried, Choice::Asked];
-        assert_eq!(learned(&mut Think::new(&p, &mut roll), &offered), 0, "critical: the need first");
+        assert_eq!(
+            learned(&mut Think::new(&p, &mut roll), &offered),
+            0,
+            "critical: the need first"
+        );
         p.carries_drink = false;
-        assert!(!critical_need(&mut Think::new(&p, &mut roll), &Target::None), "nothing to answer it with: they stay asked");
+        assert!(
+            !critical_need(&mut Think::new(&p, &mut roll), &Target::None),
+            "nothing to answer it with: they stay asked"
+        );
         p.carries_drink = true;
         p.needs.thirst = NEED_CRITICAL + 10.0;
-        assert!(!critical_need(&mut Think::new(&p, &mut roll), &Target::None), "not critical yet");
+        assert!(
+            !critical_need(&mut Think::new(&p, &mut roll), &Target::None),
+            "not critical yet"
+        );
     }
 
     /// A stroll and a trip out only pick a spot someone can stand on;
@@ -1066,18 +1245,41 @@ mod tests {
         let mut roll = Roll::new(1);
         let mut t = Think::new(&p, &mut roll);
         let up = Target::Point(Vec3::new(0.5, 0.0, 0.5));
-        assert_eq!(going(&mut t, &up), Status::Running, "two levels up: still going");
-        assert_eq!(going(&mut t, &Target::Point(Vec3::new(0.5, -6.0, 0.5))), Status::Succeeded, "on their level, near: there");
+        assert_eq!(
+            going(&mut t, &up),
+            Status::Running,
+            "two levels up: still going"
+        );
+        assert_eq!(
+            going(&mut t, &Target::Point(Vec3::new(0.5, -6.0, 0.5))),
+            Status::Succeeded,
+            "on their level, near: there"
+        );
     }
 
     #[test]
     fn a_lead_waits_past_8_m_and_is_done_once_both_are_at_the_spot() {
         let spot = Vec3::new(0.0, 0.0, 20.0);
-        assert!(!waits_for(Vec3::ZERO, Vec3::new(0.0, 0.0, -7.9), false), "7.9 m behind: walk on");
-        assert!(waits_for(Vec3::ZERO, Vec3::new(0.0, 0.0, -8.1), false), "8.1 m behind: wait");
-        assert!(!led_there(Vec3::new(0.0, 0.0, 19.0), Vec3::new(0.0, 0.0, 16.5), spot), "the leader there, the one led not yet");
-        assert!(led_there(Vec3::new(0.0, 0.0, 19.0), Vec3::new(1.0, 0.0, 19.0), spot), "both within 2 m: done");
-        assert!(!led_there(Vec3::new(0.0, -3.0, 20.0), Vec3::new(0.0, -3.0, 20.0), spot), "a level below: not there");
+        assert!(
+            !waits_for(Vec3::ZERO, Vec3::new(0.0, 0.0, -7.9), false),
+            "7.9 m behind: walk on"
+        );
+        assert!(
+            waits_for(Vec3::ZERO, Vec3::new(0.0, 0.0, -8.1), false),
+            "8.1 m behind: wait"
+        );
+        assert!(
+            !led_there(Vec3::new(0.0, 0.0, 19.0), Vec3::new(0.0, 0.0, 16.5), spot),
+            "the leader there, the one led not yet"
+        );
+        assert!(
+            led_there(Vec3::new(0.0, 0.0, 19.0), Vec3::new(1.0, 0.0, 19.0), spot),
+            "both within 2 m: done"
+        );
+        assert!(
+            !led_there(Vec3::new(0.0, -3.0, 20.0), Vec3::new(0.0, -3.0, 20.0), spot),
+            "a level below: not there"
+        );
     }
 
     #[test]
@@ -1087,15 +1289,22 @@ mod tests {
         let mut p = perception(&memory, &personality);
         let east = |at: Vec3| at.x > 0.0;
         p.standable = &east;
-        p.bunker_short = vec![Need::Hunger];
+        let short = Bunker { short: vec![Need::Hunger], ..Bunker::default() };
+        p.game = &short;
         let mut picked = 0;
         for seed in 0..40 {
             let mut roll = Roll::new(seed);
             let mut t = Think::new(&p, &mut roll);
-            for target in [enter_head_out_short(&mut t, &Target::None), enter_wander(&mut t, &Target::None)] {
+            for target in [
+                enter_head_out_short(&mut t, &Target::None),
+                enter_wander(&mut t, &Target::None),
+            ] {
                 if let Some(Target::Point(to)) = target {
                     picked += 1;
-                    assert!(to.x > 0.0, "seed {seed}: headed for {to}, nobody can stand there");
+                    assert!(
+                        to.x > 0.0,
+                        "seed {seed}: headed for {to}, nobody can stand there"
+                    );
                 }
             }
         }
@@ -1105,8 +1314,15 @@ mod tests {
         for seed in 0..40 {
             let mut roll = Roll::new(seed);
             let mut t = Think::new(&p, &mut roll);
-            assert_eq!(enter_head_out_short(&mut t, &Target::None), None, "nowhere standable: no trip out");
-            assert!(!matches!(enter_wander(&mut t, &Target::None), Some(Target::Point(_))), "nor a stroll");
+            assert_eq!(
+                enter_head_out_short(&mut t, &Target::None),
+                None,
+                "nowhere standable: no trip out"
+            );
+            assert!(
+                !matches!(enter_wander(&mut t, &Target::None), Some(Target::Point(_))),
+                "nor a stroll"
+            );
         }
     }
 
@@ -1136,7 +1352,11 @@ mod tests {
             let mut t = Think::new(&p, &mut roll);
             if let Some(Target::Point(to)) = enter_wander(&mut t, &Target::None) {
                 strolled += 1;
-                assert_eq!(to, Vec3::new(-5.0, 0.0, 0.0), "seed {seed}: the one reachable spot off their map");
+                assert_eq!(
+                    to,
+                    Vec3::new(-5.0, 0.0, 0.0),
+                    "seed {seed}: the one reachable spot off their map"
+                );
             }
         }
         assert!(strolled > 0, "some thinks stroll");
@@ -1146,7 +1366,10 @@ mod tests {
             let mut roll = Roll::new(seed);
             let mut t = Think::new(&p, &mut roll);
             if let Some(Target::Point(to)) = enter_wander(&mut t, &Target::None) {
-                assert!(to.distance(Vec3::ZERO) <= radius, "seed {seed}: {to} past the home radius");
+                assert!(
+                    to.distance(Vec3::ZERO) <= radius,
+                    "seed {seed}: {to} past the home radius"
+                );
             }
         }
     }
@@ -1160,18 +1383,29 @@ mod tests {
         let memory = Memory::default();
         let personality = Personality::default();
         let mut p = perception(&memory, &personality);
-        let sleeping = Target::Thing { key: 1, at: Vec3::ZERO, need: Some(Need::Rest) };
+        let sleeping = Target::Thing {
+            key: 1,
+            at: Vec3::ZERO,
+            need: Some(Need::Rest),
+        };
         p.asleep = true;
         p.needs.rest = 40.0;
         let mut roll = Roll::new(1);
         for thirst in [35.0, 25.0, NEED_CRITICAL + 1.0] {
             p.needs.thirst = thirst;
             let mut t = Think::new(&p, &mut roll);
-            assert!(!worse_need(&mut t, &sleeping), "thirst {thirst} under rest 40, not critical: asleep still");
+            assert!(
+                !worse_need(&mut t, &sleeping),
+                "thirst {thirst} under rest 40, not critical: asleep still"
+            );
         }
         p.needs.thirst = NEED_CRITICAL - 1.0;
         let mut t = Think::new(&p, &mut roll);
-        assert!(worse_need(&mut t, &sleeping), "thirst {} critical: drink first", p.needs.thirst);
+        assert!(
+            worse_need(&mut t, &sleeping),
+            "thirst {} critical: drink first",
+            p.needs.thirst
+        );
         p.asleep = false;
         p.needs.thirst = 10.0;
         p.needs.rest = 5.0;
@@ -1194,27 +1428,50 @@ mod tests {
         memory.see(7, "well", Vec3::new(10.0, 0.0, 0.0), 0);
         let personality = Personality::default();
         let mut p = perception(&memory, &personality);
-        let well = |k: &crate::memory::Known, n: Need| if k.kind == "well" && n == Need::Thirst { 50.0 } else { 0.0 };
+        let well = |k: &crate::memory::Known, n: Need| {
+            if k.kind == "well" && n == Need::Thirst {
+                50.0
+            } else {
+                0.0
+            }
+        };
         p.worth = &well;
-        p.store = Some((99, Vec3::new(0.0, 0.0, -5.0)));
-        p.bunker_short = vec![Need::Thirst];
-        p.water_room = 10.0;
+        let empty = Bunker {
+            store: Some((99, Vec3::new(0.0, 0.0, -5.0))),
+            short: vec![Need::Thirst],
+            water_room: 10.0,
+            ..Bunker::default()
+        };
+        p.game = &empty;
         let mut roll = Roll::new(1);
-        let fetch = enter_fetch(&mut Think::new(&p, &mut roll), &Target::None).expect("to the well");
-        assert_eq!(fetch, Target::Thing { key: 7, at: Vec3::new(10.0, 0.0, 0.0), need: Some(Need::Thirst) });
+        let fetch =
+            enter_fetch(&mut Think::new(&p, &mut roll), &Target::None).expect("to the well");
+        assert_eq!(
+            fetch,
+            Target::Thing {
+                key: 7,
+                at: Vec3::new(10.0, 0.0, 0.0),
+                need: Some(Need::Thirst)
+            }
+        );
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(take(&mut t, &fetch), Status::Running);
         assert_eq!(t.do_now, Some(Do::Fill { key: 7 }), "filling");
-        p.water_room = 0.0;
-        p.carried_litres = 10.0;
+        let full = Bunker { store: empty.store, short: empty.short.clone(), carried_litres: 10.0, water_room: 0.0 };
+        p.game = &full;
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(take(&mut t, &fetch), Status::Succeeded, "full");
-        assert!(enter_fetch(&mut Think::new(&p, &mut roll), &Target::None).is_none(), "no room: not to the well");
-        let home = enter_haul(&mut Think::new(&p, &mut roll), &Target::None).expect("home with the water");
+        assert!(
+            enter_fetch(&mut Think::new(&p, &mut roll), &Target::None).is_none(),
+            "no room: not to the well"
+        );
+        let home =
+            enter_haul(&mut Think::new(&p, &mut roll), &Target::None).expect("home with the water");
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(stock(&mut t, &home), Status::Running);
         assert_eq!(t.do_now, Some(Do::Pour { key: 99 }), "pouring");
-        p.carried_litres = 0.0;
+        let poured = Bunker { store: full.store, short: full.short.clone(), ..Bunker::default() };
+        p.game = &poured;
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(stock(&mut t, &home), Status::Succeeded, "poured");
     }
@@ -1229,7 +1486,13 @@ mod tests {
         memory.see(7, "well", Vec3::new(10.0, 0.0, 0.0), 0);
         let personality = Personality::default();
         let mut p = perception(&memory, &personality);
-        let well = |k: &crate::memory::Known, n: Need| if k.kind == "well" && n == Need::Thirst { 50.0 } else { 0.0 };
+        let well = |k: &crate::memory::Known, n: Need| {
+            if k.kind == "well" && n == Need::Thirst {
+                50.0
+            } else {
+                0.0
+            }
+        };
         p.worth = &well;
         p.home = None;
         p.at_home = false;
@@ -1239,7 +1502,11 @@ mod tests {
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(
             enter_need(&mut t, &Target::None),
-            Some(Target::Thing { key: 7, at: Vec3::new(10.0, 0.0, 0.0), need: Some(Need::Thirst) }),
+            Some(Target::Thing {
+                key: 7,
+                at: Vec3::new(10.0, 0.0, 0.0),
+                need: Some(Need::Thirst)
+            }),
             "worn out with nowhere to sleep, they still go to the well"
         );
         // Nothing known for either: nothing to go to.
@@ -1252,13 +1519,32 @@ mod tests {
     fn reaction_time_follows_what_a_person_is_doing_and_how_tired() {
         let calm = Personality::default();
         let full = crate::survival::FULL;
-        assert_eq!(reaction_ticks(false, true, full, &calm, 60.0), 15, "combat, 250 ms");
-        assert_eq!(reaction_ticks(false, false, full, &calm, 60.0), 60, "awake, 1 s");
-        assert_eq!(reaction_ticks(true, false, full, &calm, 60.0), 600, "asleep, 10 s");
-        assert_eq!(reaction_ticks(false, false, 0.0, &calm, 60.0), 90, "exhausted, half as slow again");
+        assert_eq!(
+            reaction_ticks(false, true, full, &calm, 60.0),
+            15,
+            "combat, 250 ms"
+        );
+        assert_eq!(
+            reaction_ticks(false, false, full, &calm, 60.0),
+            60,
+            "awake, 1 s"
+        );
+        assert_eq!(
+            reaction_ticks(true, false, full, &calm, 60.0),
+            600,
+            "asleep, 10 s"
+        );
+        assert_eq!(
+            reaction_ticks(false, false, 0.0, &calm, 60.0),
+            90,
+            "exhausted, half as slow again"
+        );
         let mut quick = calm;
         quick.axes[Axis::Agility as usize] = 1.0;
-        assert!(reaction_ticks(false, false, full, &quick, 60.0) < 60, "an agile person is quicker");
+        assert!(
+            reaction_ticks(false, false, full, &quick, 60.0) < 60,
+            "an agile person is quicker"
+        );
     }
 
     #[test]
@@ -1267,7 +1553,10 @@ mod tests {
         let at = |m: f32| Vec3::new(m, 0.0, 0.0);
         assert!(!waits_for(dell, at(8.0), false), "close enough: go on");
         assert!(waits_for(dell, at(13.0), false), "left behind: wait");
-        assert!(waits_for(dell, at(8.0), true), "waiting, not near enough yet");
+        assert!(
+            waits_for(dell, at(8.0), true),
+            "waiting, not near enough yet"
+        );
         assert!(!waits_for(dell, at(4.0), true), "caught up: go on");
     }
 
