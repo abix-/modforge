@@ -61,10 +61,22 @@ fn is_game_window(hwnd: HWND, class: &str) -> bool {
 
 /// Tell the handler when the state changed, with the foreground
 /// window's class, title and process.
-fn report(hwnd: HWND) {
+///
+/// The event's window is not trusted: Windows also sends the event for
+/// short-lived windows already gone by the time it arrives (no class,
+/// process 0), right after the game took focus (Wicked Island,
+/// 2026-11-22), which left the game told it had lost focus while it had
+/// it. So the window is the one in the foreground now, and an event with
+/// none, or with a window already gone, changes nothing.
+fn report(_event_window: HWND) {
     let Some((class, f)) = *WATCH.lock() else {
         return;
     };
+    // SAFETY: no arguments.
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_null() || pid_of(hwnd) == 0 {
+        return;
+    }
     let now = is_game_window(hwnd, class) as u8;
     if LAST.swap(now, Ordering::AcqRel) != now {
         let window = if hwnd.is_null() {
