@@ -982,6 +982,85 @@ pub unsafe fn chain_tip(c: &UObject, root: &str) -> Option<String> {
     tip.map(|(n, _)| n)
 }
 
+/// How far the mesh's collision capsules (its physics asset's sphyl
+/// shapes, FKSphylElem: axis local Z, half length plus radius from the
+/// center) reach past bone `tip` along `from` to `tip`, in component
+/// space cm at the pose now: where the shape the game gives the body
+/// ends, when the mesh's own points cannot be read. Only capsules on
+/// bones whose name has `word`. None without a physics asset or capsule.
+/// Asked 2026-11-22: "what are you measuring as the tip then?".
+///
+/// # Safety
+/// Game thread, `c` a live skinned mesh.
+pub unsafe fn capsule_reach(c: &UObject, from: &str, tip: &str, word: &str) -> Option<f64> {
+    use crate::anim_data::Xform;
+    use glam::DVec3;
+    let obj = |v: &Value| crate::selector::resolve(&format!("addr:{}", v["addr"].as_str()?)).ok();
+    let field = |o: &UObject, f: &str| -> Option<Value> {
+        // SAFETY: the caller's; o live.
+        unsafe { crate::reflect::get_fields(o, &[f.to_owned()]) }
+            .ok()
+            .map(|v| v[f].clone())
+    };
+    let bone = |n: &str| -> Option<Xform> {
+        let p = json!({"InSocketName": n, "TransformSpace": 2});
+        // SAFETY: the caller's.
+        let v = unsafe {
+            crate::reflect::call(c, "SceneComponent", "GetSocketTransform", p.as_object()?)
+        }
+        .ok()?;
+        Xform::from_json(&v["ReturnValue"])
+    };
+    let mesh = obj(&field(c, "SkinnedAsset")?)?;
+    let physics = obj(&field(mesh, "PhysicsAsset")?)?;
+    // SAFETY: the caller's; physics live.
+    let bodies = unsafe { crate::reflect::array_get(physics, "SkeletalBodySetups", None) }.ok()?;
+    let (a, t) = (bone(from)?, bone(tip)?);
+    let dir = (t.pos - a.pos).normalize_or_zero();
+    let n = |v: &Value, k: &str| v[k].as_f64().unwrap_or(0.0);
+    let mut most: Option<f64> = None;
+    for b in bodies["elements"].as_array().into_iter().flatten() {
+        let Some(body) = obj(b) else { continue };
+        let Some(name) = field(body, "BoneName").and_then(|v| v.as_str().map(str::to_owned)) else {
+            continue;
+        };
+        if !name.contains(word) {
+            continue;
+        }
+        let (Some(x), Some(geom)) = (bone(&name), field(body, "AggGeom")) else {
+            continue;
+        };
+        for s in geom["SphylElems"].as_array().into_iter().flatten() {
+            let c = DVec3::new(
+                n(&s["Center"], "X"),
+                n(&s["Center"], "Y"),
+                n(&s["Center"], "Z"),
+            );
+            let r = &s["Rotation"];
+            let q = rotator_quat(n(r, "Pitch"), n(r, "Yaw"), n(r, "Roll"));
+            let half = n(s, "Length") / 2.0 + n(s, "Radius");
+            for sign in [-1.0, 1.0] {
+                let p = x.point(c + q * DVec3::new(0.0, 0.0, sign * half));
+                let past = (p - t.pos).dot(dir);
+                most = Some(most.map_or(past, |m: f64| m.max(past)));
+            }
+        }
+    }
+    most
+}
+
+/// UE's FRotator::Quaternion, degrees.
+fn rotator_quat(pitch: f64, yaw: f64, roll: f64) -> glam::DQuat {
+    let h = |d: f64| (d.to_radians() / 2.0).sin_cos();
+    let ((sp, cp), (sy, cy), (sr, cr)) = (h(pitch), h(yaw), h(roll));
+    glam::DQuat::from_xyzw(
+        cr * sp * sy - sr * cp * cy,
+        -cr * sp * cy - sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    )
+}
+
 /// A skinned mesh's bones, in index order, each as [name, parent,
 /// hidden] (GetNumBones, GetBoneName, GetParentBone,
 /// IsBoneHiddenByName). Only for skinned meshes: GetNumBones on another
