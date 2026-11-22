@@ -403,6 +403,9 @@ unsafe fn nearest_entrance(to: (f64, f64, f64)) -> Option<(f64, f64, f64)> {
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
 }
+/// Every placement by a held caller so far, on any body: with the frame
+/// in each record it shows how often the scene places the bodies.
+static HELD_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// Frames [`record_stroke`] still records, set by parts.stroke_record.
 static STROKE_LEFT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 /// What [`record_stroke`] recorded, one entry per placement.
@@ -433,6 +436,9 @@ unsafe fn record_stroke(c: &UObject, size: f64, tip: Option<&str>) {
         };
         let mut rec = json!({
             "frame": crate::frame::frames(),
+            "calls": HELD_CALLS.load(std::sync::atomic::Ordering::Relaxed),
+            "component": c.name(),
+            "actor": c.outer().map(|o| o.name()),
             "size": size,
             "body": v3(at(c)),
             "base": v3(root.as_deref().and_then(|b| bone_location(c, b))),
@@ -811,6 +817,7 @@ pub fn hold_size_through(
             if !HOLD_CALLERS.lock().iter().any(|n| *n == caller) {
                 return;
             }
+            HELD_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let placed = *ON_HELD.lock();
             if let Some(cb) = placed {
                 let _ = std::panic::catch_unwind(|| cb(owner));
@@ -1113,6 +1120,12 @@ pub unsafe fn area_look(
     };
     // SAFETY: the caller's.
     for (name, c) in unsafe { meshes(a) } {
+        // Body meshes only: a widget's or a carried stone's slots are
+        // not body parts (Satyr log 2026-11-22: StateWidget, Projectile,
+        // Stone slots were turned off with Torso).
+        if !is(c, "SkinnedMeshComponent") {
+            continue;
+        }
         // SAFETY: the actor's live component, on the game thread.
         let n = unsafe { call(c, "PrimitiveComponent", "GetNumMaterials", json!({})) }
             .ok()
