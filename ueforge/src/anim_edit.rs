@@ -414,7 +414,7 @@ pub fn rewrite(
 ) -> Result<Value, String> {
     let base = seq.as_ptr() as usize;
     // UE data is read through the views, so put the engine's back first.
-    let was_edited = restore(base);
+    let was_edited = restore_where(base, false);
     let clip = crate::anim_data::clip(seq)?;
     if clip.additive {
         return Err(format!("{}: additive clips are not rewritten", seq.name()));
@@ -459,12 +459,25 @@ pub fn rewrite(
     Ok(summary)
 }
 
+/// The format of a curve rewrite, kept apart from the bones'.
+const CURVES: &str = "curves";
+
 /// Put the engine's own data back on the AnimSequence at `seq` (its
-/// address). Returns whether it was rewritten.
+/// address), bones and curves. Returns whether it was rewritten.
 pub fn restore(seq: usize) -> bool {
+    let bones = restore_where(seq, false);
+    restore_where(seq, true) || bones
+}
+
+/// Put back the bone rewrite (`curves` false) or the curve rewrite of
+/// `seq`.
+fn restore_where(seq: usize, curves: bool) -> bool {
     let e = {
         let mut all = EDITS.lock();
-        let Some(i) = all.iter().position(|e| e.sequence == seq) else {
+        let Some(i) = all
+            .iter()
+            .position(|e| e.sequence == seq && (e.format == CURVES) == curves)
+        else {
             return false;
         };
         all.remove(i)
@@ -474,8 +487,80 @@ pub fn restore(seq: usize) -> bool {
         // engine's, untouched.
         unsafe { write_slot(s.at, s.was) };
     }
-    crate::log!("anim_edit: {} restored", e.name);
+    crate::log!("anim_edit: {} {} restored", e.name, e.format);
     true
+}
+
+/// Rewrite the curves of a loaded AnimSequence: decode every sample
+/// (`values[sample][curve]`, by curve index as `Curves::names` lists
+/// them), let `edit` change them, encode them as UE's ACL curve codec
+/// does, check every sample reads back within 0.005, and put the new
+/// buffer in the sequence's curve stream. The engine's buffer is kept
+/// and put back by [`restore`]. A bone rewrite of the same sequence is
+/// left as it is. Game thread.
+pub fn rewrite_curves(
+    seq: &UObject,
+    edit: &mut dyn FnMut(&crate::anim_curves::Curves, &mut [Vec<f32>]) -> Result<(), String>,
+) -> Result<Value, String> {
+    let base = seq.as_ptr() as usize;
+    let was_edited = restore_where(base, true);
+    let c = crate::anim_curves::curves(seq)?;
+    if c.names.is_empty() {
+        return Err(format!("{}: no curves", seq.name()));
+    }
+    let mut values: Vec<Vec<f32>> = (0..c.samples)
+        .map(|i| c.sample(i))
+        .collect::<Result<_, _>>()?;
+    edit(&c, &mut values)?;
+    let bytes = crate::anim_curves::encode(&c, &values)?;
+    let now = keep(&bytes);
+    for (i, want) in values.iter().enumerate() {
+        let got = crate::anim_curves::decode_sample(now, c.names.len(), c.rate, i as u32)?;
+        if let Some((k, (a, b))) = want
+            .iter()
+            .zip(&got)
+            .enumerate()
+            .find(|(_, (a, b))| (*a - *b).abs() > 0.005)
+        {
+            return Err(format!(
+                "{}: curve {} sample {i} reads back {b}, not {a}",
+                seq.name(),
+                c.names[k]
+            ));
+        }
+    }
+    let slot = Slot {
+        at: c.array_at,
+        was: c.stream(),
+        now: (now, bytes.len() as i32),
+    };
+    // SAFETY: the sequence's curve stream TArray, found and read above
+    // on this game-thread call.
+    unsafe { write_slot(slot.at, slot.now) };
+    crate::log!(
+        "anim_edit: {} curves rewritten ({} curves, {} samples, {} to {} bytes)",
+        seq.name(),
+        c.names.len(),
+        c.samples,
+        slot.was.1,
+        slot.now.1
+    );
+    let summary = json!({
+        "sequence": seq.full_name(),
+        "format": CURVES,
+        "curves": c.names,
+        "samples": c.samples,
+        "again": was_edited,
+        "was": [format!("0x{:X}", slot.was.0), slot.was.1],
+        "now": [format!("0x{:X}", slot.now.0), slot.now.1],
+    });
+    EDITS.lock().push(Edit {
+        sequence: base,
+        name: seq.name(),
+        format: CURVES,
+        slots: vec![slot],
+    });
+    Ok(summary)
 }
 
 /// Undo every rewrite (shutdown, hot reload).

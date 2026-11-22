@@ -355,6 +355,22 @@ fn track_table(base: usize, size: usize, tracks: usize, bones: usize) -> Option<
         })
 }
 
+/// The offset in `seq` of its track to bone table (the array of `tracks`
+/// bone indices).
+pub(crate) fn track_table_offset(seq: &UObject, tracks: usize, bones: usize) -> Option<usize> {
+    let base = seq.as_ptr() as usize;
+    (0..object_size(seq).saturating_sub(16))
+        .step_by(8)
+        .find(|&o| {
+            array_at(base + o).is_some_and(|(data, n)| {
+                n == tracks
+                    && (0..n).all(|i| {
+                        read::<i32>(data + i * 4).is_some_and(|b| b >= 0 && (b as usize) < bones)
+                    })
+            })
+        })
+}
+
 /// A TArrayView (data, int32 count) at `addr` copied out, when readable.
 pub(crate) fn view<T: Copy>(addr: usize, max: usize) -> Option<Vec<T>> {
     let data: usize = read(addr)?;
@@ -749,6 +765,14 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
         }),
         OpDef::new("anim.pose", "Every bone of a loaded AnimSequence at a time, read from its data (ACL): name, parent, rotation, translation, scale; space component (default) or local", "{sequence?: selector, name?: str, time: f64 (s), bones?: [str], space?: str}", move |args| {
             job(drain, hint, args.clone(), pose)
+        }),
+        OpDef::new("anim.curves", "A loaded AnimSequence's float curves (morph targets and others) read from its data (ACL): each curve's name, lowest and highest over the clip, and its value at time when given", "{sequence?: selector, name?: str, time?: f64 (s)}", move |args| {
+            job(drain, hint, args.clone(), |a| {
+                crate::anim_curves::info(sequence(a)?, a["time"].as_f64().map(|t| t as f32))
+            })
+        }),
+        OpDef::new("anim.curve_probe", "What follows a loaded AnimSequence's track to bone table: each 8 bytes, as a TArray (count, first bytes, as FName entries) or an object", "{sequence?: selector, name?: str}", move |args| {
+            job(drain, hint, args.clone(), |a| crate::anim_curves::probe(sequence(a)?))
         }),
     ]);
 }

@@ -219,6 +219,121 @@ void* ueforge_acl_compress(const float* raw, const float* ref, const int32_t* pa
     return out;
 }
 
+// The header of an ACL buffer of float curves (UE's
+// AnimCurveCompressionCodec_ACL: one float1f track per curve, output
+// index = the curve's index): track count, samples per track, sample
+// rate, duration. Returns 0; -1 not a valid ACL v2.1 buffer, -2 not
+// float1f tracks.
+int32_t ueforge_acl_curves_info(const void* buffer, uint32_t* num_tracks, uint32_t* num_samples,
+                                float* sample_rate, float* duration) {
+    const acl::compressed_tracks* t = tracks_of(buffer);
+    if (t == nullptr) {
+        return -1;
+    }
+    if (t->get_track_type() != acl::track_type8::float1f) {
+        return -2;
+    }
+    *num_tracks = t->get_num_tracks();
+    *num_samples = t->get_num_samples_per_track();
+    *sample_rate = t->get_sample_rate();
+    *duration = t->get_duration();
+    return 0;
+}
+
+}  // extern "C"
+
+namespace {
+
+struct ScalarSettings : public acl::debug_scalar_decompression_settings {
+    static constexpr acl::compressed_tracks_version16 version_supported() {
+        return acl::compressed_tracks_version16::v02_01_00;
+    }
+};
+
+struct CurveWriter final : public acl::track_writer {
+    float* out;
+    uint32_t n;
+    void RTM_SIMD_CALL write_float1(uint32_t t, rtm::scalarf_arg0 v) {
+        if (t < n) {
+            out[t] = rtm::scalar_cast(v);
+        }
+    }
+};
+
+}  // namespace
+
+extern "C" {
+
+// Every curve's value at `time` seconds into `out` (num_tracks floats,
+// by output index), as UE's ACL curve codec decompresses; `step` as in
+// ueforge_acl_sample. Returns 0; -1 not valid, -2 not float1f, -3 the
+// track count differs, -4 the context did not initialize.
+int32_t ueforge_acl_curves_sample(const void* buffer, float time, int32_t step, float* out,
+                                  uint32_t num_tracks) {
+    const acl::compressed_tracks* t = tracks_of(buffer);
+    if (t == nullptr) {
+        return -1;
+    }
+    if (t->get_track_type() != acl::track_type8::float1f) {
+        return -2;
+    }
+    if (t->get_num_tracks() != num_tracks) {
+        return -3;
+    }
+    acl::decompression_context<ScalarSettings> ctx;
+    if (!ctx.initialize(*t)) {
+        return -4;
+    }
+    ctx.seek(time, step == 2   ? acl::sample_rounding_policy::nearest
+                   : step != 0 ? acl::sample_rounding_policy::floor
+                               : acl::sample_rounding_policy::none);
+    CurveWriter w;
+    w.out = out;
+    w.n = num_tracks;
+    ctx.decompress_tracks(w);
+    return 0;
+}
+
+// A new ACL buffer of float curves from raw values (num_tracks *
+// num_samples floats, track major), one float1f track per curve with
+// output index = its track index, `precision` per value, as UE's ACL
+// curve codec compresses. Returns the buffer (free it with
+// ueforge_acl_free) and its size in *out_size, or null with *out_size
+// 1 a bad argument, 2 the compression failed.
+void* ueforge_acl_curves_compress(const float* raw, uint32_t num_tracks, uint32_t num_samples,
+                                  float sample_rate, float precision, uint32_t* out_size) {
+    *out_size = 1;
+    if (raw == nullptr || num_tracks == 0 || num_samples == 0 || !(sample_rate > 0.0F) ||
+        !(precision > 0.0F)) {
+        return nullptr;
+    }
+    acl::ansi_allocator allocator;
+    acl::track_array_float1f list(allocator, num_tracks);
+    for (uint32_t t = 0; t < num_tracks; ++t) {
+        acl::track_desc_scalarf desc;
+        desc.output_index = t;
+        desc.precision = precision;
+        acl::track_float1f track =
+            acl::track_float1f::make_reserve(desc, allocator, num_samples, sample_rate);
+        for (uint32_t s = 0; s < num_samples; ++s) {
+            track[s] = raw[static_cast<size_t>(t) * num_samples + s];
+        }
+        list[t] = std::move(track);
+    }
+    acl::compression_settings settings = acl::get_default_compression_settings();
+    settings.optimize_loops = false;
+    settings.keyframe_stripping.strip_trivial = false;
+    acl::compressed_tracks* out = nullptr;
+    acl::output_stats stats;
+    acl::error_result err = acl::compress_track_list(allocator, list, settings, out, stats);
+    if (err.any() || out == nullptr) {
+        *out_size = 2;
+        return nullptr;
+    }
+    *out_size = out->get_size();
+    return out;
+}
+
 // Frees a buffer from ueforge_acl_compress.
 void ueforge_acl_free(void* buffer) {
     if (buffer == nullptr) {
