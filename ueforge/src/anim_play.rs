@@ -104,12 +104,21 @@ pub fn segments(montage: &UObject) -> Option<Vec<Segment>> {
 /// The AnimSequence and its time at `position` seconds into `montage`,
 /// from the first slot track's segments. Game thread.
 pub fn sequence_at(montage: &UObject, position: f32) -> Option<(&'static UObject, f32)> {
-    for s in segments(montage)? {
-        if position < s.start || position >= s.start + s.len() {
+    let all = segments(montage)?;
+    let last = all.len().saturating_sub(1);
+    for (i, s) in all.into_iter().enumerate() {
+        // The montage's very end is the last segment's last frame.
+        let end = s.start + s.len();
+        if position < s.start || position > end || (position == end && i != last) {
             continue;
         }
         let span = s.anim_end - s.anim_start;
-        let local = ((position - s.start) * s.rate.abs().max(1e-6)) % span;
+        let played = (position - s.start) * s.rate.abs().max(1e-6);
+        let local = if played >= span * s.loops as f32 {
+            span
+        } else {
+            played % span
+        };
         let time = if s.rate >= 0.0 {
             s.anim_start + local
         } else {
@@ -127,12 +136,18 @@ pub fn sequence_at(montage: &UObject, position: f32) -> Option<(&'static UObject
 pub fn position_of(montage: &UObject, seq: &UObject, time: f32) -> Option<f32> {
     let all: Vec<Segment> = segments(montage)?
         .into_iter()
-        .filter(|s| std::ptr::eq(s.sequence, seq) && time >= s.anim_start && time <= s.anim_end)
+        .filter(|s| {
+            std::ptr::eq(s.sequence, seq)
+                && time >= s.anim_start - 1e-3
+                && time <= s.anim_end + 1e-3
+        })
         .collect();
     let [s] = all.as_slice() else { return None };
     if s.loops != 1 {
         return None;
     }
+    // A sample time can miss the end by a float step.
+    let time = time.clamp(s.anim_start, s.anim_end);
     let rate = s.rate.abs().max(1e-6);
     Some(if s.rate >= 0.0 {
         s.start + (time - s.anim_start) / rate
