@@ -127,18 +127,18 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
             seq.name()
         ));
     }
-    let mut names = vec![String::new(); n as usize];
+    // The ACL track is the entry's place in the (name sorted) table, not
+    // the int32 stored with it: on Animation_4_female only that order
+    // gives the values the anim instance reads live (Anus_Open3 0.9,
+    // ZExpansion Anus Gape 1.0, Z PAH Pain Full 0.79; wickedisland-mod
+    // tests/research_parts.rs anim_curves and player_shapes, 2026-11-22).
+    let mut names = Vec::with_capacity(n as usize);
     for i in 0..n as usize {
         // SAFETY: the entries were checked readable; read_at checks the
         // name before resolving it.
         let name = unsafe { crate::ue::fname::read_at((names_data + i * 12) as *const u8, 0) }
             .ok_or("unreadable curve name")?;
-        let k: i32 = read(names_data + i * 12 + 8).ok_or("unreadable curve index")?;
-        let slot = names
-            .get_mut(k as usize)
-            .filter(|s| s.is_empty())
-            .ok_or_else(|| format!("{}: curve index {k} out of order", seq.name()))?;
-        *slot = name;
+        names.push(name);
     }
     Ok(Curves {
         names,

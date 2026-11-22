@@ -312,8 +312,10 @@ fn acl_slots(seq: &UObject, clip: &Clip, poses: &[Vec<Xform>]) -> Result<Vec<Slo
 }
 
 /// The views to write for UE's per track format, checked by decoding
-/// the new data and comparing every sample.
-fn ue_slots(clip: &Clip, poses: &[Vec<Xform>]) -> Result<Vec<Slot>, String> {
+/// the new data and comparing every sample. `was` is the clip before the
+/// edit: a part with no data (the engine uses the bone's reference pose)
+/// gets data only when the edit changed it.
+fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec<Slot>, String> {
     let p = clip.ue_data().ok_or("not UE data")?;
     let key_format = crate::anim_data::read::<u32>(p + UE_KEY_FORMAT).ok_or("key format")?;
     if key_format != codec::PER_TRACK {
@@ -334,19 +336,34 @@ fn ue_slots(clip: &Clip, poses: &[Vec<Xform>]) -> Result<Vec<Slot>, String> {
         ));
     }
     let has_scale = !scale_offsets.is_empty();
-    // A part the clip has no data for keeps none: an edit must not change
+    // A part the clip has no data for keeps none unless the edit changed
     // it.
+    let moved = |b: usize| {
+        was.iter()
+            .zip(poses)
+            .any(|(a, q)| (a[b].pos - q[b].pos).length() > 1e-4)
+    };
+    let turned = |b: usize| {
+        was.iter()
+            .zip(poses)
+            .any(|(a, q)| a[b].rot.dot(q[b].rot).abs() < 1.0 - 1e-7)
+    };
+    let sized = |b: usize| {
+        was.iter()
+            .zip(poses)
+            .any(|(a, q)| (a[b].scale - q[b].scale).length() > 1e-5)
+    };
     let keys: Vec<codec::TrackKeys> = clip
         .track_bone
         .iter()
         .enumerate()
         .map(|(t, &b)| {
             let b = b as usize;
-            let pos = (offsets[t * 2] >= 0)
+            let pos = (offsets[t * 2] >= 0 || moved(b))
                 .then(|| poses.iter().map(|q| q[b].pos).collect::<Vec<DVec3>>());
-            let rot = (offsets[t * 2 + 1] >= 0)
+            let rot = (offsets[t * 2 + 1] >= 0 || turned(b))
                 .then(|| poses.iter().map(|q| q[b].rot).collect::<Vec<DQuat>>());
-            let scale = (has_scale && scale_offsets.get(t).is_some_and(|&s| s >= 0))
+            let scale = (has_scale && (scale_offsets.get(t).is_some_and(|&s| s >= 0) || sized(b)))
                 .then(|| poses.iter().map(|q| q[b].scale).collect::<Vec<DVec3>>());
             codec::TrackKeys { pos, rot, scale }
         })
@@ -420,9 +437,10 @@ pub fn rewrite(
         return Err(format!("{}: additive clips are not rewritten", seq.name()));
     }
     let mut poses = samples(&clip)?;
+    let was = poses.clone();
     edit(&clip, &mut poses)?;
     let slots = match clip.ue_data() {
-        Some(_) => ue_slots(&clip, &poses)?,
+        Some(_) => ue_slots(&clip, &was, &poses)?,
         None => acl_slots(seq, &clip, &poses)?,
     };
     for s in &slots {
