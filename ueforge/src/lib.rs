@@ -69,6 +69,7 @@
 //! module. File an entry under "Open: more ueforge
 //! extraction candidates" in `docs/todo.md`.
 
+pub mod anim_data;
 pub mod args;
 pub mod assets;
 pub mod behavior_tree;

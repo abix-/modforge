@@ -5,3 +5,6 @@
 	path = vendor/hudhook
 	url = https://github.com/abix-/hudhook.git
 	branch = present1-hook
+[submodule "ueforge/cpp/acl"]
+	path = ueforge/cpp/acl
+	url = https://github.com/nfrechette/acl

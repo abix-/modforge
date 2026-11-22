@@ -34,6 +34,18 @@ fn main() {
         );
     }
 
+    // ACL v2.1.0 (submodule, header only) with its rtm math submodule:
+    // cpp/ueforge_acl.cpp reads animation bone data with it.
+    let acl = cpp.join("acl");
+    let rtm = acl.join("external").join("rtm");
+    if !acl.join("includes").exists() || !rtm.join("includes").exists() {
+        panic!(
+            "ueforge: cpp/acl submodule (or its external/rtm) is not initialized.\n\
+             Run from the repo root:\n\
+                 git submodule update --init --recursive"
+        );
+    }
+
     println!("cargo:rerun-if-changed={}", cpp.display());
     println!(
         "cargo:rerun-if-changed={}",
@@ -111,6 +123,9 @@ fn main() {
         .file(imgui.join("imgui_widgets.cpp"))
         .file(cpp.join("ueforge_ui.cpp"))
         .file(cpp.join("ueforge_seh.cpp"))
+        .include(acl.join("includes"))
+        .include(rtm.join("includes"))
+        .file(cpp.join("ueforge_acl.cpp"))
         .flag_if_supported("/EHsc")
         .static_crt(false)
         .warnings(false)
