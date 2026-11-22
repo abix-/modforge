@@ -31,10 +31,11 @@
 //! being filled is what this frame draws; the other is filled anew
 //! before it is drawn.
 //!
-//! Not covered: frames the engine only blends between two evaluated
-//! poses (update rate optimisation) call no PostEvaluateAnimation, so a
-//! hidden bone may show on those frames. Skin weighted partly to a
-//! hidden bone is pulled toward the shown one.
+//! Frames the engine only blends between two evaluated poses (update
+//! rate optimisation) call no PostEvaluateAnimation, so while bones are
+//! hidden the component's bEnableUpdateRateOptimizations is off (every
+//! frame evaluated), put back when they are shown. Skin weighted partly
+//! to a hidden bone is pulled toward the shown one.
 //!
 //! Ops: parts.hide_alone {component, bones: [str]} (an empty list shows
 //! them all again), parts.hidden_alone {}.
@@ -56,6 +57,8 @@ struct Hide {
     component: usize,
     anim: usize,
     bones: Vec<(String, usize)>,
+    /// bEnableUpdateRateOptimizations before, put back when cleared.
+    uro_was: Option<bool>,
 }
 
 static HIDES: Mutex<Vec<Hide>> = Mutex::new(Vec::new());
@@ -189,8 +192,20 @@ fn call(o: &UObject, class: &str, function: &str, params: Value) -> Result<Value
 /// Game thread.
 pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
     let key = c as *const UObject as usize;
-    HIDES.lock().retain(|h| h.component != key);
+    let old = {
+        let mut hides = HIDES.lock();
+        let i = hides.iter().position(|h| h.component == key);
+        i.map(|i| hides.remove(i))
+    };
+    // The update rate setting as it was before any hiding.
+    let uro_was = match &old {
+        Some(h) => h.uro_was,
+        None => uro(c),
+    };
     if bones.is_empty() {
+        if let Some(was) = old.and_then(|h| h.uro_was) {
+            set_uro(c, was);
+        }
         return Ok(json!({"component": format!("0x{key:X}"), "hidden": []}));
     }
     if !find_class_fast("SkeletalMeshComponent").is_some_and(|k| c.is_a(k)) {
@@ -221,6 +236,8 @@ pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
         .ok_or_else(|| format!("{}: no anim instance", c.name()))?;
     let anim = crate::selector::resolve(&format!("addr:{anim}"))?;
     hook(anim)?;
+    // Every frame evaluated, so every frame runs PostEvaluateAnimation.
+    set_uro(c, false);
     let out = json!({
         "component": format!("0x{key:X}"),
         "anim": anim.name(),
@@ -230,8 +247,54 @@ pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
         component: key,
         anim: anim as *const UObject as usize,
         bones: found,
+        uro_was,
     });
     Ok(out)
+}
+
+const URO: &str = "bEnableUpdateRateOptimizations";
+
+/// SkinnedMeshComponent.bEnableUpdateRateOptimizations now.
+fn uro(c: &UObject) -> Option<bool> {
+    // SAFETY: game thread, `c` live (callers').
+    unsafe { crate::reflect::get_fields(c, &[URO.to_owned()]) }
+        .ok()?
+        .get(URO)?
+        .as_bool()
+}
+
+fn set_uro(c: &UObject, on: bool) {
+    let mut m = serde_json::Map::new();
+    m.insert(URO.to_owned(), json!(on));
+    // SAFETY: as in uro().
+    if let Err(e) = unsafe { crate::reflect::set_fields(c, &m) } {
+        crate::log!("pose_hide: {}: {URO}: {e}", c.name());
+    }
+}
+
+/// Whether `c` can hide bones alone: a skeletal mesh posed by its own
+/// anim instance. A mesh following another's pose (LeaderPoseComponent)
+/// draws with its leader's bones, so hiding them on the leader hides
+/// them on it too. Game thread.
+pub fn posable(c: &UObject) -> bool {
+    find_class_fast("SkeletalMeshComponent").is_some_and(|k| c.is_a(k))
+        && call(c, "SkeletalMeshComponent", "GetAnimInstance", json!({}))
+            .is_ok_and(|v| v["ReturnValue"]["addr"].is_string())
+}
+
+/// Drop the entry of a component that is gone.
+pub fn forget(component: usize) {
+    HIDES.lock().retain(|h| h.component != component);
+}
+
+/// The bones hidden alone on the component at `component` now.
+pub fn bones_of(component: usize) -> Vec<String> {
+    HIDES
+        .lock()
+        .iter()
+        .find(|h| h.component == component)
+        .map(|h| h.bones.iter().map(|(n, _)| n.clone()).collect())
+        .unwrap_or_default()
 }
 
 /// Every component with bones hidden this way.

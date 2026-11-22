@@ -561,8 +561,11 @@ pub struct Look {
     pub hidden: Vec<String>,
     /// Material slots off: (component, slot).
     pub slots_off: Vec<(String, i64)>,
-    /// Bones hidden: (component, bone).
+    /// Bones hidden with every bone below them: (component, bone).
     pub bones_off: Vec<(String, String)>,
+    /// Bones hidden alone, the bones below them still shown
+    /// (pose_hide.rs): (component, bone).
+    pub bones_alone: Vec<(String, String)>,
     /// Morph values: (component, morph, value).
     pub morphs: Vec<(String, String, f64)>,
 }
@@ -574,6 +577,7 @@ impl Default for Look {
             hidden: Vec::new(),
             slots_off: Vec::new(),
             bones_off: Vec::new(),
+            bones_alone: Vec::new(),
             morphs: Vec::new(),
         }
     }
@@ -587,6 +591,8 @@ pub struct Undo {
     hidden: Vec<(usize, bool)>,
     slots: Vec<(usize, i64)>,
     bones: Vec<(usize, String)>,
+    /// Components with bones hidden alone.
+    alone: Vec<usize>,
     morphs: Vec<(usize, String, f64)>,
 }
 
@@ -633,6 +639,7 @@ pub unsafe fn apply_look(a: &UObject, look: &Look) -> Undo {
             hidden: Vec::new(),
             slots: Vec::new(),
             bones: Vec::new(),
+            alone: Vec::new(),
             morphs: Vec::new(),
         };
         if (look.size - size).abs() > 1e-6 {
@@ -658,6 +665,21 @@ pub unsafe fn apply_look(a: &UObject, look: &Look) -> Undo {
             let Some(c) = find(n) else { continue };
             if bone(c, b, true).is_ok() {
                 undo.bones.push((addr(c), b.clone()));
+            }
+        }
+        // One list per component: pose_hide replaces a component's list.
+        let mut alone: Vec<(&str, Vec<String>)> = Vec::new();
+        for (n, b) in &look.bones_alone {
+            match alone.iter_mut().find(|(c, _)| c == n) {
+                Some((_, list)) => list.push(b.clone()),
+                None => alone.push((n.as_str(), vec![b.clone()])),
+            }
+        }
+        for (n, list) in &alone {
+            let Some(c) = find(n) else { continue };
+            match crate::pose_hide::set(c, list) {
+                Ok(_) => undo.alone.push(addr(c)),
+                Err(e) => crate::log!("parts: {n}: bones alone: {e}"),
             }
         }
         for (n, m, v) in &look.morphs {
@@ -700,6 +722,9 @@ pub unsafe fn capture_look(a: &UObject, slots_off: &[(String, i64)]) -> Look {
             ..Look::default()
         };
         for (n, c) in meshes(a) {
+            for b in crate::pose_hide::bones_of(c as *const UObject as usize) {
+                look.bones_alone.push((n.clone(), b));
+            }
             let d = describe(c);
             if d["hidden_in_game"] == json!(true) {
                 look.hidden.push(n.clone());
@@ -748,6 +773,15 @@ pub unsafe fn undo_look(u: &Undo) {
         for (c, b) in &u.bones {
             if let Some(c) = live(*c) {
                 let _ = bone(c, b, false);
+            }
+        }
+        for c in &u.alone {
+            match live(*c) {
+                Some(c) => {
+                    let _ = crate::pose_hide::set(c, &[]);
+                }
+                // Gone: drop its entry so the hook stops looking for it.
+                None => crate::pose_hide::forget(*c),
             }
         }
         for (c, s) in &u.slots {
@@ -1102,16 +1136,25 @@ pub unsafe fn morphs_by_class(base_class: &str) -> std::collections::BTreeMap<St
 }
 
 /// A look of `size` that turns off, on every skinned mesh of the actor,
-/// each material slot whose material name `hide_slot` answers true for
-/// (the slots the parts.slot op turns off), and sets each of `morphs`
-/// (name, value) on every skeletal mesh that has a morph of that name.
+/// each material slot `hide_slot` answers true for (the slots the
+/// parts.slot op turns off), hides alone each bone `hide_bone` answers
+/// true for (pose_hide.rs: the bones below stay shown), and sets each of
+/// `morphs` (name, value) on every skeletal mesh that has a morph of that
+/// name.
+///
+/// `hide_slot` gets the slot's material name and whether bones carry
+/// that mesh: true when the mesh is posed by its own anim instance (its
+/// bones are hidden here) or follows another mesh's pose (it draws with
+/// that mesh's bones). A caller can then leave a slot that holds several
+/// areas, such as one skin for a whole body, to the bones.
 ///
 /// # Safety
 /// Game thread, `a` live.
 pub unsafe fn area_look(
     a: &UObject,
     size: f64,
-    hide_slot: &dyn Fn(&str) -> bool,
+    hide_slot: &dyn Fn(&str, bool) -> bool,
+    hide_bone: &dyn Fn(&str) -> bool,
     morphs: &[(String, f64)],
 ) -> Look {
     let mut look = Look {
@@ -1125,6 +1168,21 @@ pub unsafe fn area_look(
         // Stone slots were turned off with Torso).
         if !is(c, "SkinnedMeshComponent") {
             continue;
+        }
+        let posed = crate::pose_hide::posable(c);
+        // SAFETY: the actor's live component, on the game thread.
+        let follows = unsafe { reflect::get_fields(c, &["LeaderPoseComponent".into()]) }
+            .is_ok_and(|v| v["LeaderPoseComponent"]["addr"].is_string());
+        if posed {
+            // SAFETY: as above.
+            let tree = unsafe { bones(c) }.unwrap_or_default();
+            for b in tree["bones"].as_array().into_iter().flatten() {
+                if let Some(b) = b[0].as_str()
+                    && hide_bone(b)
+                {
+                    look.bones_alone.push((name.clone(), b.to_owned()));
+                }
+            }
         }
         // SAFETY: the actor's live component, on the game thread.
         let n = unsafe { call(c, "PrimitiveComponent", "GetNumMaterials", json!({})) }
@@ -1144,7 +1202,7 @@ pub unsafe fn area_look(
             .ok()
             .and_then(|v| v["ReturnValue"]["name"].as_str().map(str::to_owned))
             .unwrap_or_default();
-            if hide_slot(&material) {
+            if hide_slot(&material, posed || follows) {
                 look.slots_off.push((name.clone(), i));
             }
         }
