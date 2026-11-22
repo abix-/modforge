@@ -910,6 +910,132 @@ pub unsafe fn bone(c: &UObject, name: &str, hidden: bool) -> Result<Value, Strin
     }
 }
 
+/// Each skinned mesh asset's bones as (name, parent), read once per
+/// asset: a dragon has 546 bones, two calls each.
+static BONE_TREES: parking_lot::Mutex<Vec<(usize, Vec<(String, String)>)>> =
+    parking_lot::Mutex::new(Vec::new());
+
+/// A skinned mesh's bones as (name, parent), cached by its mesh asset.
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn bone_tree(c: &UObject) -> Vec<(String, String)> {
+    if !is(c, "SkinnedMeshComponent") {
+        return Vec::new();
+    }
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let asset = reflect::get_fields(c, &["SkinnedAsset".into()])
+            .ok()
+            .and_then(|v| v["SkinnedAsset"]["addr"].as_str().map(str::to_owned))
+            .and_then(|s| usize::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+            .unwrap_or(0);
+        if asset == 0 {
+            return Vec::new();
+        }
+        if let Some((_, t)) = BONE_TREES.lock().iter().find(|(a, _)| *a == asset) {
+            return t.clone();
+        }
+        let n = call(c, "SkinnedMeshComponent", "GetNumBones", json!({}))
+            .ok()
+            .and_then(|v| v["ReturnValue"].as_i64())
+            .unwrap_or(0);
+        let mut tree = Vec::new();
+        for i in 0..n {
+            let Some(name) = call(
+                c,
+                "SkinnedMeshComponent",
+                "GetBoneName",
+                json!({"BoneIndex": i}),
+            )
+            .ok()
+            .and_then(|v| v["ReturnValue"].as_str().map(str::to_owned)) else {
+                continue;
+            };
+            let parent = call(
+                c,
+                "SkinnedMeshComponent",
+                "GetParentBone",
+                json!({"BoneName": name}),
+            )
+            .ok()
+            .and_then(|v| v["ReturnValue"].as_str().map(str::to_owned))
+            .unwrap_or_default();
+            tree.push((name, parent));
+        }
+        BONE_TREES.lock().push((asset, tree.clone()));
+        tree
+    }
+}
+
+/// The topmost bones whose names hold one of `words` and none of `not`
+/// (any case): the bones to hide for that body area, as hiding a bone
+/// hides every bone below it.
+pub fn topmost_matching(
+    tree: &[(String, String)],
+    words: &[String],
+    not: &[String],
+) -> Vec<String> {
+    let hit = |n: &str| {
+        let n = n.to_lowercase();
+        words.iter().any(|w| n.contains(&w.to_lowercase()))
+            && !not.iter().any(|w| n.contains(&w.to_lowercase()))
+    };
+    let parent_of = |n: &str| tree.iter().find(|(b, _)| b == n).map(|(_, p)| p.as_str());
+    tree.iter()
+        .filter(|(n, _)| hit(n))
+        .filter(|(n, _)| {
+            // No bone above it is a hit.
+            let mut p = parent_of(n);
+            let mut steps = 0;
+            while let Some(b) = p
+                && !b.is_empty()
+                && b != "None"
+                && steps < tree.len()
+            {
+                if hit(b) {
+                    return false;
+                }
+                p = parent_of(b);
+                steps += 1;
+            }
+            true
+        })
+        .map(|(n, _)| n.clone())
+        .collect()
+}
+
+/// A look of `size` that hides, on every skinned mesh of the actor, the
+/// body areas in `hidden_areas`, each given as (words, not words) for
+/// [`topmost_matching`].
+///
+/// # Safety
+/// Game thread, `a` live.
+pub unsafe fn area_look(
+    a: &UObject,
+    size: f64,
+    hidden_areas: &[(Vec<String>, Vec<String>)],
+) -> Look {
+    let mut look = Look {
+        size,
+        ..Look::default()
+    };
+    // SAFETY: the caller's.
+    for (name, c) in unsafe { meshes(a) } {
+        if hidden_areas.is_empty() {
+            break;
+        }
+        // SAFETY: the actor's live component, on the game thread.
+        let tree = unsafe { bone_tree(c) };
+        for (words, not) in hidden_areas {
+            for b in topmost_matching(&tree, words, not) {
+                look.bones_off.push((name.clone(), b));
+            }
+        }
+    }
+    look
+}
+
 /// parts.list, parts.hide, parts.slot, parts.morph, parts.scale,
 /// parts.size, parts.bones, parts.bone on the game thread through
 /// `drain`. Each logs what it was asked and what it returned.
@@ -986,4 +1112,41 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
             job(drain, hint, format!("bone {c} {b} {hidden}"), Box::new(move || unsafe { bone(target(&c)?, &b, hidden) }))
         }),
     ]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::topmost_matching;
+
+    fn tree(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
+    fn words(w: &[&str]) -> Vec<String> {
+        w.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn only_the_topmost_bone_of_an_area_is_returned_and_not_words_are_skipped() {
+        // The deer's "Ponytail1" sits on its head; the dragon's fins sit
+        // on its tail (tests/research_parts.rs skeleton_per_enemy).
+        let t = tree(&[
+            ("Root", "None"),
+            ("Head", "Root"),
+            ("Ponytail1", "Head"),
+            ("Tail", "Root"),
+            ("Tail1", "Tail"),
+            ("fintailA1", "Tail1"),
+            ("peener_shaft_BASE", "Root"),
+            ("peener_shaft_001", "peener_shaft_BASE"),
+        ]);
+        let tail = topmost_matching(&t, &words(&["tail"]), &words(&["ponytail", "fintail"]));
+        assert_eq!(tail, vec!["Tail".to_string()]);
+        let penis = topmost_matching(&t, &words(&["penis", "peener"]), &[]);
+        assert_eq!(penis, vec!["peener_shaft_BASE".to_string()]);
+        assert!(topmost_matching(&t, &words(&["wing"]), &[]).is_empty());
+    }
 }
