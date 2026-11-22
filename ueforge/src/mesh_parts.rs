@@ -403,6 +403,68 @@ unsafe fn nearest_entrance(to: (f64, f64, f64)) -> Option<(f64, f64, f64)> {
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
 }
+/// Frames [`record_stroke`] still records, set by parts.stroke_record.
+static STROKE_LEFT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// What [`record_stroke`] recorded, one entry per placement.
+static STROKE: parking_lot::Mutex<Vec<Value>> = parking_lot::Mutex::new(Vec::new());
+/// More partner bones [`record_stroke`] records besides the entrances
+/// (a mouth, hands), set by parts.stroke_record; the placement does not
+/// use them.
+static STROKE_BONES: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
+
+/// Record one placement of a sized body by a held caller, as the game
+/// put it, before this mod scales or moves it: the frame, the size, the
+/// component's world location, the anchor bone (the chain's root) and
+/// its tip in world space, and the partner's component location and each
+/// of its entrance bones' world transform (GetSocketTransform, world).
+/// For measuring how the two bodies meet through a stroke.
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn record_stroke(c: &UObject, size: f64, tip: Option<&str>) {
+    let v3 = |p: Option<(f64, f64, f64)>| p.map(|(x, y, z)| json!([x, y, z]));
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let root = HOLD_ANCHOR.lock().clone();
+        let at = |o: &UObject| {
+            call(o, "SceneComponent", "K2_GetComponentLocation", json!({}))
+                .ok()
+                .and_then(|v| vector(&v["ReturnValue"]))
+        };
+        let mut rec = json!({
+            "frame": crate::frame::frames(),
+            "size": size,
+            "body": v3(at(c)),
+            "base": v3(root.as_deref().and_then(|b| bone_location(c, b))),
+            "tip": v3(tip.and_then(|t| bone_location(c, t))),
+            "tip_bone": tip,
+        });
+        let p = PARTNER.load(std::sync::atomic::Ordering::Acquire);
+        if crate::ue::uobject::is_live(p) {
+            // SAFETY: p is the live object GObjects holds at its index.
+            let partner = &*(p as *const UObject);
+            rec["partner"] = json!(v3(at(partner)));
+            let mut ents = serde_json::Map::new();
+            let mut wanted = entrances_on(partner);
+            wanted.extend(STROKE_BONES.lock().iter().cloned());
+            for e in wanted {
+                let t = call(
+                    partner,
+                    "SceneComponent",
+                    "GetSocketTransform",
+                    json!({"InSocketName": e, "TransformSpace": 0}),
+                )
+                .map(|v| v["ReturnValue"].clone())
+                .unwrap_or(Value::Null);
+                ents.insert(e, t);
+            }
+            rec["entrances"] = Value::Object(ents);
+        }
+        STROKE.lock().push(rec);
+    }
+    STROKE_LEFT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+}
+
 /// Per skinned mesh, the tip of the anchor chain (None: no such bone).
 static ANCHOR_TIPS: parking_lot::Mutex<Vec<(usize, Option<String>)>> =
     parking_lot::Mutex::new(Vec::new());
@@ -775,6 +837,9 @@ pub fn hold_size_through(
                 };
                 let tip = anchor_tip(c);
                 let full = tip.as_deref().and_then(|t| bone_location(c, t));
+                if STROKE_LEFT.load(std::sync::atomic::Ordering::Acquire) > 0 {
+                    record_stroke(c, f, tip.as_deref());
+                }
                 let _ = call(
                     c,
                     "SceneComponent",
@@ -1162,6 +1227,25 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
             let b = args["bone"].as_str().ok_or("bone is required")?.to_owned();
             let hidden = args["hidden"].as_bool().ok_or("hidden: bool is required")?;
             job(drain, hint, format!("bone {c} {b} {hidden}"), Box::new(move || unsafe { bone(target(&c)?, &b, hidden) }))
+        }),
+        // No game-thread work: the size hook records on its own call.
+        OpDef::new("parts.stroke_record", "Record the next N placements of a sized body by a held caller (see hold_size_through), before the mod moves it: body, anchor base and tip, partner entrance transforms and any partner_bones; clears the last recording", "{frames: u64, partner_bones?: [str]}", |args| {
+            let n = args["frames"].as_u64().ok_or("frames is required")? as usize;
+            *STROKE_BONES.lock() = args["partner_bones"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|b| b.as_str().map(str::to_owned))
+                .collect();
+            STROKE.lock().clear();
+            STROKE_LEFT.store(n, std::sync::atomic::Ordering::Release);
+            Ok(json!({"recording": n}))
+        }),
+        OpDef::new("parts.stroke_read", "What parts.stroke_record recorded so far, and how many placements it still waits for", "{}", |_| {
+            Ok(json!({
+                "left": STROKE_LEFT.load(std::sync::atomic::Ordering::Acquire),
+                "records": STROKE.lock().clone(),
+            }))
         }),
     ]);
 }
