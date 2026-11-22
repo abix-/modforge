@@ -1005,9 +1005,92 @@ pub fn topmost_matching(
         .collect()
 }
 
+/// Each skeletal mesh asset's morph names, read once per asset.
+static MORPH_NAMES: parking_lot::Mutex<Vec<(usize, Vec<String>)>> =
+    parking_lot::Mutex::new(Vec::new());
+
+/// A skeletal mesh asset's morph names (K2_GetAllMorphTargetNames),
+/// cached by the asset.
+///
+/// # Safety
+/// Game thread, `mesh` a live SkeletalMesh.
+unsafe fn asset_morph_names(mesh: &UObject) -> Vec<String> {
+    let key = mesh as *const UObject as usize;
+    if let Some((_, n)) = MORPH_NAMES.lock().iter().find(|(k, _)| *k == key) {
+        return n.clone();
+    }
+    // SAFETY: the caller's.
+    let names: Vec<String> =
+        unsafe { call(mesh, "SkeletalMesh", "K2_GetAllMorphTargetNames", json!({})) }
+            .ok()
+            .and_then(|v| v["ReturnValue"].as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect();
+    MORPH_NAMES.lock().push((key, names.clone()));
+    names
+}
+
+/// A skeletal mesh component's asset, or None.
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn skeletal_asset(c: &UObject) -> Option<&'static UObject> {
+    if !is(c, "SkeletalMeshComponent") {
+        return None;
+    }
+    // SAFETY: the caller's.
+    let addr = unsafe { reflect::get_fields(c, &["SkinnedAsset".into()]) }
+        .ok()?
+        .get("SkinnedAsset")?
+        .get("addr")?
+        .as_str()?
+        .to_owned();
+    crate::selector::resolve(&format!("addr:{addr}")).ok()
+}
+
+/// Every morph name on the main mesh (the Character "Mesh" field) of the
+/// loaded classes made from `base_class`, each with the classes that
+/// have it, read from the class defaults, so no live actor is needed.
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn morphs_by_class(base_class: &str) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut out: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    crate::ue::ClassRef::new_dynamic(base_class).for_each_cdo_subclass(|cdo| {
+        let class = cdo
+            .class()
+            .map(|c| c.as_object().name())
+            .unwrap_or_default();
+        // SAFETY: the caller's; class defaults live as long as their class.
+        let names = unsafe {
+            let Some(mesh) = reflect::get_fields(cdo, &["Mesh".into()])
+                .ok()
+                .and_then(|v| v["Mesh"]["addr"].as_str().map(str::to_owned))
+                .and_then(|a| crate::selector::resolve(&format!("addr:{a}")).ok())
+            else {
+                return;
+            };
+            let Some(asset) = skeletal_asset(mesh) else {
+                return;
+            };
+            asset_morph_names(asset)
+        };
+        for n in names {
+            let e = out.entry(n).or_default();
+            if !e.contains(&class) {
+                e.push(class.clone());
+            }
+        }
+    });
+    out
+}
+
 /// A look of `size` that hides, on every skinned mesh of the actor, the
 /// body areas in `hidden_areas`, each given as (words, not words) for
-/// [`topmost_matching`].
+/// [`topmost_matching`], and sets each of `morphs` (name, value) on
+/// every skeletal mesh that has a morph of that name.
 ///
 /// # Safety
 /// Game thread, `a` live.
@@ -1015,6 +1098,7 @@ pub unsafe fn area_look(
     a: &UObject,
     size: f64,
     hidden_areas: &[(Vec<String>, Vec<String>)],
+    morphs: &[(String, f64)],
 ) -> Look {
     let mut look = Look {
         size,
@@ -1022,14 +1106,27 @@ pub unsafe fn area_look(
     };
     // SAFETY: the caller's.
     for (name, c) in unsafe { meshes(a) } {
-        if hidden_areas.is_empty() {
-            break;
+        if !hidden_areas.is_empty() {
+            // SAFETY: the actor's live component, on the game thread.
+            let tree = unsafe { bone_tree(c) };
+            for (words, not) in hidden_areas {
+                for b in topmost_matching(&tree, words, not) {
+                    look.bones_off.push((name.clone(), b));
+                }
+            }
         }
-        // SAFETY: the actor's live component, on the game thread.
-        let tree = unsafe { bone_tree(c) };
-        for (words, not) in hidden_areas {
-            for b in topmost_matching(&tree, words, not) {
-                look.bones_off.push((name.clone(), b));
+        if morphs.is_empty() {
+            continue;
+        }
+        // SAFETY: as above.
+        let Some(asset) = (unsafe { skeletal_asset(c) }) else {
+            continue;
+        };
+        // SAFETY: the component's live asset.
+        let has = unsafe { asset_morph_names(asset) };
+        for (m, v) in morphs {
+            if has.contains(m) {
+                look.morphs.push((name.clone(), m.clone(), *v));
             }
         }
     }
