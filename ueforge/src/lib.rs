@@ -110,6 +110,7 @@ pub mod parms;
 pub mod pe_queue;
 pub mod pose_hide;
 pub mod reflect;
+pub mod rich_curve;
 pub mod ring;
 pub mod rpg;
 pub mod scanner;

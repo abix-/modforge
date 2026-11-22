@@ -15,6 +15,10 @@
 //! float1f tracks, one per curve, output index = curve index, as UE's ACL
 //! plugin writes it; the codec decodes it from the TArray each time.
 //!
+//! Sequences whose curve codec is AnimCurveCompressionCodec_
+//! CompressedRichCurve (the Ogre and Troll female animations) keep the
+//! same table; their stream is read and written by rich_curve.rs.
+//!
 //! Rewriting puts a new buffer in that TArray (pointer and count; the
 //! engine's buffer is kept and put back by anim_edit restore, at scene
 //! end and shutdown).
@@ -58,19 +62,33 @@ const CODEC: usize = 0x70;
 /// CurvePrecision is 0.001).
 const PRECISION: f32 = 0.001;
 
+/// The curve codec a sequence's curve stream is written for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Codec {
+    Acl,
+    /// AnimCurveCompressionCodec_CompressedRichCurve (rich_curve.rs).
+    RichCurve,
+}
+
+const RICH_CURVE: &str = "AnimCurveCompressionCodec_CompressedRichCurve";
+
 /// An AnimSequence's curves.
 pub struct Curves {
-    /// Curve names by curve index (the ACL track's output index).
+    /// Curve names by curve index (the ACL track's output index, the
+    /// rich curve descriptor's place).
     pub names: Vec<String>,
     pub samples: u32,
     pub rate: f32,
     pub duration: f32,
+    pub codec: Codec,
     buffer: usize,
+    len: usize,
     /// The curve stream TArray in the sequence.
     pub(crate) array_at: usize,
 }
 
-/// The curves of `seq`, when its curve codec is ACL. Game thread.
+/// The curves of `seq`, when its curve codec is ACL or the compressed
+/// rich curve. Game thread.
 pub fn curves(seq: &UObject) -> Result<Curves, String> {
     let clip = crate::anim_data::clip(seq)?;
     let at =
@@ -86,9 +104,16 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
         .class()
         .map(|c| c.as_object().name())
         .unwrap_or_default();
-    if class != "AnimCurveCompressionCodec_ACL" {
-        return Err(format!("{}: curve codec {class}, not ACL", seq.name()));
-    }
+    let codec = match class.as_str() {
+        "AnimCurveCompressionCodec_ACL" => Codec::Acl,
+        RICH_CURVE => Codec::RichCurve,
+        _ => {
+            return Err(format!(
+                "{}: curve codec {class}, not ACL or {RICH_CURVE}",
+                seq.name()
+            ));
+        }
+    };
     let array_at = base + at + STREAM;
     let buffer: usize = read(array_at).ok_or("no curve stream")?;
     let len: i32 = read(array_at + 8).ok_or("no curve stream")?;
@@ -100,7 +125,28 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
             samples: 0,
             rate: clip.rate,
             duration: clip.duration,
+            codec,
             buffer: 0,
+            len: 0,
+            array_at,
+        });
+    }
+    if codec == Codec::RichCurve {
+        let n = n_names as usize;
+        if !readable(names_data, n * 12) || (len as usize) < n * 12 {
+            return Err(format!(
+                "{}: {n} curve names but a {len} byte rich curve stream",
+                seq.name()
+            ));
+        }
+        return Ok(Curves {
+            names: read_names(names_data, n)?,
+            samples: clip.samples,
+            rate: clip.rate,
+            duration: clip.duration,
+            codec,
+            buffer,
+            len: len as usize,
             array_at,
         });
     }
@@ -132,22 +178,41 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
     // gives the values the anim instance reads live (Anus_Open3 0.9,
     // ZExpansion Anus Gape 1.0, Z PAH Pain Full 0.79; wickedisland-mod
     // tests/research_parts.rs anim_curves and player_shapes, 2026-11-22).
-    let mut names = Vec::with_capacity(n as usize);
-    for i in 0..n as usize {
-        // SAFETY: the entries were checked readable; read_at checks the
-        // name before resolving it.
-        let name = unsafe { crate::ue::fname::read_at((names_data + i * 12) as *const u8, 0) }
-            .ok_or("unreadable curve name")?;
-        names.push(name);
-    }
     Ok(Curves {
-        names,
+        names: read_names(names_data, n as usize)?,
         samples,
         rate,
         duration,
+        codec,
         buffer,
+        len: len as usize,
         array_at,
     })
+}
+
+/// The `n` curve names of the (FName, int32) table at `at`, checked
+/// readable.
+fn read_names(at: usize, n: usize) -> Result<Vec<String>, String> {
+    let mut names = Vec::with_capacity(n);
+    for i in 0..n {
+        // SAFETY: the entries were checked readable; read_at checks the
+        // name before resolving it.
+        let name = unsafe { crate::ue::fname::read_at((at + i * 12) as *const u8, 0) }
+            .ok_or("unreadable curve name")?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// The `len` bytes at `at`, read in place. Game thread, while the
+/// stream is the sequence's.
+fn bytes<'a>(at: usize, len: usize) -> Result<&'a [u8], String> {
+    if at < 0x1_0000 || !readable(at, len) {
+        return Err("curve stream not readable".into());
+    }
+    // SAFETY: checked readable; the stream stays put while the game
+    // thread runs this call.
+    Ok(unsafe { std::slice::from_raw_parts(at as *const u8, len) })
 }
 
 impl Curves {
@@ -164,6 +229,14 @@ impl Curves {
     fn at_time(&self, time: f32, step: i32) -> Result<Vec<f32>, String> {
         let mut out = vec![0f32; self.names.len()];
         if self.names.is_empty() {
+            return Ok(out);
+        }
+        if self.codec == Codec::RichCurve {
+            let b = bytes(self.buffer, self.len)?;
+            let t = time.clamp(0.0, self.duration);
+            for (k, v) in out.iter_mut().enumerate() {
+                *v = crate::rich_curve::eval(b, k, t)?;
+            }
             return Ok(out);
         }
         // SAFETY: the buffer was checked as ACL curves with this count.
@@ -191,9 +264,17 @@ impl Curves {
     }
 }
 
-/// A new ACL curve buffer: `values[sample][curve]` for every curve of
-/// `c`, at its rate.
+/// A new curve buffer for `c`'s codec: `values[sample][curve]` for
+/// every curve of `c`, at its rate. A rich curve keeps each curve's
+/// extrapolation.
 pub(crate) fn encode(c: &Curves, values: &[Vec<f32>]) -> Result<Vec<u8>, String> {
+    if c.codec == Codec::RichCurve {
+        let b = bytes(c.buffer, c.len)?;
+        let extrap = (0..c.names.len())
+            .map(|k| crate::rich_curve::desc(b, k).map(|d| (d.pre, d.post)))
+            .collect::<Result<Vec<_>, _>>()?;
+        return crate::rich_curve::encode(values, c.rate, &extrap);
+    }
     let n = c.names.len();
     let s = values.len();
     if n == 0 || s == 0 || values.iter().any(|v| v.len() != n) {
@@ -227,9 +308,16 @@ pub(crate) fn encode(c: &Curves, values: &[Vec<f32>]) -> Result<Vec<u8>, String>
     Ok(bytes)
 }
 
-/// The curves of `bytes` (a buffer from [`encode`]) at sample `i`, to
-/// check it reads back.
-pub(crate) fn decode_sample(bytes: usize, n: usize, rate: f32, i: u32) -> Result<Vec<f32>, String> {
+/// The curves of the `len` bytes at `at` (a buffer from [`encode`] for
+/// `c`) at sample `i`, to check it reads back.
+pub(crate) fn decode_sample(c: &Curves, at: usize, len: usize, i: u32) -> Result<Vec<f32>, String> {
+    let (n, rate) = (c.names.len(), c.rate);
+    if c.codec == Codec::RichCurve {
+        let b = bytes(at, len)?;
+        let t = i as f32 / rate.max(1e-6);
+        return (0..n).map(|k| crate::rich_curve::eval(b, k, t)).collect();
+    }
+    let bytes = at;
     let mut out = vec![0f32; n];
     // SAFETY: `bytes` is a buffer from encode with n tracks.
     let r = unsafe {
@@ -265,6 +353,7 @@ pub fn info(seq: &UObject, time: Option<f32>) -> Result<Value, String> {
         "sequence": seq.full_name(),
         "samples": c.samples,
         "rate": c.rate,
+        "codec": format!("{:?}", c.codec),
         "curves": c.names.iter().enumerate().map(|(k, n)| json!({
             "name": n,
             "lowest": lo[k],

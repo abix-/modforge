@@ -511,8 +511,10 @@ fn restore_where(seq: usize, curves: bool) -> bool {
 
 /// Rewrite the curves of a loaded AnimSequence: decode every sample
 /// (`values[sample][curve]`, by curve index as `Curves::names` lists
-/// them), let `edit` change them, encode them as UE's ACL curve codec
-/// does, check every sample reads back within 0.005, and put the new
+/// them), let `edit` change them, encode them for the sequence's curve
+/// codec (UE's ACL curve codec, or the compressed rich curve as linear
+/// keys, rich_curve.rs), check every sample reads back within 0.005,
+/// and put the new
 /// buffer in the sequence's curve stream. The engine's buffer is kept
 /// and put back by [`restore`]. A bone rewrite of the same sequence is
 /// left as it is. Game thread.
@@ -533,7 +535,7 @@ pub fn rewrite_curves(
     let bytes = crate::anim_curves::encode(&c, &values)?;
     let now = keep(&bytes);
     for (i, want) in values.iter().enumerate() {
-        let got = crate::anim_curves::decode_sample(now, c.names.len(), c.rate, i as u32)?;
+        let got = crate::anim_curves::decode_sample(&c, now, bytes.len(), i as u32)?;
         if let Some((k, (a, b))) = want
             .iter()
             .zip(&got)
