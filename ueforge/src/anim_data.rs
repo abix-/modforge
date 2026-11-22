@@ -109,7 +109,12 @@ pub struct Skeleton {
 
 /// An animation's compressed bone data.
 pub struct Clip {
-    buffer: usize,
+    data: Data,
+    /// "acl" or UE's key format (constant key lerp, variable key lerp,
+    /// per track).
+    pub format: &'static str,
+    /// UE's Step interpolation: no blend between keys.
+    pub step: bool,
     pub tracks: u32,
     pub samples: u32,
     pub rate: f32,
@@ -120,7 +125,19 @@ pub struct Clip {
     pub skeleton: Skeleton,
 }
 
-fn readable(addr: usize, len: usize) -> bool {
+/// Where a clip's keys are.
+enum Data {
+    /// ACL compressed tracks, decoded on each sample.
+    Acl { buffer: usize },
+    /// UE's own codecs, decoded to keys once (anim_codec.rs).
+    Ue {
+        tracks: Vec<crate::anim_codec::Track>,
+    },
+}
+
+/// Every page of `len` bytes at `addr` is readable (pose_hide.rs uses
+/// it too).
+pub(crate) fn readable(addr: usize, len: usize) -> bool {
     let Some(end) = addr.checked_add(len) else {
         return false;
     };
@@ -135,7 +152,7 @@ fn readable(addr: usize, len: usize) -> bool {
 }
 
 /// `T` at `addr`, when its bytes are readable.
-fn read<T: Copy>(addr: usize) -> Option<T> {
+pub(crate) fn read<T: Copy>(addr: usize) -> Option<T> {
     if !readable(addr, size_of::<T>()) {
         return None;
     }
@@ -255,6 +272,155 @@ pub fn clip(seq: &UObject) -> Result<Clip, String> {
     let skeleton = skeleton(skel)?;
     let base = seq.as_ptr() as usize;
     let size = object_size(seq);
+    let names = ["SequenceLength", "Interpolation", "AdditiveAnimType"].map(str::to_owned);
+    // SAFETY: game thread; reflected fields.
+    let f = unsafe { crate::reflect::get_fields(seq, &names) }?;
+    let length = f["SequenceLength"].as_f64().unwrap_or(0.0) as f32;
+    // EAnimInterpolationType: 0 linear, 1 step.
+    let step = f["Interpolation"].as_i64() == Some(1);
+    let additive = f["AdditiveAnimType"].as_i64().unwrap_or(0) != 0;
+    if let Some(a) = acl_clip(base, size, skeleton.bones.len())? {
+        return Ok(Clip {
+            data: Data::Acl { buffer: a.buffer },
+            format: "acl",
+            step,
+            tracks: a.tracks,
+            samples: a.samples,
+            rate: a.rate,
+            duration: a.duration,
+            additive: a.additive,
+            track_bone: a.track_bone,
+            skeleton,
+        });
+    }
+    ue_clip(seq, base, size, skeleton, length, step, additive)
+}
+
+/// The track to bone table: the array in the object of `tracks` entries
+/// that are all bone indices.
+fn track_table(base: usize, size: usize, tracks: usize, bones: usize) -> Option<Vec<i32>> {
+    (0..size.saturating_sub(16))
+        .step_by(8)
+        .filter_map(|o| array_at(base + o))
+        .filter(|&(_, n)| n == tracks)
+        .find_map(|(data, n)| {
+            let v: Option<Vec<i32>> = (0..n).map(|i| read::<i32>(data + i * 4)).collect();
+            v.filter(|v| v.iter().all(|&b| b >= 0 && (b as usize) < bones))
+        })
+}
+
+/// A TArrayView (data, int32 count) at `addr` copied out, when readable.
+fn view<T: Copy>(addr: usize, max: usize) -> Option<Vec<T>> {
+    let data: usize = read(addr)?;
+    let n: i32 = read(addr + 8)?;
+    if n == 0 {
+        return Some(Vec::new());
+    }
+    if n < 0 || n as usize > max || !readable(data, n as usize * size_of::<T>()) {
+        return None;
+    }
+    // SAFETY: the whole range was just checked readable; the values are
+    // plain numbers.
+    Some(
+        (0..n as usize)
+            .map(|i| unsafe { std::ptr::read_unaligned((data as *const T).add(i)) })
+            .collect(),
+    )
+}
+
+/// UE's own compressed data (FUECompressedAnimData, read in
+/// tests/research_parts.rs ue_codec_layout, 01_idle 2026-11-22): after
+/// the vtable, CompressedNumberOfKeys (int32) at 0x8, then three
+/// TArrayViews of 16 bytes: track offsets at 0x10, scale offsets at 0x20
+/// (with their strip size at 0x30), the byte stream at 0x38; three codec
+/// pointers; then the key format and the translation, rotation and scale
+/// formats as int32 at 0x60, 0x64, 0x68, 0x6C. Found as the pointer in
+/// the AnimSequence whose target fits all of that.
+fn ue_clip(
+    seq: &UObject,
+    base: usize,
+    size: usize,
+    skeleton: Skeleton,
+    length: f32,
+    step: bool,
+    additive: bool,
+) -> Result<Clip, String> {
+    use crate::anim_codec as codec;
+    let bones = skeleton.bones.len();
+    for o in (0..size.saturating_sub(8)).step_by(8) {
+        let Some(p) = read::<usize>(base + o) else {
+            continue;
+        };
+        if p < 0x1_0000 || !readable(p, 0x70) {
+            continue;
+        }
+        let Some(num_frames) = read::<i32>(p + 8) else {
+            continue;
+        };
+        let codes: Option<Vec<u32>> = (0..4).map(|i| read::<u32>(p + 0x60 + i * 4)).collect();
+        let Some(codes) = codes else { continue };
+        if !(1..1_000_000).contains(&num_frames)
+            || codes[0] > codec::PER_TRACK
+            || codes[1..].iter().any(|&c| c > 6)
+        {
+            continue;
+        }
+        let (Some(offsets), Some(scale_offsets), Some(stream)) = (
+            view::<i32>(p + 0x10, 1 << 22),
+            view::<i32>(p + 0x20, 1 << 22),
+            view::<u8>(p + 0x38, 256 << 20),
+        ) else {
+            continue;
+        };
+        let per = if codes[0] == codec::PER_TRACK { 2 } else { 4 };
+        if offsets.is_empty() || offsets.len() % per != 0 || stream.is_empty() {
+            continue;
+        }
+        let tracks = offsets.len() / per;
+        let Some(track_bone) = track_table(base, size, tracks, bones) else {
+            continue;
+        };
+        let data = codec::UeData {
+            key_format: codes[0],
+            translation_format: codes[1],
+            rotation_format: codes[2],
+            scale_format: codes[3],
+            num_frames: num_frames as u32,
+            track_offsets: &offsets,
+            scale_offsets: &scale_offsets,
+            stream: &stream,
+        };
+        let keys = codec::decode(&data, tracks, if additive { 0.0 } else { 1.0 })
+            .map_err(|e| format!("{}: {e}", seq.name()))?;
+        return Ok(Clip {
+            data: Data::Ue { tracks: keys },
+            format: match codes[0] {
+                codec::CONSTANT_KEY_LERP => "constant key lerp",
+                codec::VARIABLE_KEY_LERP => "variable key lerp",
+                _ => "per track",
+            },
+            step,
+            tracks: tracks as u32,
+            samples: num_frames as u32,
+            rate: if length > 0.0 {
+                (num_frames - 1).max(1) as f32 / length
+            } else {
+                0.0
+            },
+            duration: length,
+            additive,
+            track_bone,
+            skeleton,
+        });
+    }
+    Err(format!(
+        "{}: no bone data found (neither ACL nor UE's own)",
+        seq.name()
+    ))
+}
+
+/// The ACL data of an AnimSequence, if it has it.
+fn acl_clip(base: usize, size: usize, bones: usize) -> Result<Option<AclFound>, String> {
     let mut found = None;
     for o in (0..size.saturating_sub(8)).step_by(8) {
         let Some(p) = read::<usize>(base + o) else {
@@ -287,19 +453,12 @@ pub fn clip(seq: &UObject) -> Result<Clip, String> {
             break;
         }
     }
-    let (buffer, tracks, samples, rate, duration, additive) =
-        found.ok_or_else(|| format!("{}: no ACL bone data found", seq.name()))?;
-    let bones = skeleton.bones.len() as i32;
-    let track_bone = (0..size.saturating_sub(16))
-        .step_by(8)
-        .filter_map(|o| array_at(base + o))
-        .filter(|&(_, n)| n == tracks as usize)
-        .find_map(|(data, n)| {
-            let v: Option<Vec<i32>> = (0..n).map(|i| read::<i32>(data + i * 4)).collect();
-            v.filter(|v| v.iter().all(|b| (0..bones).contains(b)))
-        })
-        .ok_or_else(|| format!("{}: no track to bone table found", seq.name()))?;
-    Ok(Clip {
+    let Some((buffer, tracks, samples, rate, duration, additive)) = found else {
+        return Ok(None);
+    };
+    let track_bone = track_table(base, size, tracks as usize, bones)
+        .ok_or("ACL data but no track to bone table found")?;
+    Ok(Some(AclFound {
         buffer,
         tracks,
         samples,
@@ -307,8 +466,17 @@ pub fn clip(seq: &UObject) -> Result<Clip, String> {
         duration,
         additive,
         track_bone,
-        skeleton,
-    })
+    }))
+}
+
+struct AclFound {
+    buffer: usize,
+    tracks: u32,
+    samples: u32,
+    rate: f32,
+    duration: f32,
+    additive: bool,
+    track_bone: Vec<i32>,
 }
 
 impl Clip {
@@ -316,6 +484,23 @@ impl Clip {
     /// seconds (clamped to the clip). Bones with no track keep the
     /// reference pose. Game thread.
     pub fn local_pose(&self, time: f32) -> Result<Vec<Xform>, String> {
+        let time = time.clamp(0.0, self.duration);
+        let buffer = match &self.data {
+            Data::Acl { buffer } => *buffer,
+            Data::Ue { tracks } => {
+                let rel = if self.duration > 0.0 {
+                    f64::from(time / self.duration)
+                } else {
+                    0.0
+                };
+                let mut pose = self.skeleton.reference.clone();
+                for (t, &b) in self.track_bone.iter().enumerate() {
+                    let (rot, pos, scale) = tracks[t].sample(rel, self.samples, self.step);
+                    pose[b as usize] = Xform { rot, pos, scale };
+                }
+                return Ok(pose);
+            }
+        };
         let n = self.tracks as usize;
         let mut reference = vec![0f32; n * 10];
         for (t, &b) in self.track_bone.iter().enumerate() {
@@ -338,9 +523,9 @@ impl Clip {
         // both arrays hold 10 floats per track.
         let r = unsafe {
             ueforge_acl_sample(
-                self.buffer as *const u8,
-                time.clamp(0.0, self.duration),
-                0,
+                buffer as *const u8,
+                time,
+                i32::from(self.step),
                 reference.as_ptr(),
                 out.as_mut_ptr(),
                 self.tracks,
@@ -411,6 +596,7 @@ fn info(args: &Value) -> Result<Value, String> {
     let c = clip(seq)?;
     Ok(json!({
         "sequence": seq.full_name(),
+        "format": c.format,
         "tracks": c.tracks,
         "samples": c.samples,
         "rate": c.rate,

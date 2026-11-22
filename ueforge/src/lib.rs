@@ -69,6 +69,7 @@
 //! module. File an entry under "Open: more ueforge
 //! extraction candidates" in `docs/todo.md`.
 
+pub mod anim_codec;
 pub mod anim_data;
 pub mod args;
 pub mod assets;
@@ -104,6 +105,7 @@ pub mod ops;
 pub mod overlay;
 pub mod parms;
 pub mod pe_queue;
+pub mod pose_hide;
 pub mod reflect;
 pub mod ring;
 pub mod rpg;
