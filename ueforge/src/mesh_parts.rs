@@ -993,6 +993,36 @@ pub unsafe fn chain_tip(c: &UObject, root: &str) -> Option<String> {
 /// # Safety
 /// Game thread, `c` a live skinned mesh.
 pub unsafe fn capsule_reach(c: &UObject, from: &str, tip: &str, word: &str) -> Option<f64> {
+    // SAFETY: the caller's.
+    let caps = unsafe { capsules(c, word) }?;
+    let (a, t) = unsafe { (bone_at(c, from)?, bone_at(c, tip)?) };
+    let dir = (t - a).normalize_or_zero();
+    caps.iter()
+        .flat_map(|k| {
+            let r = k.radius;
+            let ax = (k.to - k.from).normalize_or_zero();
+            [k.from - ax * r, k.to + ax * r]
+        })
+        .map(|p| (p - t).dot(dir))
+        .reduce(f64::max)
+}
+
+/// One collision capsule, component space cm at the pose now: its axis
+/// from the centre of one end sphere to the other's, and its radius.
+#[derive(Clone, Copy, Debug)]
+pub struct Capsule {
+    pub from: glam::DVec3,
+    pub to: glam::DVec3,
+    pub radius: f64,
+}
+
+/// The mesh's collision capsules (physics asset sphyl shapes,
+/// FKSphylElem: axis local Z, Length between the end spheres' centres)
+/// on bones whose name has `word`. None without a physics asset.
+///
+/// # Safety
+/// Game thread, `c` a live skinned mesh.
+pub unsafe fn capsules(c: &UObject, word: &str) -> Option<Vec<Capsule>> {
     use crate::anim_data::Xform;
     use glam::DVec3;
     let obj = |v: &Value| crate::selector::resolve(&format!("addr:{}", v["addr"].as_str()?)).ok();
@@ -1015,10 +1045,8 @@ pub unsafe fn capsule_reach(c: &UObject, from: &str, tip: &str, word: &str) -> O
     let physics = obj(&field(mesh, "PhysicsAsset")?)?;
     // SAFETY: the caller's; physics live.
     let bodies = unsafe { crate::reflect::array_get(physics, "SkeletalBodySetups", None) }.ok()?;
-    let (a, t) = (bone(from)?, bone(tip)?);
-    let dir = (t.pos - a.pos).normalize_or_zero();
     let n = |v: &Value, k: &str| v[k].as_f64().unwrap_or(0.0);
-    let mut most: Option<f64> = None;
+    let mut out = Vec::new();
     for b in bodies["elements"].as_array().into_iter().flatten() {
         let Some(body) = obj(b) else { continue };
         let Some(name) = field(body, "BoneName").and_then(|v| v.as_str().map(str::to_owned)) else {
@@ -1038,15 +1066,98 @@ pub unsafe fn capsule_reach(c: &UObject, from: &str, tip: &str, word: &str) -> O
             );
             let r = &s["Rotation"];
             let q = rotator_quat(n(r, "Pitch"), n(r, "Yaw"), n(r, "Roll"));
-            let half = n(s, "Length") / 2.0 + n(s, "Radius");
-            for sign in [-1.0, 1.0] {
-                let p = x.point(c + q * DVec3::new(0.0, 0.0, sign * half));
-                let past = (p - t.pos).dot(dir);
-                most = Some(most.map_or(past, |m: f64| m.max(past)));
-            }
+            let half = n(s, "Length") / 2.0;
+            // The bone's scale applies to the radius as to the length.
+            let scale = (x.point(q * DVec3::Z + c) - x.point(c)).length();
+            out.push(Capsule {
+                from: x.point(c - q * DVec3::new(0.0, 0.0, half)),
+                to: x.point(c + q * DVec3::new(0.0, 0.0, half)),
+                radius: n(s, "Radius") * scale,
+            });
         }
     }
-    most
+    Some(out)
+}
+
+/// Bone or socket `n`'s position, component space.
+///
+/// # Safety
+/// Game thread, `c` a live skinned mesh.
+unsafe fn bone_at(c: &UObject, n: &str) -> Option<glam::DVec3> {
+    let p = json!({"InSocketName": n, "TransformSpace": 2});
+    // SAFETY: the caller's.
+    let v =
+        unsafe { crate::reflect::call(c, "SceneComponent", "GetSocketTransform", p.as_object()?) }
+            .ok()?;
+    crate::anim_data::Xform::from_json(&v["ReturnValue"]).map(|x| x.pos)
+}
+
+/// The body's thickness (radius, cm) along the bone chain `chain` (base
+/// first), every `step` cm from the first bone: along the bones, then
+/// on past the last bone in its direction, ending where the capsules on
+/// bones with `word` end (the visible tip). At each point the widest
+/// capsule there, its end spheres narrowing it. Asked 2026-11-22: "it
+/// needs to follow thickness", "and thickess changes right?". None
+/// without capsules or with fewer than two bones.
+///
+/// # Safety
+/// Game thread, `c` a live skinned mesh.
+pub unsafe fn capsule_thickness(
+    c: &UObject,
+    chain: &[&str],
+    word: &str,
+    step: f64,
+) -> Option<Vec<f64>> {
+    // SAFETY: the caller's.
+    let caps = unsafe { capsules(c, word) }?;
+    if caps.is_empty() || chain.len() < 2 || step <= 0.0 {
+        return None;
+    }
+    let pts: Vec<glam::DVec3> = chain
+        .iter()
+        .map(|n| unsafe { bone_at(c, n) })
+        .collect::<Option<_>>()?;
+    let at = |p: glam::DVec3| -> f64 {
+        caps.iter()
+            .filter_map(|k| {
+                let ax = k.to - k.from;
+                let l = ax.length();
+                let u = if l > 1e-9 {
+                    (p - k.from).dot(ax) / l
+                } else {
+                    0.0
+                };
+                let near = k.from + ax.normalize_or_zero() * u.clamp(0.0, l);
+                let out = (u - u.clamp(0.0, l)).abs();
+                let w = (k.radius * k.radius - out * out).max(0.0).sqrt();
+                // Only where the point is inside the capsule.
+                ((p - near).length() <= k.radius).then_some(w)
+            })
+            .fold(0.0, f64::max)
+    };
+    let mut out = Vec::new();
+    let mut s = 0.0;
+    let mut seg = 0;
+    let mut start = 0.0;
+    loop {
+        while seg + 1 < pts.len() - 1 && s > start + (pts[seg + 1] - pts[seg]).length() {
+            start += (pts[seg + 1] - pts[seg]).length();
+            seg += 1;
+        }
+        let (a, b) = (pts[seg], pts[seg + 1]);
+        let p = a + (b - a).normalize_or_zero() * (s - start);
+        let w = at(p);
+        let past_bones = seg + 2 == pts.len() && s - start > (b - a).length();
+        if past_bones && w <= 0.0 {
+            break;
+        }
+        out.push(w);
+        s += step;
+        if out.len() > 100_000 {
+            return None;
+        }
+    }
+    Some(out)
 }
 
 /// UE's FRotator::Quaternion, degrees.
