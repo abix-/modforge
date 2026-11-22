@@ -408,6 +408,233 @@ fn remember_size(a: &UObject, factor: f64) {
     }
 }
 
+/// Called on the game thread with the actor each time a caller named in
+/// [`hold_size_through`] places one of its components, before its size
+/// is applied: a mod can apply a [`Look`] there the first time.
+static ON_HELD: parking_lot::Mutex<Option<fn(&UObject)>> = parking_lot::Mutex::new(None);
+
+/// Set the [`ON_HELD`] callback.
+pub fn on_held_placement(f: fn(&UObject)) {
+    *ON_HELD.lock() = Some(f);
+}
+
+/// How an actor looks: its size and what is hidden or changed on its
+/// meshes, by component name (the same on every actor of a class).
+/// Applied with [`apply_look`], put back with [`undo_look`].
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Look {
+    pub size: f64,
+    /// Meshes hidden (SetHiddenInGame).
+    pub hidden: Vec<String>,
+    /// Material slots off: (component, slot).
+    pub slots_off: Vec<(String, i64)>,
+    /// Bones hidden: (component, bone).
+    pub bones_off: Vec<(String, String)>,
+    /// Morph values: (component, morph, value).
+    pub morphs: Vec<(String, String, f64)>,
+}
+
+impl Default for Look {
+    fn default() -> Self {
+        Self {
+            size: 1.0,
+            hidden: Vec::new(),
+            slots_off: Vec::new(),
+            bones_off: Vec::new(),
+            morphs: Vec::new(),
+        }
+    }
+}
+
+/// What [`apply_look`] changed, to put back.
+#[derive(Debug)]
+pub struct Undo {
+    actor: usize,
+    size: f64,
+    hidden: Vec<(usize, bool)>,
+    slots: Vec<(usize, i64)>,
+    bones: Vec<(usize, String)>,
+    morphs: Vec<(usize, String, f64)>,
+}
+
+impl Undo {
+    pub fn actor(&self) -> usize {
+        self.actor
+    }
+}
+
+/// The actor's mesh components by name.
+///
+/// # Safety
+/// Game thread, `a` live.
+unsafe fn meshes(a: &UObject) -> Vec<(String, &'static UObject)> {
+    let Some(mesh) = find_class_fast("MeshComponent") else {
+        return Vec::new();
+    };
+    actor::components_by_class(a, mesh)
+        .unwrap_or_default()
+        .into_iter()
+        // SAFETY: the actor's live components.
+        .map(|c| unsafe { &*c })
+        .map(|c| (c.name(), c))
+        .collect()
+}
+
+/// Apply `look` to the actor, recording what it was.
+///
+/// # Safety
+/// Game thread, `a` live.
+pub unsafe fn apply_look(a: &UObject, look: &Look) -> Undo {
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let parts = meshes(a);
+        let find = |n: &str| parts.iter().find(|(name, _)| name == n).map(|(_, c)| *c);
+        let addr = |c: &UObject| c as *const UObject as usize;
+        let size = call(a, "Actor", "GetActorScale3D", json!({}))
+            .ok()
+            .and_then(|v| v["ReturnValue"]["X"].as_f64())
+            .unwrap_or(1.0);
+        let mut undo = Undo {
+            actor: addr(a),
+            size,
+            hidden: Vec::new(),
+            slots: Vec::new(),
+            bones: Vec::new(),
+            morphs: Vec::new(),
+        };
+        if (look.size - size).abs() > 1e-6 {
+            let _ = actor_scale(a, look.size);
+        }
+        for n in &look.hidden {
+            let Some(c) = find(n) else { continue };
+            let was = reflect::get_fields(c, &["bHiddenInGame".into()])
+                .ok()
+                .and_then(|v| v["bHiddenInGame"].as_bool())
+                .unwrap_or(false);
+            if hide(c, true).is_ok() {
+                undo.hidden.push((addr(c), was));
+            }
+        }
+        for (n, s) in &look.slots_off {
+            let Some(c) = find(n) else { continue };
+            if slot(c, *s, false).is_ok() {
+                undo.slots.push((addr(c), *s));
+            }
+        }
+        for (n, b) in &look.bones_off {
+            let Some(c) = find(n) else { continue };
+            if bone(c, b, true).is_ok() {
+                undo.bones.push((addr(c), b.clone()));
+            }
+        }
+        for (n, m, v) in &look.morphs {
+            let Some(c) = find(n) else { continue };
+            let was = call(
+                c,
+                "SkeletalMeshComponent",
+                "GetMorphTarget",
+                json!({"MorphTargetName": m}),
+            )
+            .ok()
+            .and_then(|r| r["ReturnValue"].as_f64())
+            .unwrap_or(0.0);
+            if morph(c, m, *v).is_ok() {
+                undo.morphs.push((addr(c), m.clone(), was));
+            }
+        }
+        crate::log!("parts: look on {}: {look:?}", a.name());
+        undo
+    }
+}
+
+/// The actor's look as it is now: its size, the meshes hidden in game,
+/// the topmost hidden bones (hiding one hides the bones below it), and
+/// the morphs not at 0. The engine has no getter for a material slot
+/// shown by ShowMaterialSection, so `slots_off` comes from the caller,
+/// who turned them off.
+///
+/// # Safety
+/// Game thread, `a` live.
+pub unsafe fn capture_look(a: &UObject, slots_off: &[(String, i64)]) -> Look {
+    // SAFETY: the caller's, for every call below.
+    unsafe {
+        let mut look = Look {
+            size: call(a, "Actor", "GetActorScale3D", json!({}))
+                .ok()
+                .and_then(|v| v["ReturnValue"]["X"].as_f64())
+                .unwrap_or(1.0),
+            slots_off: slots_off.to_vec(),
+            ..Look::default()
+        };
+        for (n, c) in meshes(a) {
+            let d = describe(c);
+            if d["hidden_in_game"] == json!(true) {
+                look.hidden.push(n.clone());
+            }
+            for m in d["morphs"].as_array().into_iter().flatten() {
+                let v = m[1].as_f64().unwrap_or(0.0);
+                if v.abs() > 1e-6
+                    && let Some(name) = m[0].as_str()
+                {
+                    look.morphs.push((n.clone(), name.to_owned(), v));
+                }
+            }
+            let Ok(b) = bones(c) else { continue };
+            let list = b["bones"].as_array().cloned().unwrap_or_default();
+            let hidden: Vec<&str> = list
+                .iter()
+                .filter(|x| x[2] == json!(true))
+                .filter_map(|x| x[0].as_str())
+                .collect();
+            for x in &list {
+                let (Some(name), parent) = (x[0].as_str(), x[1].as_str()) else {
+                    continue;
+                };
+                if x[2] == json!(true) && !parent.is_some_and(|p| hidden.contains(&p)) {
+                    look.bones_off.push((n.clone(), name.to_owned()));
+                }
+            }
+        }
+        look
+    }
+}
+
+/// Put back what [`apply_look`] changed, skipping objects that are gone.
+///
+/// # Safety
+/// Game thread.
+pub unsafe fn undo_look(u: &Undo) {
+    let live = |p: usize| crate::selector::resolve(&format!("addr:0x{p:X}")).ok();
+    // SAFETY: the caller's; every object is checked live first.
+    unsafe {
+        for (c, m, v) in &u.morphs {
+            if let Some(c) = live(*c) {
+                let _ = morph(c, m, *v);
+            }
+        }
+        for (c, b) in &u.bones {
+            if let Some(c) = live(*c) {
+                let _ = bone(c, b, false);
+            }
+        }
+        for (c, s) in &u.slots {
+            if let Some(c) = live(*c) {
+                let _ = slot(c, *s, true);
+            }
+        }
+        for (c, was) in &u.hidden {
+            if let Some(c) = live(*c) {
+                let _ = hide(c, *was);
+            }
+        }
+        if let Some(a) = live(u.actor) {
+            let _ = actor_scale(a, u.size);
+            crate::log!("parts: look undone on {}", a.name());
+        }
+    }
+}
+
 /// Keep an actor's size from [`actor_scale`] when a script function
 /// named in `callers` puts one of its components at a stored world
 /// transform (SceneComponent.K2_SetWorldTransform), which carries the
@@ -438,6 +665,15 @@ pub fn hold_size_through(callers: &[&str], anchor: Option<&str>) -> Result<(), S
             unsafe { original.call(c, frame, result) };
             let Some(owner) = c.outer() else { return };
             let key = owner as *const UObject as usize;
+            let Some(node) = frame.node() else { return };
+            let caller = node.as_object().name();
+            if !HOLD_CALLERS.lock().iter().any(|n| *n == caller) {
+                return;
+            }
+            let placed = *ON_HELD.lock();
+            if let Some(cb) = placed {
+                let _ = std::panic::catch_unwind(|| cb(owner));
+            }
             let Some(f) = SIZES
                 .lock()
                 .iter()
@@ -446,11 +682,6 @@ pub fn hold_size_through(callers: &[&str], anchor: Option<&str>) -> Result<(), S
             else {
                 return;
             };
-            let Some(node) = frame.node() else { return };
-            let caller = node.as_object().name();
-            if !HOLD_CALLERS.lock().iter().any(|n| *n == caller) {
-                return;
-            }
             // SAFETY: the game thread (the script VM's call); c is live.
             unsafe {
                 let Ok(now) = reflect::get_fields(c, &["RelativeScale3D".to_string()]) else {
