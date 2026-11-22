@@ -65,6 +65,9 @@ memoffset = { workspace = true }
 anyhow = { workspace = true }
 parking_lot = { workspace = true }
 arc-swap = { workspace = true }
+# Inline hook on the script VM's ProcessLocalScriptFunction
+# (src/hook/script_function.rs), as horsey-mod's detours.
+retour = { workspace = true }
 hex = { workspace = true }
 crossbeam-channel = { workspace = true }
 region = { workspace = true }

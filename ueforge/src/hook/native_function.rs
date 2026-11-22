@@ -37,6 +37,10 @@ pub type NativeFn = unsafe extern "system" fn(*mut UObject, *mut c_void, *mut c_
 pub struct Frame(*mut c_void);
 
 impl Frame {
+    pub(crate) fn new(p: *mut c_void) -> Self {
+        Self(p)
+    }
+
     /// The raw FFrame pointer, to hand back to the engine.
     pub fn as_ptr(&self) -> *mut c_void {
         self.0

@@ -10,6 +10,7 @@ pub mod lazy_function;
 pub mod native_function;
 pub mod process_event;
 pub mod registry;
+pub mod script_function;
 pub mod vtable;
 
 pub use install::{

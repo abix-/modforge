@@ -19,4 +19,9 @@ pub fn register_builtins() {
         order: 100,
         run: || crate::hook::native_function::shutdown_all(),
     });
+    SHUTDOWN_REGISTRY.register(ShutdownHandlerDef {
+        name: "hook::script_function::shutdown_all",
+        order: 100,
+        run: || crate::hook::script_function::shutdown_all(),
+    });
 }

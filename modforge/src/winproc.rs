@@ -915,11 +915,12 @@ struct WatchRecord {
     rdx: u64,
     r8: u64,
     r9: u64,
-    // The first four qwords at rdx, read fault-safe. On an exec
+    // The first six qwords at rdx, read fault-safe. On an exec
     // breakpoint at an Unreal native thunk (UObject* Context, FFrame&
     // Stack, RESULT_DECL), rdx is the FFrame, whose +0x10 is the
-    // calling script function (Node) and +0x18 the object it runs on.
-    rdx_qwords: [u64; 4],
+    // calling script function (Node), +0x18 the object it runs on and
+    // +0x20 the next script byte (Code).
+    rdx_qwords: [u64; 6],
     // Data watchpoints trap after the instruction executes. Capturing the
     // watched bytes here identifies which hit actually wrote the sought
     // value when several instructions touch the same field.
@@ -946,7 +947,7 @@ static WATCH_BUF: WatchBuf = WatchBuf {
             rdx: 0,
             r8: 0,
             r9: 0,
-            rdx_qwords: [0; 4],
+            rdx_qwords: [0; 6],
             value_after: [0; 8],
             value_after_len: 0,
             frame_count: 0,
@@ -1003,7 +1004,7 @@ unsafe extern "system" fn watch_handler(
         slot.rdx = ctx.Rdx;
         slot.r8 = ctx.R8;
         slot.r9 = ctx.R9;
-        slot.rdx_qwords = [0; 4];
+        slot.rdx_qwords = [0; 6];
         let mut got_rdx = 0usize;
         // SAFETY: ReadProcessMemory is fault-safe for any rdx value.
         let _ = unsafe {
