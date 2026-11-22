@@ -547,6 +547,10 @@ pub struct Look {
     /// Bones hidden alone, the bones below them still shown
     /// (pose_hide.rs): (component, bone).
     pub bones_alone: Vec<(String, String)>,
+    /// Per component, the shown bone its bones hidden alone shrink to
+    /// (pose_hide::set_to): (component, bone). Without one they shrink
+    /// where they are.
+    pub alone_to: Vec<(String, String)>,
     /// Morph values: (component, morph, value).
     pub morphs: Vec<(String, String, f64)>,
 }
@@ -559,6 +563,7 @@ impl Default for Look {
             slots_off: Vec::new(),
             bones_off: Vec::new(),
             bones_alone: Vec::new(),
+            alone_to: Vec::new(),
             morphs: Vec::new(),
         }
     }
@@ -658,7 +663,12 @@ pub unsafe fn apply_look(a: &UObject, look: &Look) -> Undo {
         }
         for (n, list) in &alone {
             let Some(c) = find(n) else { continue };
-            match crate::pose_hide::set(c, list) {
+            let to = look
+                .alone_to
+                .iter()
+                .find(|(m, _)| m == n)
+                .map(|(_, b)| b.as_str());
+            match crate::pose_hide::set_to(c, list, to) {
                 Ok(_) => undo.alone.push(addr(c)),
                 Err(e) => crate::log!("parts: {n}: bones alone: {e}"),
             }

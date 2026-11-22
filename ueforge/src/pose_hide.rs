@@ -35,7 +35,8 @@
 //! rate optimisation) call no PostEvaluateAnimation, so while bones are
 //! hidden the component's bEnableUpdateRateOptimizations is off (every
 //! frame evaluated), put back when they are shown. Skin weighted partly
-//! to a hidden bone is pulled toward the shown one.
+//! to a hidden bone is pulled to where that bone shrinks: its own place,
+//! or a shown bone chosen with [`set_to`].
 //!
 //! Other changes to the pose after the animation use the same hook:
 //! [`edit`] runs a function on a component's pose each frame (the
@@ -65,6 +66,9 @@ struct Hide {
     component: usize,
     anim: usize,
     bones: Vec<(String, usize)>,
+    /// The shown bone the hidden ones shrink to (its position this
+    /// frame), else each shrinks where it is.
+    to: Option<usize>,
     /// bEnableUpdateRateOptimizations before, put back when cleared.
     uro_was: Option<bool>,
 }
@@ -198,8 +202,17 @@ fn buffers(c: &UObject, bones: usize) -> Result<usize, String> {
     Err(format!("{}: no bone buffers found", c.name()))
 }
 
-/// Scale 0 on each hidden bone in both buffers. Game thread, in the
-/// anim instance's post evaluate.
+/// Scale 0 on each hidden bone in both buffers; with a bone to shrink
+/// to, its translation is that bone's too. Game thread, in the anim
+/// instance's post evaluate, after the pose edits.
+///
+/// A bone of scale 0 draws its skin at its translation (the skin matrix
+/// is the bone's transform times its inverse reference pose, and scale 0
+/// leaves only the translation), so skin weighted partly to it is pulled
+/// there. Shrunk to a shown bone, skin shared with that bone is pulled
+/// to it and moves with it, not back to where the hidden bone is (asked
+/// 2026-11-22: "the penis is sttaced to skin or fur or osmething", "can
+/// we fix it in the mod???", "do it").
 fn zero(h: &Hide) {
     let off = BUFFERS.load(Ordering::Acquire);
     if off == 0 {
@@ -210,17 +223,27 @@ fn zero(h: &Hide) {
         let (Some(data), Some(n)) = (read::<usize>(arr), read::<i32>(arr + 8)) else {
             continue;
         };
+        let n = n.max(0) as usize;
+        let to: Option<[f64; 3]> = h.to.filter(|&t| t < n).and_then(|t| {
+            let p = data + t * TRANSFORM + 32;
+            Some([read::<f64>(p)?, read::<f64>(p + 8)?, read::<f64>(p + 16)?])
+        });
         for &(_, i) in &h.bones {
-            if i >= n.max(0) as usize {
+            if i >= n {
                 continue;
             }
-            let s = data + i * TRANSFORM + SCALE;
-            if !readable(s, 24) {
+            let at = data + i * TRANSFORM;
+            if !readable(at, TRANSFORM) {
                 continue;
             }
             // SAFETY: inside the component's live transform array,
             // checked readable; the engine writes it on this thread.
-            unsafe { std::ptr::write_bytes(s as *mut u8, 0, 24) };
+            unsafe {
+                std::ptr::write_bytes((at + SCALE) as *mut u8, 0, 24);
+                if let Some(p) = to {
+                    std::ptr::copy_nonoverlapping(p.as_ptr(), (at + 32) as *mut f64, 3);
+                }
+            }
         }
     }
 }
@@ -290,6 +313,13 @@ fn call(o: &UObject, class: &str, function: &str, params: Value) -> Result<Value
 /// included, stays as animated; an empty list shows them all again.
 /// Game thread.
 pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
+    set_to(c, bones, None)
+}
+
+/// [`set`], the hidden bones shrinking to shown bone `to` (its position
+/// each frame) instead of where they are; a mesh without bone `to`
+/// shrinks them where they are. Game thread.
+pub fn set_to(c: &UObject, bones: &[String], to: Option<&str>) -> Result<Value, String> {
     let key = c as *const UObject as usize;
     // The update rate setting as it was before any hiding or edit.
     let was = uro_before(key);
@@ -325,16 +355,35 @@ pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
         }
         found.push((b.clone(), i as usize));
     }
+    let to = match to {
+        Some(t) => {
+            let i = call(
+                c,
+                "SkinnedMeshComponent",
+                "GetBoneIndex",
+                json!({"BoneName": t}),
+            )?["ReturnValue"]
+                .as_i64()
+                .unwrap_or(-1);
+            if found.iter().any(|(_, k)| *k as i64 == i) {
+                return Err(format!("{}: {t} is hidden itself", c.name()));
+            }
+            (i >= 0 && (i as usize) < count).then_some(i as usize)
+        }
+        None => None,
+    };
     let anim = prepare(c, count)?;
     let out = json!({
         "component": format!("0x{key:X}"),
         "anim": anim.name(),
         "hidden": found.iter().map(|(n, i)| json!([n, i])).collect::<Vec<_>>(),
+        "to": to,
     });
     HIDES.lock().push(Hide {
         component: key,
         anim: anim as *const UObject as usize,
         bones: found,
+        to,
         uro_was,
     });
     Ok(out)
