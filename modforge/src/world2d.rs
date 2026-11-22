@@ -117,11 +117,15 @@ impl World2d {
                 for k in 0..count {
                     for a in 0..PEOPLE_TRIES {
                         let h = tile_hash(self.ground.seed, (i as i32, k as i32), 0x5EED_0000 + a);
-                        let t = (lo + (h % span as u64) as i32, lo + ((h >> 32) % span as u64) as i32);
+                        let t = (
+                            lo + (h % span as u64) as i32,
+                            lo + ((h >> 32) % span as u64) as i32,
+                        );
                         let at = centre(t);
                         let key = (t.0.div_euclid(CHUNK), t.1.div_euclid(CHUNK));
                         let chunk = self.chunk(r, key);
-                        let open = chunk.ground_at(t).is_land() && !chunk.things.iter().any(|thing| thing.tile == t);
+                        let open = chunk.ground_at(t).is_land()
+                            && !chunk.things.iter().any(|thing| thing.tile == t);
                         let clear = !self.bunkers.iter().any(|c| c.at.distance(at) < c.radius)
                             && self.sites_touching(r, at, at).is_empty();
                         if open && clear {
@@ -200,12 +204,20 @@ impl World2d {
     /// when there is no such site or no way for a road. Found once.
     fn road_from(&mut self, r: Registries, site: &Place) -> Option<Vec<Cell>> {
         let m = Self::makers(&self.ground, r);
-        let around = self.places.in_area(m, site.position - ROAD_REACH, site.position + ROAD_REACH);
+        let around = self
+            .places
+            .in_area(m, site.position - ROAD_REACH, site.position + ROAD_REACH);
         let to = around
             .iter()
-            .filter(|p| !p.rolled.members.is_empty() && p.position.length() < site.position.length())
+            .filter(|p| {
+                !p.rolled.members.is_empty() && p.position.length() < site.position.length()
+            })
             .filter(|p| p.position.distance(site.position) <= ROAD_REACH)
-            .min_by(|a, b| a.position.distance(site.position).total_cmp(&b.position.distance(site.position)))?
+            .min_by(|a, b| {
+                a.position
+                    .distance(site.position)
+                    .total_cmp(&b.position.distance(site.position))
+            })?
             .clone();
         let key = (cell_of(site.position), cell_of(to.position));
         if let Some(found) = self.roads.get(&key) {
@@ -219,17 +231,39 @@ impl World2d {
             .collect();
         let (start, goal) = key;
         let ground = &self.ground;
-        let open = |t: Cell| ground.ground_at(t).is_land() && !others.iter().any(|(c, rad)| c.distance(centre(t)) < *rad);
+        let open = |t: Cell| {
+            ground.ground_at(t).is_land()
+                && !others.iter().any(|(c, rad)| c.distance(centre(t)) < *rad)
+        };
         let next = |at: Cell| -> Vec<(Cell, f32)> {
-            [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-                .into_iter()
-                .map(|(dx, dy)| (at.0 + dx, at.1 + dy))
-                .filter(|t| *t == goal || open(*t))
-                .map(|t| (t, if t.0 != at.0 && t.1 != at.1 { std::f32::consts::SQRT_2 } else { 1.0 }))
-                .collect()
+            [
+                (1, 0),
+                (-1, 0),
+                (0, 1),
+                (0, -1),
+                (1, 1),
+                (1, -1),
+                (-1, 1),
+                (-1, -1),
+            ]
+            .into_iter()
+            .map(|(dx, dy)| (at.0 + dx, at.1 + dy))
+            .filter(|t| *t == goal || open(*t))
+            .map(|t| {
+                (
+                    t,
+                    if t.0 != at.0 && t.1 != at.1 {
+                        std::f32::consts::SQRT_2
+                    } else {
+                        1.0
+                    },
+                )
+            })
+            .collect()
         };
         let estimate = |t: Cell| centre(t).distance(centre(goal)) / TILE;
-        let found = search(start, next, estimate, |t| t == goal, ROAD_LIMIT).map(|(tiles, _)| tiles);
+        let found =
+            search(start, next, estimate, |t| t == goal, ROAD_LIMIT).map(|(tiles, _)| tiles);
         self.roads.insert(key, found.clone());
         found
     }
@@ -272,7 +306,11 @@ impl World2d {
         let hi = lo + Vec2::splat(CHUNK as f32 * TILE);
         let index = |t: Cell| ((t.1 - first.1) * CHUNK + (t.0 - first.0)) as usize;
         let sites = self.sites_touching(r, lo, hi);
-        let on_site = |t: Cell| sites.iter().any(|s| s.position.distance(centre(t)) < s.ground);
+        let on_site = |t: Cell| {
+            sites
+                .iter()
+                .any(|s| s.position.distance(centre(t)) < s.ground)
+        };
         for t in self.road_tiles(r, first, last) {
             if chunk.ground[index(t)].is_land() && !on_site(t) {
                 chunk.ground[index(t)] = Ground::Road;
@@ -296,7 +334,9 @@ impl World2d {
                 for x in 0..CHUNK {
                     let t = (first.0 + x, first.1 + y);
                     let g = &mut chunk.ground[index(t)];
-                    if centre(t).distance(c.at) < c.radius && matches!(g, Ground::Water | Ground::Cliff) {
+                    if centre(t).distance(c.at) < c.radius
+                        && matches!(g, Ground::Water | Ground::Cliff)
+                    {
                         *g = Ground::Grass;
                     }
                 }
@@ -319,7 +359,9 @@ mod tests {
     use super::*;
     use crate::biome::{BiomeDef, ScatterDef};
     use crate::ground::{ClimateRule, GroundDef};
-    use crate::monument::{Arrangement, BuildingSize, BuildingSlot, BuildingTypeDef, MonumentTypeDef};
+    use crate::monument::{
+        Arrangement, BuildingSize, BuildingSlot, BuildingTypeDef, MonumentTypeDef,
+    };
     use crate::places::SiteKind;
 
     fn registries() -> (BiomeRegistry, MonumentRegistry, BuildingRegistry) {
@@ -367,7 +409,11 @@ mod tests {
             .register(
                 MonumentTypeDef {
                     name: "stop".to_string(),
-                    slots: vec![BuildingSlot { choices: vec!["shed".to_string()], min: 1, max: 1 }],
+                    slots: vec![BuildingSlot {
+                        choices: vec!["shed".to_string()],
+                        min: 1,
+                        max: 1,
+                    }],
                     arrangement: Arrangement::Clustered,
                     danger: 1,
                     gated: false,
@@ -405,8 +451,18 @@ mod tests {
             river_fords: 0.3,
         };
         let ground = GroundGen::new(def, 9, biomes).unwrap();
-        let bunker = Clearing { at: Vec2::ZERO, radius: 20.0, gap: None };
-        let places = Places::new(vec![SiteKind { monument: "stop".to_string(), chance: 0.7 }], vec![(bunker.at, bunker.radius)]);
+        let bunker = Clearing {
+            at: Vec2::ZERO,
+            radius: 20.0,
+            gap: None,
+        };
+        let places = Places::new(
+            vec![SiteKind {
+                monument: "stop".to_string(),
+                chance: 0.7,
+            }],
+            vec![(bunker.at, bunker.radius)],
+        );
         World2d::new(ground, places, vec![bunker])
     }
 
@@ -435,7 +491,11 @@ mod tests {
 
     #[test]
     fn a_clearings_gap_keeps_clear_only_along_its_way() {
-        let c = Clearing { at: Vec2::ZERO, radius: 10.0, gap: Some((Vec2::new(100.0, 0.0), 50.0, 8.0)) };
+        let c = Clearing {
+            at: Vec2::ZERO,
+            radius: 10.0,
+            gap: Some((Vec2::new(100.0, 0.0), 50.0, 8.0)),
+        };
         assert!(c.clears(Vec2::new(5.0, 0.0)), "in the clearing");
         assert!(c.clears(Vec2::new(40.0, 3.0)), "in the gap");
         assert!(!c.clears(Vec2::new(40.0, 5.0)), "beside the gap");
@@ -462,9 +522,18 @@ mod tests {
             .filter(|t| centre(*t).length() < 20.0)
             .map(|t| home.ground_at(t))
             .collect();
-        assert!(clearing.iter().all(|g| g.is_land()), "the bunker's clearing is land");
-        assert!(clearing.iter().any(|g| *g != Ground::Dirt), "the clearing keeps its own ground, no circle of dirt");
-        assert!(home.things.iter().all(|t| centre(t.tile).length() >= 20.0), "nothing in the clearing");
+        assert!(
+            clearing.iter().all(|g| g.is_land()),
+            "the bunker's clearing is land"
+        );
+        assert!(
+            clearing.iter().any(|g| *g != Ground::Dirt),
+            "the clearing keeps its own ground, no circle of dirt"
+        );
+        assert!(
+            home.things.iter().all(|t| centre(t.tile).length() >= 20.0),
+            "nothing in the clearing"
+        );
         let mut roads = 0;
         for cy in -12..12 {
             for cx in -12..12 {
@@ -474,7 +543,9 @@ mod tests {
                 let sites = w.sites_touching(r, lo, lo + Vec2::splat(CHUNK as f32));
                 for thing in &chunk.things {
                     assert!(
-                        sites.iter().all(|s| s.position.distance(centre(thing.tile)) >= s.ground),
+                        sites
+                            .iter()
+                            .all(|s| s.position.distance(centre(thing.tile)) >= s.ground),
                         "a thing on a site's ground at {:?}",
                         thing.tile
                     );
@@ -483,6 +554,10 @@ mod tests {
         }
         assert!(roads > 0, "roads are laid between the sites");
         let mut again = world(&biomes);
-        assert_eq!(again.chunk(r, (3, -4)), w.chunk(r, (3, -4)), "the same chunk whenever it is made");
+        assert_eq!(
+            again.chunk(r, (3, -4)),
+            w.chunk(r, (3, -4)),
+            "the same chunk whenever it is made"
+        );
     }
 }

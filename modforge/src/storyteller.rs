@@ -99,31 +99,65 @@ pub enum Cond {
     Reached(String),
     /// Someone remembers doing this toward them since then; `every`: toward
     /// every member of a group (told everyone of their bunker).
-    Remembered { by: Who, did: DidKind, toward: Target, since: Since, every: bool },
+    Remembered {
+        by: Who,
+        did: DidKind,
+        toward: Target,
+        since: Since,
+        every: bool,
+    },
     /// Of the deeds `of` someone did toward them since then, the first is
     /// `is` (shot before they spoke: of Hit and Talked, the first a Hit).
-    First { by: Who, of: Vec<DidKind>, toward: Target, is: DidKind, since: Since },
+    First {
+        by: Who,
+        of: Vec<DidKind>,
+        toward: Target,
+        is: DidKind,
+        since: Since,
+    },
     /// One of them within `within` metres of the target.
-    Near { who: Who, to: Target, within: f32 },
+    Near {
+        who: Who,
+        to: Target,
+        within: f32,
+    },
     /// One of them leading or following one of `of`.
-    With { who: Who, of: Who },
+    With {
+        who: Who,
+        of: Who,
+    },
     /// One of them alive, near a target if given.
-    Alive { who: Who, near: Option<(Target, f32)> },
+    Alive {
+        who: Who,
+        near: Option<(Target, f32)>,
+    },
     /// One of them holding a place at the episode's thing.
-    Holds { who: Who, thing: String },
+    Holds {
+        who: Who,
+        thing: String,
+    },
     /// One of them home, in their bunker below the ground.
-    AtHome { who: Who },
+    AtHome {
+        who: Who,
+    },
     /// The episode's thing is no longer in the world.
     Gone(String),
     /// The storm's phase now.
     Phase(crate::storm::StormPhase),
     /// One of them has a store open, of this kind, holding this, if given.
-    Opened { who: Who, store: Store, holds: Option<Measure> },
+    Opened {
+        who: Who,
+        store: Store,
+        holds: Option<Measure>,
+    },
     /// An errand's window has ended.
     Ended(String),
     /// This condition has held without a break for at least `secs` game
     /// seconds (the consumer keeps when it began, `Facts::held_secs`).
-    For { cond: Box<Cond>, secs: f32 },
+    For {
+        cond: Box<Cond>,
+        secs: f32,
+    },
 }
 
 impl Cond {
@@ -278,10 +312,17 @@ pub trait Facts {
 pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, u64)> {
     use crate::memory::Did;
     let now = (facts.player(), facts.now());
-    let any_of = |who: &Who, test: &dyn Fn(crate::actor::ActorId) -> bool| facts.members(who).into_iter().any(test);
+    let any_of = |who: &Who, test: &dyn Fn(crate::actor::ActorId) -> bool| {
+        facts.members(who).into_iter().any(test)
+    };
     let at = |target: &Target| -> Vec<glam::Vec3> {
         match target {
-            Target::Who(w) => facts.members(w).into_iter().filter(|id| facts.alive(*id)).filter_map(|id| facts.feet(id)).collect(),
+            Target::Who(w) => facts
+                .members(w)
+                .into_iter()
+                .filter(|id| facts.alive(*id))
+                .filter_map(|id| facts.feet(id))
+                .collect(),
             Target::Thing(t) => facts.thing_at(t).into_iter().collect(),
             Target::Nobody => Vec::new(),
         }
@@ -291,7 +332,9 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
         match since {
             Since::EpisodeStart => Some((facts.episode_started(), u64::MAX)),
             Since::Pivot(p) => facts.reached_at(p).map(|t| (t, u64::MAX)),
-            Since::During(e) => facts.window(e).map(|(from, to)| (from, to.unwrap_or(u64::MAX))),
+            Since::During(e) => facts
+                .window(e)
+                .map(|(from, to)| (from, to.unwrap_or(u64::MAX))),
         }
     };
     // Whether a remembered deed is of this kind and toward this target.
@@ -299,18 +342,23 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
         Target::Who(w) => facts.members(w).contains(&id),
         Target::Thing(_) | Target::Nobody => true,
     };
-    let matches = |by: crate::actor::ActorId, kind: &DidKind, target: &Target, did: &Did| match (kind, did) {
-        (DidKind::Hit, Did::Hit(id, _))
-        | (DidKind::Killed, Did::Killed(id))
-        | (DidKind::Talked, Did::Talked(id, _))
-        | (DidKind::Saw, Did::Saw(id))
-        | (DidKind::TalkEnded, Did::TalkEnded(id)) => toward(target, *id),
-        (DidKind::Heard(line), Did::Heard(id, said)) => line.as_ref().is_none_or(|l| *l == said.name) && toward(target, *id),
-        (DidKind::Ate(thing), Did::Ate(item)) => *item == facts.item_of(thing),
-        (DidKind::Told(thing), Did::Talked(id, said)) => said.words == facts.told_words(by, thing) && toward(target, *id),
-        (DidKind::Knocked, Did::Knocked) => true,
-        _ => false,
-    };
+    let matches =
+        |by: crate::actor::ActorId, kind: &DidKind, target: &Target, did: &Did| match (kind, did) {
+            (DidKind::Hit, Did::Hit(id, _))
+            | (DidKind::Killed, Did::Killed(id))
+            | (DidKind::Talked, Did::Talked(id, _))
+            | (DidKind::Saw, Did::Saw(id))
+            | (DidKind::TalkEnded, Did::TalkEnded(id)) => toward(target, *id),
+            (DidKind::Heard(line), Did::Heard(id, said)) => {
+                line.as_ref().is_none_or(|l| *l == said.name) && toward(target, *id)
+            }
+            (DidKind::Ate(thing), Did::Ate(item)) => *item == facts.item_of(thing),
+            (DidKind::Told(thing), Did::Talked(id, said)) => {
+                said.words == facts.told_words(by, thing) && toward(target, *id)
+            }
+            (DidKind::Knocked, Did::Knocked) => true,
+            _ => false,
+        };
     match cond {
         Cond::All(all) => {
             let mut first = None;
@@ -323,10 +371,21 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
         Cond::Any(any) => any.iter().find_map(|c| holds(c, facts)),
         Cond::Not(c) => holds(c, facts).is_none().then_some(now),
         Cond::Reached(p) => facts.reached_at(p).map(|t| (now.0, t)),
-        Cond::Remembered { by, did, toward: target, since, every } => {
+        Cond::Remembered {
+            by,
+            did,
+            toward: target,
+            since,
+            every,
+        } => {
             let (from, to) = window(since)?;
             let done = |doer: crate::actor::ActorId, test: &dyn Fn(&Did) -> bool| {
-                facts.memory(doer)?.done.iter().find(|(t, d)| *t >= from && *t <= to && test(d)).map(|(t, _)| *t)
+                facts
+                    .memory(doer)?
+                    .done
+                    .iter()
+                    .find(|(t, d)| *t >= from && *t <= to && test(d))
+                    .map(|(t, _)| *t)
             };
             if *every {
                 let Target::Who(group) = target else {
@@ -339,45 +398,84 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
                     let ticks: Option<Vec<u64>> = all
                         .iter()
                         .filter(|m| **m != doer)
-                        .map(|m| done(doer, &|d| matches(doer, did, target, d) && done_toward(d) == Some(*m)))
+                        .map(|m| {
+                            done(doer, &|d| {
+                                matches(doer, did, target, d) && done_toward(d) == Some(*m)
+                            })
+                        })
                         .collect();
-                    ticks.filter(|t| !t.is_empty()).map(|t| (doer, t.into_iter().max().unwrap_or(from)))
+                    ticks
+                        .filter(|t| !t.is_empty())
+                        .map(|t| (doer, t.into_iter().max().unwrap_or(from)))
                 });
             }
-            facts.members(by).into_iter().filter_map(|doer| done(doer, &|d| matches(doer, did, target, d)).map(|t| (doer, t))).min_by_key(|(_, t)| *t)
+            facts
+                .members(by)
+                .into_iter()
+                .filter_map(|doer| {
+                    done(doer, &|d| matches(doer, did, target, d)).map(|t| (doer, t))
+                })
+                .min_by_key(|(_, t)| *t)
         }
-        Cond::First { by, of, toward: target, is, since } => {
+        Cond::First {
+            by,
+            of,
+            toward: target,
+            is,
+            since,
+        } => {
             let (from, to) = window(since)?;
             facts.members(by).into_iter().find_map(|doer| {
                 let memory = facts.memory(doer)?;
-                let (t, first) = memory.done.iter().find(|(t, d)| *t >= from && *t <= to && of.iter().any(|k| matches(doer, k, target, d)))?;
+                let (t, first) = memory.done.iter().find(|(t, d)| {
+                    *t >= from && *t <= to && of.iter().any(|k| matches(doer, k, target, d))
+                })?;
                 matches(doer, is, target, first).then_some((doer, *t))
             })
         }
         Cond::Near { who, to, within } => {
             let spots = at(to);
-            any_of(who, &|id| facts.alive(id) && facts.feet(id).is_some_and(|f| spots.iter().any(|s| s.distance(f) <= *within))).then_some(now)
+            any_of(who, &|id| {
+                facts.alive(id)
+                    && facts
+                        .feet(id)
+                        .is_some_and(|f| spots.iter().any(|s| s.distance(f) <= *within))
+            })
+            .then_some(now)
         }
         Cond::With { who, of } => {
             let others = facts.members(of);
-            any_of(who, &|id| facts.alive(id) && others.iter().any(|o| facts.with(id, *o))).then_some(now)
+            any_of(who, &|id| {
+                facts.alive(id) && others.iter().any(|o| facts.with(id, *o))
+            })
+            .then_some(now)
         }
         Cond::Alive { who, near } => {
             let spots = near.as_ref().map(|(t, _)| at(t));
             any_of(who, &|id| {
                 facts.alive(id)
                     && match (&spots, near) {
-                        (Some(spots), Some((_, within))) => facts.feet(id).is_some_and(|f| spots.iter().any(|s| s.distance(f) <= *within)),
+                        (Some(spots), Some((_, within))) => facts
+                            .feet(id)
+                            .is_some_and(|f| spots.iter().any(|s| s.distance(f) <= *within)),
                         _ => true,
                     }
             })
             .then_some(now)
         }
-        Cond::Holds { who, thing } => any_of(who, &|id| facts.alive(id) && facts.holds_at(id, thing)).then_some(now),
-        Cond::AtHome { who } => any_of(who, &|id| facts.alive(id) && facts.at_home(id)).then_some(now),
+        Cond::Holds { who, thing } => {
+            any_of(who, &|id| facts.alive(id) && facts.holds_at(id, thing)).then_some(now)
+        }
+        Cond::AtHome { who } => {
+            any_of(who, &|id| facts.alive(id) && facts.at_home(id)).then_some(now)
+        }
         Cond::Gone(thing) => facts.thing_at(thing).is_none().then_some(now),
         Cond::Phase(phase) => (facts.storm() == *phase).then_some(now),
-        Cond::Opened { who, store, holds: measure } => any_of(who, &|id| {
+        Cond::Opened {
+            who,
+            store,
+            holds: measure,
+        } => any_of(who, &|id| {
             facts.opened(id).is_some_and(|open| {
                 let kind = match store {
                     Store::TheirOwn => open.theirs,
@@ -394,8 +492,13 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
             })
         })
         .then_some(now),
-        Cond::Ended(errand) => facts.window(errand).and_then(|(_, end)| end).map(|t| (now.0, t)),
-        Cond::For { cond, secs } => (holds(cond, facts).is_some() && facts.held_secs(cond) >= *secs).then_some(now),
+        Cond::Ended(errand) => facts
+            .window(errand)
+            .and_then(|(_, end)| end)
+            .map(|t| (now.0, t)),
+        Cond::For { cond, secs } => {
+            (holds(cond, facts).is_some() && facts.held_secs(cond) >= *secs).then_some(now)
+        }
     }
 }
 
@@ -403,7 +506,13 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
 fn done_toward(did: &crate::memory::Did) -> Option<crate::actor::ActorId> {
     use crate::memory::Did;
     match did {
-        Did::Hit(id, _) | Did::Killed(id) | Did::Talked(id, _) | Did::Heard(id, _) | Did::HeardKnocking(id) | Did::Traded(id, ..) | Did::TradeRefused(id) => Some(*id),
+        Did::Hit(id, _)
+        | Did::Killed(id)
+        | Did::Talked(id, _)
+        | Did::Heard(id, _)
+        | Did::HeardKnocking(id)
+        | Did::Traded(id, ..)
+        | Did::TradeRefused(id) => Some(*id),
         _ => None,
     }
 }
@@ -474,8 +583,15 @@ pub fn starts_at(start: ErrandStart, held: u64, day: u64) -> u64 {
 /// them (`names`) whose condition holds and whose start has come
 /// (`started`: an errand's start tick worked out by the game, None when it
 /// has not started).
-pub fn errand_for<'a>(def: &'a EpisodeDef, names: impl Fn(&Who) -> bool, facts: &impl Facts, started: impl Fn(&ErrandDef) -> bool) -> Option<&'a ErrandDef> {
-    def.errands.iter().find(|e| names(&e.who) && started(e) && holds(&e.when, facts).is_some())
+pub fn errand_for<'a>(
+    def: &'a EpisodeDef,
+    names: impl Fn(&Who) -> bool,
+    facts: &impl Facts,
+    started: impl Fn(&ErrandDef) -> bool,
+) -> Option<&'a ErrandDef> {
+    def.errands
+        .iter()
+        .find(|e| names(&e.who) && started(e) && holds(&e.when, facts).is_some())
 }
 
 /// One thing an episode brings into the world: its name in the episode
@@ -517,8 +633,14 @@ pub struct EndingDef {
 
 /// The ending an episode comes to: the first of its endings whose pivot
 /// points are all `reached` and whose parts `alive` holds.
-pub fn ending<'a>(def: &'a EpisodeDef, reached: &[&str], alive: impl Fn(&str) -> bool) -> Option<&'a EndingDef> {
-    def.endings.iter().find(|e| e.needs.iter().all(|n| reached.contains(&n.as_str())) && e.alive.iter().all(|p| alive(p)))
+pub fn ending<'a>(
+    def: &'a EpisodeDef,
+    reached: &[&str],
+    alive: impl Fn(&str) -> bool,
+) -> Option<&'a EndingDef> {
+    def.endings.iter().find(|e| {
+        e.needs.iter().all(|n| reached.contains(&n.as_str())) && e.alive.iter().all(|p| alive(p))
+    })
 }
 
 /// One cue, as a rule: when the player has done `did` (a `Did`'s words,
@@ -539,11 +661,19 @@ pub struct CueDef {
 /// started (`done`, the player's memory: tick and deed), and not reached
 /// yet (`reached`, the pivot points reached by name). In the episode's
 /// order.
-pub fn cues_due<'a>(def: &'a EpisodeDef, done: &[(u64, crate::memory::Did)], started: u64, reached: &[&str]) -> Vec<&'a CueDef> {
+pub fn cues_due<'a>(
+    def: &'a EpisodeDef,
+    done: &[(u64, crate::memory::Did)],
+    started: u64,
+    reached: &[&str],
+) -> Vec<&'a CueDef> {
     def.cues
         .iter()
         .filter(|cue| !reached.contains(&cue.name.as_str()))
-        .filter(|cue| done.iter().any(|(at, did)| *at >= started && did.words() == cue.did))
+        .filter(|cue| {
+            done.iter()
+                .any(|(at, did)| *at >= started && did.words() == cue.did)
+        })
         .collect()
 }
 
@@ -594,7 +724,12 @@ impl LineDef {
     /// (and a save's content hash, topside save.rs).
     pub fn id(&self) -> u64 {
         let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-        for byte in self.name.bytes().chain([0]).chain(self.ways.iter().flat_map(|w| w.bytes().chain([0]))) {
+        for byte in self
+            .name
+            .bytes()
+            .chain([0])
+            .chain(self.ways.iter().flat_map(|w| w.bytes().chain([0])))
+        {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }
@@ -676,7 +811,9 @@ pub fn say(ways: &[String], slots: &[(&str, &str)], seed: u64, salt: u64) -> Opt
 
 /// The {slot} names in a way of saying something.
 fn slots_of(way: &str) -> impl Iterator<Item = &str> {
-    way.split('{').skip(1).filter_map(|rest| rest.split_once('}').map(|(name, _)| name))
+    way.split('{')
+        .skip(1)
+        .filter_map(|rest| rest.split_once('}').map(|(name, _)| name))
 }
 
 /// One person an episode needs (episodes.md "The people"): its name in
@@ -724,7 +861,13 @@ pub struct CastBunker<P> {
 /// `before`: who played which part in the episode before; `feels`: how a
 /// person feels toward the player, from their memory (None: nothing of
 /// them).
-pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], before: &[(String, P)], feels: impl Fn(P) -> Option<f32>, seed: u64) -> Vec<(String, P)> {
+pub fn cast<P: Copy + PartialEq>(
+    parts: &[PartDef],
+    bunkers: &[CastBunker<P>],
+    before: &[(String, P)],
+    feels: impl Fn(P) -> Option<f32>,
+    seed: u64,
+) -> Vec<(String, P)> {
     let nearest = bunkers
         .iter()
         .enumerate()
@@ -748,11 +891,22 @@ pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], b
                     .max_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(p, _)| p)
             }),
-            CastFrom::PlayedBefore(other) => before.iter().find(|(n, p)| n == other && !taken(p) && bunker_of(*p).is_some()).map(|(_, p)| *p),
-            CastFrom::PlayedBeforeAtHome(other) => before.iter().find(|(n, p)| n == other && !taken(p) && bunker_of(*p) == player_bunker).map(|(_, p)| *p),
+            CastFrom::PlayedBefore(other) => before
+                .iter()
+                .find(|(n, p)| n == other && !taken(p) && bunker_of(*p).is_some())
+                .map(|(_, p)| *p),
+            CastFrom::PlayedBeforeAtHome(other) => before
+                .iter()
+                .find(|(n, p)| n == other && !taken(p) && bunker_of(*p) == player_bunker)
+                .map(|(_, p)| *p),
             _ => None,
         };
-        if matches!(part.from, CastFrom::MostTrustingOfPlayerBunker | CastFrom::PlayedBefore(_) | CastFrom::PlayedBeforeAtHome(_)) {
+        if matches!(
+            part.from,
+            CastFrom::MostTrustingOfPlayerBunker
+                | CastFrom::PlayedBefore(_)
+                | CastFrom::PlayedBeforeAtHome(_)
+        ) {
             if let Some(p) = named
                 && let Some(b) = bunker_of(p)
             {
@@ -763,7 +917,9 @@ pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], b
         let bunker = match &part.from {
             CastFrom::PlayerBunker => player_bunker,
             CastFrom::NearestOtherBunker => nearest,
-            CastFrom::SameBunkerAs(other) => cast.iter().find(|(n, ..)| n == other).map(|(.., b)| *b),
+            CastFrom::SameBunkerAs(other) => {
+                cast.iter().find(|(n, ..)| n == other).map(|(.., b)| *b)
+            }
             _ => None,
         };
         let Some(bunker) = bunker else {
@@ -781,7 +937,9 @@ pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], b
         let at = crate::roll::salted_index(seed, salt as u64, free.len() as u64) as usize;
         cast.push((part.name.clone(), free[at], bunker));
     }
-    cast.into_iter().map(|(name, person, _)| (name, person)).collect()
+    cast.into_iter()
+        .map(|(name, person, _)| (name, person))
+        .collect()
 }
 
 impl EpisodeDef {
@@ -833,7 +991,11 @@ impl EpisodeRegistry {
     /// How hearing this line feels (`LineDef::felt`), by its name, of any
     /// episode; 0 for a line no episode has.
     pub fn felt(&self, line: &str) -> f32 {
-        self.defs.iter().flat_map(|d| &d.lines).find(|l| l.name == line).map_or(0.0, |l| l.felt)
+        self.defs
+            .iter()
+            .flat_map(|d| &d.lines)
+            .find(|l| l.name == line)
+            .map_or(0.0, |l| l.felt)
     }
 }
 
@@ -1668,14 +1830,32 @@ mod tests {
     /// until arrived; arrived, go home.
     #[test]
     fn the_first_errand_whose_condition_holds_applies() {
-        let reached = |p: &[&str]| Cond::All(p.iter().map(|s| Cond::Reached(s.to_string())).collect());
+        let reached =
+            |p: &[&str]| Cond::All(p.iter().map(|s| Cond::Reached(s.to_string())).collect());
         let not = |p: &str| Cond::Not(Box::new(Cond::Reached(p.to_string())));
-        let errand = |does: ErrandAct, when: Cond| ErrandDef { name: None, who: Who::Part("Dell".to_string()), does, when, at: ErrandStart::Now, ends: None, reached_on_arrival: None };
-        let go = ErrandAct::GoTo { thing: "tap".to_string(), side: 0.0 };
+        let errand = |does: ErrandAct, when: Cond| ErrandDef {
+            name: None,
+            who: Who::Part("Dell".to_string()),
+            does,
+            when,
+            at: ErrandStart::Now,
+            ends: None,
+            reached_on_arrival: None,
+        };
+        let go = ErrandAct::GoTo {
+            thing: "tap".to_string(),
+            side: 0.0,
+        };
         let mut def = episode("test");
         def.errands = vec![
-            errand(go.clone(), Cond::All(vec![reached(&["sent"]), not("looked")])),
-            errand(ErrandAct::GoHome, Cond::All(vec![reached(&["sent", "looked"]), not("told again")])),
+            errand(
+                go.clone(),
+                Cond::All(vec![reached(&["sent"]), not("looked")]),
+            ),
+            errand(
+                ErrandAct::GoHome,
+                Cond::All(vec![reached(&["sent", "looked"]), not("told again")]),
+            ),
             errand(ErrandAct::StayHome, not("the note read")),
         ];
         let does = |reached: &[&str]| {
@@ -1683,14 +1863,40 @@ mod tests {
             for (i, p) in reached.iter().enumerate() {
                 facts.pivots.push((p.to_string(), i as u64));
             }
-            errand_for(&def, |w| *w == Who::Part("Dell".to_string()), &facts, |_| true).map(|e| e.does.clone())
+            errand_for(
+                &def,
+                |w| *w == Who::Part("Dell".to_string()),
+                &facts,
+                |_| true,
+            )
+            .map(|e| e.does.clone())
         };
         assert_eq!(does(&[]), Some(ErrandAct::StayHome), "home until the note");
         assert_eq!(does(&["the note read"]), None, "then nothing asked");
-        assert_eq!(does(&["the note read", "sent"]), Some(go), "sent: to the tap");
-        assert_eq!(does(&["the note read", "sent", "looked"]), Some(ErrandAct::GoHome), "looked: home");
-        assert_eq!(does(&["the note read", "sent", "looked", "told again"]), None);
-        assert_eq!(errand_for(&def, |w| *w == Who::Part("Mara".to_string()), &World::default(), |_| true), None, "nothing asked of a part with no errand");
+        assert_eq!(
+            does(&["the note read", "sent"]),
+            Some(go),
+            "sent: to the tap"
+        );
+        assert_eq!(
+            does(&["the note read", "sent", "looked"]),
+            Some(ErrandAct::GoHome),
+            "looked: home"
+        );
+        assert_eq!(
+            does(&["the note read", "sent", "looked", "told again"]),
+            None
+        );
+        assert_eq!(
+            errand_for(
+                &def,
+                |w| *w == Who::Part("Mara".to_string()),
+                &World::default(),
+                |_| true
+            ),
+            None,
+            "nothing asked of a part with no errand"
+        );
     }
 
     /// An episode with nothing in it but its name.
@@ -1746,16 +1952,32 @@ mod tests {
             0
         }
         fn reached_at(&self, pivot: &str) -> Option<u64> {
-            self.pivots.iter().find(|(p, _)| p == pivot).map(|(_, t)| *t)
+            self.pivots
+                .iter()
+                .find(|(p, _)| p == pivot)
+                .map(|(_, t)| *t)
         }
         fn window(&self, errand: &str) -> Option<(u64, Option<u64>)> {
-            self.windows.iter().find(|(e, ..)| e == errand).map(|(_, from, to)| (*from, *to))
+            self.windows
+                .iter()
+                .find(|(e, ..)| e == errand)
+                .map(|(_, from, to)| (*from, *to))
         }
         fn members(&self, who: &Who) -> Vec<ActorId> {
             match who {
                 Who::ThePlayer => vec![ActorId(1)],
-                Who::Part(p) => self.parts.iter().filter(|(n, _)| n == p).map(|(_, id)| *id).collect(),
-                Who::Group(g) => self.groups.iter().filter(|(n, _)| n == g).flat_map(|(_, ids)| ids.clone()).collect(),
+                Who::Part(p) => self
+                    .parts
+                    .iter()
+                    .filter(|(n, _)| n == p)
+                    .map(|(_, id)| *id)
+                    .collect(),
+                Who::Group(g) => self
+                    .groups
+                    .iter()
+                    .filter(|(n, _)| n == g)
+                    .flat_map(|(_, ids)| ids.clone())
+                    .collect(),
                 Who::Anyone => self.people.iter().map(|p| p.0).collect(),
             }
         }
@@ -1769,7 +1991,10 @@ mod tests {
             self.people.iter().find(|p| p.0 == id).map(|p| p.2)
         }
         fn thing_at(&self, thing: &str) -> Option<glam::Vec3> {
-            self.things.iter().find(|(n, _)| n == thing).map(|(_, at)| *at)
+            self.things
+                .iter()
+                .find(|(n, _)| n == thing)
+                .map(|(_, at)| *at)
         }
         fn item_of(&self, thing: &str) -> String {
             thing.to_string()
@@ -1793,7 +2018,10 @@ mod tests {
             self.open.iter().find(|(o, _)| *o == id).map(|(_, s)| *s)
         }
         fn held_secs(&self, cond: &Cond) -> f32 {
-            self.held.iter().find(|(c, _)| c == cond).map_or(0.0, |(_, s)| *s)
+            self.held
+                .iter()
+                .find(|(c, _)| c == cond)
+                .map_or(0.0, |(_, s)| *s)
         }
     }
 
@@ -1806,7 +2034,10 @@ mod tests {
     }
 
     fn line(name: &str, words: &str) -> Line {
-        Line { name: name.to_string(), words: words.to_string() }
+        Line {
+            name: name.to_string(),
+            words: words.to_string(),
+        }
     }
 
     /// Remembered: anyone's first drink is reached by whoever drank first,
@@ -1814,20 +2045,66 @@ mod tests {
     /// told; a deed out of its window does not count.
     #[test]
     fn remembered_reads_memory_by_whom_toward_whom_and_when() {
-        let mut w = World { now: 100, ..Default::default() };
-        person(&mut w, 1, glam::Vec3::ZERO, &[(40, Did::Ate("tap".into())), (50, Did::Talked(ActorId(2), line("tell", "told of the tap")))]);
+        let mut w = World {
+            now: 100,
+            ..Default::default()
+        };
+        person(
+            &mut w,
+            1,
+            glam::Vec3::ZERO,
+            &[
+                (40, Did::Ate("tap".into())),
+                (50, Did::Talked(ActorId(2), line("tell", "told of the tap"))),
+            ],
+        );
         person(&mut w, 2, glam::Vec3::ZERO, &[(30, Did::Ate("tap".into()))]);
         person(&mut w, 3, glam::Vec3::ZERO, &[]);
-        w.groups.push((Group::ThePlayersBunker, vec![ActorId(1), ActorId(2), ActorId(3)]));
-        let drank = Cond::Remembered { by: Who::Anyone, did: DidKind::Ate("tap".into()), toward: Target::Nobody, since: Since::EpisodeStart, every: false };
-        assert_eq!(holds(&drank, &w), Some((ActorId(2), 30)), "the first who drank, at their tick");
-        let told_all = Cond::Remembered { by: Who::ThePlayer, did: DidKind::Told("tap".into()), toward: Target::Who(Who::Group(Group::ThePlayersBunker)), since: Since::EpisodeStart, every: true };
+        w.groups.push((
+            Group::ThePlayersBunker,
+            vec![ActorId(1), ActorId(2), ActorId(3)],
+        ));
+        let drank = Cond::Remembered {
+            by: Who::Anyone,
+            did: DidKind::Ate("tap".into()),
+            toward: Target::Nobody,
+            since: Since::EpisodeStart,
+            every: false,
+        };
+        assert_eq!(
+            holds(&drank, &w),
+            Some((ActorId(2), 30)),
+            "the first who drank, at their tick"
+        );
+        let told_all = Cond::Remembered {
+            by: Who::ThePlayer,
+            did: DidKind::Told("tap".into()),
+            toward: Target::Who(Who::Group(Group::ThePlayersBunker)),
+            since: Since::EpisodeStart,
+            every: true,
+        };
         assert_eq!(holds(&told_all, &w), None, "3 was never told");
-        w.people[0].3.did(Did::Talked(ActorId(3), line("tell", "told of the tap")), 60);
-        assert_eq!(holds(&told_all, &w), Some((ActorId(1), 60)), "all told, at the last telling");
+        w.people[0]
+            .3
+            .did(Did::Talked(ActorId(3), line("tell", "told of the tap")), 60);
+        assert_eq!(
+            holds(&told_all, &w),
+            Some((ActorId(1), 60)),
+            "all told, at the last telling"
+        );
         w.windows.push(("the fight".into(), 70, Some(90)));
-        let ate_during = Cond::Remembered { by: Who::ThePlayer, did: DidKind::Ate("tap".into()), toward: Target::Nobody, since: Since::During("the fight".into()), every: false };
-        assert_eq!(holds(&ate_during, &w), None, "the drink at 40 is outside the window 70 to 90");
+        let ate_during = Cond::Remembered {
+            by: Who::ThePlayer,
+            did: DidKind::Ate("tap".into()),
+            toward: Target::Nobody,
+            since: Since::During("the fight".into()),
+            every: false,
+        };
+        assert_eq!(
+            holds(&ate_during, &w),
+            None,
+            "the drink at 40 is outside the window 70 to 90"
+        );
     }
 
     /// First: shoots first is the first of hit or talked toward a group being
@@ -1835,13 +2112,35 @@ mod tests {
     #[test]
     fn first_is_the_first_of_those_deeds() {
         let maras = Group::BunkerOf("Mara".into());
-        let shoots_first = Cond::First { by: Who::ThePlayer, of: vec![DidKind::Hit, DidKind::Talked], toward: Target::Who(Who::Group(maras.clone())), is: DidKind::Hit, since: Since::EpisodeStart };
+        let shoots_first = Cond::First {
+            by: Who::ThePlayer,
+            of: vec![DidKind::Hit, DidKind::Talked],
+            toward: Target::Who(Who::Group(maras.clone())),
+            is: DidKind::Hit,
+            since: Since::EpisodeStart,
+        };
         let mut w = World::default();
-        person(&mut w, 1, glam::Vec3::ZERO, &[(10, Did::Hit(ActorId(5), 20.0)), (20, Did::Talked(ActorId(5), line("hi", "hi")))]);
+        person(
+            &mut w,
+            1,
+            glam::Vec3::ZERO,
+            &[
+                (10, Did::Hit(ActorId(5), 20.0)),
+                (20, Did::Talked(ActorId(5), line("hi", "hi"))),
+            ],
+        );
         w.groups.push((maras.clone(), vec![ActorId(5)]));
         assert_eq!(holds(&shoots_first, &w), Some((ActorId(1), 10)));
         let mut w = World::default();
-        person(&mut w, 1, glam::Vec3::ZERO, &[(10, Did::Talked(ActorId(5), line("hi", "hi"))), (20, Did::Hit(ActorId(5), 20.0))]);
+        person(
+            &mut w,
+            1,
+            glam::Vec3::ZERO,
+            &[
+                (10, Did::Talked(ActorId(5), line("hi", "hi"))),
+                (20, Did::Hit(ActorId(5), 20.0)),
+            ],
+        );
         w.groups.push((maras, vec![ActorId(5)]));
         assert_eq!(holds(&shoots_first, &w), None, "spoke first");
     }
@@ -1852,37 +2151,101 @@ mod tests {
     #[test]
     fn the_world_pieces_read_the_world() {
         let tap = glam::Vec3::new(10.0, 0.0, 0.0);
-        let mut w = World { now: 5, ..Default::default() };
+        let mut w = World {
+            now: 5,
+            ..Default::default()
+        };
         person(&mut w, 1, glam::Vec3::new(8.0, 0.0, 0.0), &[]);
         person(&mut w, 2, glam::Vec3::new(9.0, 0.0, 0.0), &[]);
         person(&mut w, 3, glam::Vec3::new(10.0, 0.0, 1.0), &[]);
         w.people[2].1 = false;
         w.things.push(("tap".into(), tap));
         w.parts.push(("Dell".into(), ActorId(2)));
-        w.groups.push((Group::CameFor("tap".into()), vec![ActorId(3)]));
-        let near = |within: f32| Cond::Near { who: Who::ThePlayer, to: Target::Thing("tap".into()), within };
+        w.groups
+            .push((Group::CameFor("tap".into()), vec![ActorId(3)]));
+        let near = |within: f32| Cond::Near {
+            who: Who::ThePlayer,
+            to: Target::Thing("tap".into()),
+            within,
+        };
         assert!(holds(&near(4.0), &w).is_some() && holds(&near(1.0), &w).is_none());
-        let with_dell = Cond::With { who: Who::Part("Dell".into()), of: Who::ThePlayer };
+        let with_dell = Cond::With {
+            who: Who::Part("Dell".into()),
+            of: Who::ThePlayer,
+        };
         assert!(holds(&with_dell, &w).is_none());
         w.with.push((ActorId(2), ActorId(1)));
         assert!(holds(&with_dell, &w).is_some(), "Dell follows the player");
-        let strangers_near = Cond::Alive { who: Who::Group(Group::CameFor("tap".into())), near: Some((Target::Thing("tap".into()), 4.0)) };
-        assert!(holds(&strangers_near, &w).is_none(), "the one stranger there is dead");
+        let strangers_near = Cond::Alive {
+            who: Who::Group(Group::CameFor("tap".into())),
+            near: Some((Target::Thing("tap".into()), 4.0)),
+        };
+        assert!(
+            holds(&strangers_near, &w).is_none(),
+            "the one stranger there is dead"
+        );
         w.holding.push((ActorId(2), "tap".into()));
-        assert!(holds(&Cond::Holds { who: Who::Part("Dell".into()), thing: "tap".into() }, &w).is_some());
-        assert!(holds(&Cond::AtHome { who: Who::ThePlayer }, &w).is_none());
+        assert!(
+            holds(
+                &Cond::Holds {
+                    who: Who::Part("Dell".into()),
+                    thing: "tap".into()
+                },
+                &w
+            )
+            .is_some()
+        );
+        assert!(
+            holds(
+                &Cond::AtHome {
+                    who: Who::ThePlayer
+                },
+                &w
+            )
+            .is_none()
+        );
         w.home.push(ActorId(1));
-        assert!(holds(&Cond::AtHome { who: Who::ThePlayer }, &w).is_some());
+        assert!(
+            holds(
+                &Cond::AtHome {
+                    who: Who::ThePlayer
+                },
+                &w
+            )
+            .is_some()
+        );
         assert!(holds(&Cond::Gone("tap".into()), &w).is_none());
         w.things.clear();
         assert!(holds(&Cond::Gone("tap".into()), &w).is_some());
         assert!(holds(&Cond::Phase(crate::storm::StormPhase::Storm), &w).is_none());
         w.storm = Some(crate::storm::StormPhase::Storm);
         assert!(holds(&Cond::Phase(crate::storm::StormPhase::Storm), &w).is_some());
-        let over = Cond::Opened { who: Who::ThePlayer, store: Store::TheirOwn, holds: Some(Measure::DaysOver(crate::survival::Need::Thirst, 10.0)) };
-        w.open.push((ActorId(1), OpenStore { theirs: true, drawn_from: false, dry: false, days: (3.0, 12.0) }));
+        let over = Cond::Opened {
+            who: Who::ThePlayer,
+            store: Store::TheirOwn,
+            holds: Some(Measure::DaysOver(crate::survival::Need::Thirst, 10.0)),
+        };
+        w.open.push((
+            ActorId(1),
+            OpenStore {
+                theirs: true,
+                drawn_from: false,
+                dry: false,
+                days: (3.0, 12.0),
+            },
+        ));
         assert!(holds(&over, &w).is_some(), "12 days of water, over 10");
-        assert!(holds(&Cond::Opened { who: Who::ThePlayer, store: Store::DrawnFrom, holds: Some(Measure::Dry) }, &w).is_none());
+        assert!(
+            holds(
+                &Cond::Opened {
+                    who: Who::ThePlayer,
+                    store: Store::DrawnFrom,
+                    holds: Some(Measure::Dry)
+                },
+                &w
+            )
+            .is_none()
+        );
     }
 
     /// Hide and watch: near them for 10 seconds without a break, seen by
@@ -1892,27 +2255,75 @@ mod tests {
     #[test]
     fn held_for_and_seen_and_talk_ended() {
         let maras = Who::Group(Group::BunkerOf("Mara".into()));
-        let mut w = World { now: 600, ..Default::default() };
+        let mut w = World {
+            now: 600,
+            ..Default::default()
+        };
         person(&mut w, 1, glam::Vec3::ZERO, &[]);
         person(&mut w, 2, glam::Vec3::new(20.0, 0.0, 0.0), &[]);
-        w.groups.push((Group::BunkerOf("Mara".into()), vec![ActorId(2)]));
-        let near = Cond::Near { who: Who::ThePlayer, to: Target::Who(maras.clone()), within: 25.0 };
-        let watched = Cond::For { cond: Box::new(near.clone()), secs: 10.0 };
-        let unseen = Cond::Not(Box::new(Cond::Remembered { by: maras.clone(), did: DidKind::Saw, toward: Target::Who(Who::ThePlayer), since: Since::EpisodeStart, every: false }));
+        w.groups
+            .push((Group::BunkerOf("Mara".into()), vec![ActorId(2)]));
+        let near = Cond::Near {
+            who: Who::ThePlayer,
+            to: Target::Who(maras.clone()),
+            within: 25.0,
+        };
+        let watched = Cond::For {
+            cond: Box::new(near.clone()),
+            secs: 10.0,
+        };
+        let unseen = Cond::Not(Box::new(Cond::Remembered {
+            by: maras.clone(),
+            did: DidKind::Saw,
+            toward: Target::Who(Who::ThePlayer),
+            since: Since::EpisodeStart,
+            every: false,
+        }));
         let hide_and_watch = Cond::All(vec![watched.clone(), unseen]);
-        let def = EpisodeDef { deeds: vec![DeedDef { pivot: "hides and watches".into(), when: hide_and_watch.clone() }], ..episode("the tap") };
-        assert_eq!(def.held(), vec![&near], "the condition inside the For is what the consumer keeps");
+        let def = EpisodeDef {
+            deeds: vec![DeedDef {
+                pivot: "hides and watches".into(),
+                when: hide_and_watch.clone(),
+            }],
+            ..episode("the tap")
+        };
+        assert_eq!(
+            def.held(),
+            vec![&near],
+            "the condition inside the For is what the consumer keeps"
+        );
         w.held.push((near.clone(), 9.0));
         assert!(holds(&hide_and_watch, &w).is_none(), "9 seconds is not 10");
         w.held[0].1 = 10.0;
-        assert!(holds(&hide_and_watch, &w).is_some(), "10 seconds near, unseen");
+        assert!(
+            holds(&hide_and_watch, &w).is_some(),
+            "10 seconds near, unseen"
+        );
         w.people[1].3.saw(ActorId(1), 500, 3600);
         w.people[1].3.saw(ActorId(1), 550, 3600);
-        assert_eq!(w.people[1].3.done.iter().filter(|(_, d)| *d == Did::Saw(ActorId(1))).count(), 1, "one sighting, not one a think");
+        assert_eq!(
+            w.people[1]
+                .3
+                .done
+                .iter()
+                .filter(|(_, d)| *d == Did::Saw(ActorId(1)))
+                .count(),
+            1,
+            "one sighting, not one a think"
+        );
         assert!(holds(&hide_and_watch, &w).is_none(), "seen by one of them");
         w.people[1].2 = glam::Vec3::new(40.0, 0.0, 0.0);
-        assert!(holds(&watched, &w).is_none(), "no longer near: the For does not hold, whatever was kept");
-        let ended = Cond::Remembered { by: Who::ThePlayer, did: DidKind::TalkEnded, toward: Target::Who(Who::Group(Group::BunkerOf("Mara".into()))), since: Since::EpisodeStart, every: false };
+        assert!(
+            holds(&watched, &w).is_none(),
+            "no longer near: the For does not hold, whatever was kept"
+        );
+        let ended = Cond::Remembered {
+            by: Who::ThePlayer,
+            did: DidKind::TalkEnded,
+            toward: Target::Who(Who::Group(Group::BunkerOf("Mara".into()))),
+            since: Since::EpisodeStart,
+            every: false,
+        };
         assert!(holds(&ended, &w).is_none());
         w.people[0].3.did(Did::TalkEnded(ActorId(2)), 590);
         assert_eq!(holds(&ended, &w), Some((ActorId(1), 590)));
@@ -1922,7 +2333,10 @@ mod tests {
     /// a condition writes and reads back (the episode files' data).
     #[test]
     fn conditions_join_and_errand_windows_and_mornings() {
-        let mut w = World { now: 7, ..Default::default() };
+        let mut w = World {
+            now: 7,
+            ..Default::default()
+        };
         w.pivots.push(("a".into(), 3));
         let a = Cond::Reached("a".into());
         let b = Cond::Reached("b".into());
@@ -1930,12 +2344,31 @@ mod tests {
         assert!(holds(&Cond::Any(vec![a.clone(), b.clone()]), &w).is_some());
         assert!(holds(&Cond::Not(Box::new(b.clone())), &w).is_some());
         w.windows.push(("the fight".into(), 2, None));
-        assert!(holds(&Cond::Ended("the fight".into()), &w).is_none(), "still on");
+        assert!(
+            holds(&Cond::Ended("the fight".into()), &w).is_none(),
+            "still on"
+        );
         w.windows[0].2 = Some(6);
-        assert_eq!(holds(&Cond::Ended("the fight".into()), &w), Some((ActorId(1), 6)));
+        assert_eq!(
+            holds(&Cond::Ended("the fight".into()), &w),
+            Some((ActorId(1), 6))
+        );
         assert_eq!(starts_at(ErrandStart::Now, 250, 100), 250);
-        assert_eq!(starts_at(ErrandStart::FirstMorningAfter, 250, 100), 300, "the next day's start");
-        let stays_out = Cond::All(vec![Cond::Ended("the fight".into()), Cond::Not(Box::new(Cond::Remembered { by: Who::ThePlayer, did: DidKind::Hit, toward: Target::Who(Who::Anyone), since: Since::During("the fight".into()), every: false }))]);
+        assert_eq!(
+            starts_at(ErrandStart::FirstMorningAfter, 250, 100),
+            300,
+            "the next day's start"
+        );
+        let stays_out = Cond::All(vec![
+            Cond::Ended("the fight".into()),
+            Cond::Not(Box::new(Cond::Remembered {
+                by: Who::ThePlayer,
+                did: DidKind::Hit,
+                toward: Target::Who(Who::Anyone),
+                since: Since::During("the fight".into()),
+                every: false,
+            })),
+        ]);
         let text = serde_json::to_string(&stays_out).expect("a condition writes");
         let back: Cond = serde_json::from_str(&text).expect("and reads back");
         assert_eq!(back, stays_out, "{text}");
@@ -1951,7 +2384,14 @@ mod tests {
             fits: Vec::new(),
             parts: Vec::new(),
             lines: Vec::new(),
-            cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: crate::command::Command::Knock { who: Who::ThePlayer } }],
+            cues: vec![CueDef {
+                name: "the note read".to_string(),
+                did: "read note".to_string(),
+                part: "Dell".to_string(),
+                does: crate::command::Command::Knock {
+                    who: Who::ThePlayer,
+                },
+            }],
             door_enemy: false,
             endings: Vec::new(),
             things: Vec::new(),
@@ -1960,12 +2400,28 @@ mod tests {
             items: Vec::new(),
             storm_in: (1.0, 1.0),
         };
-        assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
-        assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
-        assert!(cues_due(&def, &[(12, Did::Read("map".to_string()))], 10, &[]).is_empty(), "another deed");
+        assert!(
+            cues_due(&def, &[], 10, &[]).is_empty(),
+            "nothing done, nothing due"
+        );
+        assert!(
+            cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(),
+            "read before the episode started"
+        );
+        assert!(
+            cues_due(&def, &[(12, Did::Read("map".to_string()))], 10, &[]).is_empty(),
+            "another deed"
+        );
         let done = [(12, Did::Read("note".to_string()))];
-        assert_eq!(cues_due(&def, &done, 10, &[]).len(), 1, "the note read: due");
-        assert!(cues_due(&def, &done, 10, &["the note read"]).is_empty(), "once reached, never again");
+        assert_eq!(
+            cues_due(&def, &done, 10, &[]).len(),
+            1,
+            "the note read: due"
+        );
+        assert!(
+            cues_due(&def, &done, 10, &["the note read"]).is_empty(),
+            "once reached, never again"
+        );
     }
 
     fn episodes() -> EpisodeRegistry {
@@ -1986,7 +2442,9 @@ mod tests {
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
-        registry.register(episode("day or loop", &["Endless Day", "Loop"])).unwrap();
+        registry
+            .register(episode("day or loop", &["Endless Day", "Loop"]))
+            .unwrap();
         registry
     }
 
@@ -2004,7 +2462,9 @@ mod tests {
     #[test]
     fn every_fitting_episode_can_be_picked() {
         let registry = episodes();
-        let picked: HashSet<String> = (0..200).map(|storms| registry.pick("Loop", 7, storms).unwrap().name.clone()).collect();
+        let picked: HashSet<String> = (0..200)
+            .map(|storms| registry.pick("Loop", 7, storms).unwrap().name.clone())
+            .collect();
         assert_eq!(picked.len(), 3);
     }
 
@@ -2012,7 +2472,10 @@ mod tests {
     fn before_any_storm_it_is_the_first_registered_that_fits() {
         let registry = episodes();
         for seed in 0..20 {
-            assert_eq!(registry.pick("Mixed world", seed, 0).unwrap().name, "anywhere");
+            assert_eq!(
+                registry.pick("Mixed world", seed, 0).unwrap().name,
+                "anywhere"
+            );
             assert_eq!(registry.pick("Loop", seed, 0).unwrap().name, "anywhere");
         }
     }
@@ -2038,12 +2501,12 @@ mod tests {
                 lines: vec![line("threatens Mara", -0.6), line("talks with Mara", 0.2)],
                 cues: Vec::new(),
                 door_enemy: false,
-            endings: Vec::new(),
-            things: Vec::new(),
-            errands: Vec::new(),
-            deeds: Vec::new(),
-            items: Vec::new(),
-            storm_in: (1.0, 1.0),
+                endings: Vec::new(),
+                things: Vec::new(),
+                errands: Vec::new(),
+                deeds: Vec::new(),
+                items: Vec::new(),
+                storm_in: (1.0, 1.0),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -2062,12 +2525,12 @@ mod tests {
                 lines: Vec::new(),
                 cues: Vec::new(),
                 door_enemy: true,
-            endings: Vec::new(),
-            things: Vec::new(),
-            errands: Vec::new(),
-            deeds: Vec::new(),
-            items: Vec::new(),
-            storm_in: (1.0, 1.0),
+                endings: Vec::new(),
+                things: Vec::new(),
+                errands: Vec::new(),
+                deeds: Vec::new(),
+                items: Vec::new(),
+                storm_in: (1.0, 1.0),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
@@ -2085,13 +2548,20 @@ mod tests {
 
     #[test]
     fn the_same_seed_says_it_the_same_way_every_slot_filled() {
-        let slots = [("way", "left"), ("landmark", "radio tower"), ("side", "right"), ("place", "gas station")];
+        let slots = [
+            ("way", "left"),
+            ("landmark", "radio tower"),
+            ("side", "right"),
+            ("place", "gas station"),
+        ];
         for seed in 0..30 {
             let said = say(&ways(), &slots, seed, 1).unwrap();
             assert_eq!(Some(said.clone()), say(&ways(), &slots, seed, 1));
             assert!(!said.contains('{'), "{said}");
         }
-        let all: HashSet<String> = (0..60).map(|seed| say(&ways(), &slots, seed, 1).unwrap()).collect();
+        let all: HashSet<String> = (0..60)
+            .map(|seed| say(&ways(), &slots, seed, 1).unwrap())
+            .collect();
         // Only the way that says the most of what is known: the landmark.
         assert_eq!(all.len(), 1, "{all:?}");
         assert!(all.iter().all(|said| said.contains("radio tower")), "{all:?}");
@@ -2104,21 +2574,40 @@ mod tests {
             let said = say(&ways(), &slots, seed, 1).unwrap();
             assert!(!said.contains("landmark") && !said.contains('{'), "{said}");
         }
-        assert_eq!(say(&ways()[..1], &slots, 7, 1), None, "no way can be filled");
+        assert_eq!(
+            say(&ways()[..1], &slots, 7, 1),
+            None,
+            "no way can be filled"
+        );
     }
 
     /// The player's bunker (people 1 to 4), a near bunker (10 to 13), a
     /// far one (20 to 23).
     fn bunkers() -> Vec<CastBunker<u32>> {
         vec![
-            CastBunker { player: false, distance: 900.0, people: vec![20, 21, 22, 23] },
-            CastBunker { player: true, distance: 0.0, people: vec![1, 2, 3, 4] },
-            CastBunker { player: false, distance: 300.0, people: vec![10, 11, 12, 13] },
+            CastBunker {
+                player: false,
+                distance: 900.0,
+                people: vec![20, 21, 22, 23],
+            },
+            CastBunker {
+                player: true,
+                distance: 0.0,
+                people: vec![1, 2, 3, 4],
+            },
+            CastBunker {
+                player: false,
+                distance: 300.0,
+                people: vec![10, 11, 12, 13],
+            },
         ]
     }
 
     fn the_tap() -> Vec<PartDef> {
-        let part = |name: &str, from| PartDef { name: name.to_string(), from };
+        let part = |name: &str, from| PartDef {
+            name: name.to_string(),
+            from,
+        };
         vec![
             part("Dell", CastFrom::PlayerBunker),
             part("Mara", CastFrom::NearestOtherBunker),
@@ -2130,31 +2619,62 @@ mod tests {
     fn each_part_is_cast_from_where_it_says() {
         for seed in 0..50 {
             let cast = cast(&the_tap(), &bunkers(), &[], |_| None, seed);
-            let of = |part: &str| cast.iter().find(|(n, _)| n == part).map(|(_, p)| *p).unwrap();
-            assert!((1..=4).contains(&of("Dell")), "Dell from the player's bunker");
-            assert!((10..=13).contains(&of("Mara")), "Mara from the nearest other bunker");
-            assert!((10..=13).contains(&of("Mara's child")), "the child from Mara's bunker");
-            assert_ne!(of("Mara"), of("Mara's child"), "two parts never get the same person");
+            let of = |part: &str| {
+                cast.iter()
+                    .find(|(n, _)| n == part)
+                    .map(|(_, p)| *p)
+                    .unwrap()
+            };
+            assert!(
+                (1..=4).contains(&of("Dell")),
+                "Dell from the player's bunker"
+            );
+            assert!(
+                (10..=13).contains(&of("Mara")),
+                "Mara from the nearest other bunker"
+            );
+            assert!(
+                (10..=13).contains(&of("Mara's child")),
+                "the child from Mara's bunker"
+            );
+            assert_ne!(
+                of("Mara"),
+                of("Mara's child"),
+                "two parts never get the same person"
+            );
         }
     }
 
     #[test]
     fn the_same_seed_casts_the_same_people() {
-        assert_eq!(cast(&the_tap(), &bunkers(), &[], |_| None, 7), cast(&the_tap(), &bunkers(), &[], |_| None, 7));
+        assert_eq!(
+            cast(&the_tap(), &bunkers(), &[], |_| None, 7),
+            cast(&the_tap(), &bunkers(), &[], |_| None, 7)
+        );
     }
 
     #[test]
     fn a_part_with_nobody_to_cast_is_left_out() {
-        let lonely = vec![CastBunker { player: true, distance: 0.0, people: vec![1] }];
+        let lonely = vec![CastBunker {
+            player: true,
+            distance: 0.0,
+            people: vec![1],
+        }];
         let cast = cast(&the_tap(), &lonely, &[], |_| None, 7);
         assert_eq!(cast, vec![("Dell".to_string(), 1)]);
     }
 
     #[test]
     fn parts_drawn_from_memory_name_who_remembers_and_who_played_before() {
-        let part = |name: &str, from| PartDef { name: name.to_string(), from };
+        let part = |name: &str, from| PartDef {
+            name: name.to_string(),
+            from,
+        };
         let parts = vec![
-            part("the first sick person", CastFrom::MostTrustingOfPlayerBunker),
+            part(
+                "the first sick person",
+                CastFrom::MostTrustingOfPlayerBunker,
+            ),
             part("Dell", CastFrom::PlayedBeforeAtHome("Dell".to_string())),
             part("Mara", CastFrom::PlayedBefore("Mara".to_string())),
         ];
@@ -2167,10 +2687,20 @@ mod tests {
             _ => None,
         };
         let cast = cast(&parts, &bunkers(), &before, feels, 7);
-        assert_eq!(cast, vec![("the first sick person".to_string(), 3), ("Dell".to_string(), 2), ("Mara".to_string(), 11)]);
+        assert_eq!(
+            cast,
+            vec![
+                ("the first sick person".to_string(), 3),
+                ("Dell".to_string(), 2),
+                ("Mara".to_string(), 11)
+            ]
+        );
         // Dell gone from the player's bunker: Dell is left out.
         let moved = vec![("Dell".to_string(), 12), ("Mara".to_string(), 11)];
         let cast = super::cast(&parts, &bunkers(), &moved, feels, 7);
-        assert!(!cast.iter().any(|(n, _)| n == "Dell"), "Dell, no longer home, is cast: {cast:?}");
+        assert!(
+            !cast.iter().any(|(n, _)| n == "Dell"),
+            "Dell, no longer home, is cast: {cast:?}"
+        );
     }
 }

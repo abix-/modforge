@@ -101,7 +101,9 @@ impl Hatch {
     /// The tiles of its hole.
     pub fn tiles(&self) -> Vec<(i32, i32)> {
         let (x0, z0) = self.min;
-        (z0..z0 + self.size.1).flat_map(|z| (x0..x0 + self.size.0).map(move |x| (x, z))).collect()
+        (z0..z0 + self.size.1)
+            .flat_map(|z| (x0..x0 + self.size.0).map(move |x| (x, z)))
+            .collect()
     }
 
     /// Its hinge edge, structure local on the ground: its two ends, and the
@@ -110,10 +112,26 @@ impl Hatch {
         let lo = Vec2::new(self.min.0 as f32, self.min.1 as f32);
         let hi = lo + Vec2::new(self.size.0 as f32, self.size.1 as f32);
         match self.hinge {
-            Side::East => ([Vec2::new(hi.x, lo.y), Vec2::new(hi.x, hi.y)], Vec2::NEG_X, hi.x - lo.x),
-            Side::West => ([Vec2::new(lo.x, lo.y), Vec2::new(lo.x, hi.y)], Vec2::X, hi.x - lo.x),
-            Side::South => ([Vec2::new(lo.x, hi.y), Vec2::new(hi.x, hi.y)], Vec2::NEG_Y, hi.y - lo.y),
-            Side::North => ([Vec2::new(lo.x, lo.y), Vec2::new(hi.x, lo.y)], Vec2::Y, hi.y - lo.y),
+            Side::East => (
+                [Vec2::new(hi.x, lo.y), Vec2::new(hi.x, hi.y)],
+                Vec2::NEG_X,
+                hi.x - lo.x,
+            ),
+            Side::West => (
+                [Vec2::new(lo.x, lo.y), Vec2::new(lo.x, hi.y)],
+                Vec2::X,
+                hi.x - lo.x,
+            ),
+            Side::South => (
+                [Vec2::new(lo.x, hi.y), Vec2::new(hi.x, hi.y)],
+                Vec2::NEG_Y,
+                hi.y - lo.y,
+            ),
+            Side::North => (
+                [Vec2::new(lo.x, lo.y), Vec2::new(hi.x, lo.y)],
+                Vec2::Y,
+                hi.y - lo.y,
+            ),
         }
     }
 }
@@ -695,7 +713,9 @@ pub fn parts_of(def: &StructureDef) -> Vec<Part> {
             let bottom = (top - STAIR_THICK).max(0.0);
             push(
                 PartKind::Step,
-                stair.base + dir * (STEP_DEPTH * (i as f32 + 0.5)) + Vec3::Y * ((top + bottom) / 2.0),
+                stair.base
+                    + dir * (STEP_DEPTH * (i as f32 + 0.5))
+                    + Vec3::Y * ((top + bottom) / 2.0),
                 dir.abs() * STEP_DEPTH + across * stair.width + Vec3::Y * (top - bottom),
                 def.floor_color,
             );
@@ -866,7 +886,10 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
 pub fn levels(def: &StructureDef) -> Vec<(f32, f32)> {
     let mut levels: Vec<(f32, f32)> = Vec::new();
     for room in &def.rooms {
-        match levels.iter_mut().find(|(y, _)| (*y - room.origin.y).abs() < 0.5) {
+        match levels
+            .iter_mut()
+            .find(|(y, _)| (*y - room.origin.y).abs() < 0.5)
+        {
             Some((_, height)) => *height = height.min(room.interior.y),
             None => levels.push((room.origin.y, room.interior.y)),
         }
@@ -888,13 +911,26 @@ pub fn open_to_below(def: &StructureDef) -> Vec<(i32, i32)> {
         def.furniture.iter().any(|f| {
             let top = f.center.y + f.size.y / 2.0;
             let (lo, hi) = (f.center - f.size / 2.0, f.center + f.size / 2.0);
-            top.abs() < 0.05 && f.size.y <= 2.0 * SLAB && cx >= lo.x && cx <= hi.x && cz >= lo.z && cz <= hi.z
+            top.abs() < 0.05
+                && f.size.y <= 2.0 * SLAB
+                && cx >= lo.x
+                && cx <= hi.x
+                && cz >= lo.z
+                && cz <= hi.z
         })
     };
     let mut tiles = Vec::new();
-    for room in def.rooms.iter().filter(|r| r.origin.y < -0.5 && r.origin.y + r.interior.y > 0.5) {
+    for room in def
+        .rooms
+        .iter()
+        .filter(|r| r.origin.y < -0.5 && r.origin.y + r.interior.y > 0.5)
+    {
         let (x0, z0, w, l) = room_tiles(room);
-        tiles.extend((z0..z0 + l).flat_map(|z| (x0..x0 + w).map(move |x| (x, z))).filter(|&(x, z)| !walked_at_ground(x, z)));
+        tiles.extend(
+            (z0..z0 + l)
+                .flat_map(|z| (x0..x0 + w).map(move |x| (x, z)))
+                .filter(|&(x, z)| !walked_at_ground(x, z)),
+        );
     }
     for hatch in def.hatches.iter().filter(|h| h.level.abs() < 0.5) {
         tiles.extend(hatch.tiles());
@@ -910,7 +946,11 @@ pub fn opening_tiles(room: &RoomDef, o: &Opening) -> Vec<(i32, i32)> {
     let n = o.width.round().max(1.0) as i32;
     match o.side {
         Side::North | Side::South => {
-            let row = if o.side == Side::North { z0 - 1 } else { z0 + l };
+            let row = if o.side == Side::North {
+                z0 - 1
+            } else {
+                z0 + l
+            };
             let a = (room.origin.x + o.offset - n as f32 / 2.0).round() as i32;
             (a..a + n).map(|x| (x, row)).collect()
         }
@@ -974,7 +1014,11 @@ pub fn door_blocks(def: &StructureDef) -> Vec<DoorBlock> {
             let (Some(first), Some(last)) = (tiles.first(), tiles.last()) else {
                 continue;
             };
-            let along = if matches!(o.side, Side::North | Side::South) { Vec2::X } else { Vec2::Y };
+            let along = if matches!(o.side, Side::North | Side::South) {
+                Vec2::X
+            } else {
+                Vec2::Y
+            };
             let lo = Vec2::new(first.0 as f32, first.1 as f32);
             let hi = Vec2::new(last.0 as f32, last.1 as f32) + Vec2::ONE;
             out.push(DoorBlock {
@@ -1019,17 +1063,33 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
     // How many floor tiles no one can walk to from the doorways, by
     // straight steps over floor and doors.
     fn floor_unreached(tiles: &Tiles, doorways: &[((i32, i32), (i32, i32))]) -> usize {
-        let open = |t: &(i32, i32)| tiles.get(t).is_some_and(|(k, _, _)| matches!(k, TileKind::Floor | TileKind::Door));
+        let open = |t: &(i32, i32)| {
+            tiles
+                .get(t)
+                .is_some_and(|(k, _, _)| matches!(k, TileKind::Floor | TileKind::Door))
+        };
         let mut seen = std::collections::HashSet::new();
-        let mut todo: Vec<(i32, i32)> = doorways.iter().map(|(t, _)| *t).filter(|t| open(t) && seen.insert(*t)).collect();
+        let mut todo: Vec<(i32, i32)> = doorways
+            .iter()
+            .map(|(t, _)| *t)
+            .filter(|t| open(t) && seen.insert(*t))
+            .collect();
         while let Some(c) = todo.pop() {
-            for n in [(c.0 + 1, c.1), (c.0 - 1, c.1), (c.0, c.1 + 1), (c.0, c.1 - 1)] {
+            for n in [
+                (c.0 + 1, c.1),
+                (c.0 - 1, c.1),
+                (c.0, c.1 + 1),
+                (c.0, c.1 - 1),
+            ] {
                 if open(&n) && seen.insert(n) {
                     todo.push(n);
                 }
             }
         }
-        tiles.iter().filter(|(t, (k, _, _))| *k == TileKind::Floor && !seen.contains(*t)).count()
+        tiles
+            .iter()
+            .filter(|(t, (k, _, _))| *k == TileKind::Floor && !seen.contains(*t))
+            .count()
     }
     let mut tiles: Tiles = HashMap::new();
     const DOORWAY: u8 = 3;
@@ -1063,12 +1123,24 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
         let floor_above = level - room.origin.y;
         let at_floor = |o: &&Opening| {
             let sill = o.sill - floor_above;
-            if spanning { (-0.01..=SLAB + 0.01).contains(&sill) } else { sill <= 0.0 }
+            if spanning {
+                (-0.01..=SLAB + 0.01).contains(&sill)
+            } else {
+                sill <= 0.0
+            }
         };
         for o in room.openings.iter().filter(at_floor) {
-            let kind = if o.door { TileKind::Door } else { TileKind::Floor };
+            let kind = if o.door {
+                TileKind::Door
+            } else {
+                TileKind::Floor
+            };
             let color = if o.door { DOOR_COLOR } else { def.floor_color };
-            let through = if matches!(o.side, Side::North | Side::South) { (0, 1) } else { (1, 0) };
+            let through = if matches!(o.side, Side::North | Side::South) {
+                (0, 1)
+            } else {
+                (1, 0)
+            };
             for t in opening_tiles(room, o) {
                 put(&mut tiles, t.0, t.1, kind, color, DOORWAY);
                 doorways.push((t, through));
@@ -1078,7 +1150,14 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
     // A hatch in this level's floor: its hole, no floor.
     for hatch in def.hatches.iter().filter(|h| (h.level - level).abs() < 0.5) {
         for (x, z) in hatch.tiles() {
-            put(&mut tiles, x, z, TileKind::Hatch, DOOR_COLOR, TileKind::Hatch.rank());
+            put(
+                &mut tiles,
+                x,
+                z,
+                TileKind::Hatch,
+                DOOR_COLOR,
+                TileKind::Hatch.rank(),
+            );
         }
     }
     // A doorway is usable: the tile on each side of it is kept clear, and
@@ -1090,8 +1169,18 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
         keep_clear.insert(*t);
         for s in [-1, 1] {
             let n = (t.0 + dx * s, t.1 + dz * s);
-            if tiles.get(&n).is_some_and(|(k, _, r)| *k == TileKind::Wall && *r < DOORWAY) {
-                put(&mut tiles, n.0, n.1, TileKind::Floor, def.floor_color, DOORWAY);
+            if tiles
+                .get(&n)
+                .is_some_and(|(k, _, r)| *k == TileKind::Wall && *r < DOORWAY)
+            {
+                put(
+                    &mut tiles,
+                    n.0,
+                    n.1,
+                    TileKind::Floor,
+                    def.floor_color,
+                    DOORWAY,
+                );
             }
             keep_clear.insert(n);
         }
@@ -1119,9 +1208,17 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
             covers.push((f.center.x.floor() as i32, f.center.z.floor() as i32));
         }
         let sealed = floor_unreached(&tiles, &doorways);
-        let before: Vec<((i32, i32), Option<(TileKind, Rgb, u8)>)> = covers.iter().map(|t| (*t, tiles.get(t).copied())).collect();
+        let before: Vec<((i32, i32), Option<(TileKind, Rgb, u8)>)> =
+            covers.iter().map(|t| (*t, tiles.get(t).copied())).collect();
         for t in covers.iter().filter(|t| !keep_clear.contains(t)) {
-            put(&mut tiles, t.0, t.1, TileKind::Furniture, f.color, TileKind::Furniture.rank());
+            put(
+                &mut tiles,
+                t.0,
+                t.1,
+                TileKind::Furniture,
+                f.color,
+                TileKind::Furniture.rank(),
+            );
         }
         if floor_unreached(&tiles, &doorways) > sealed {
             for (t, was) in before {
@@ -1132,7 +1229,10 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
             }
         }
     }
-    let mut sorted: Vec<((i32, i32), (TileKind, Rgb))> = tiles.into_iter().map(|(at, (k, c, _))| (at, (k, c))).collect();
+    let mut sorted: Vec<((i32, i32), (TileKind, Rgb))> = tiles
+        .into_iter()
+        .map(|(at, (k, c, _))| (at, (k, c)))
+        .collect();
     sorted.sort_by_key(|((x, z), _)| (*z, *x));
     let mut runs: Vec<TileRun> = Vec::new();
     for ((x, z), (kind, color)) in sorted {
@@ -2111,13 +2211,25 @@ mod tests {
             floor: true,
             ceiling: true,
         };
-        let gap = |side| Opening { side, offset: 0.4, width: 1.2, sill: 0.0, door: false };
+        let gap = |side| Opening {
+            side,
+            offset: 0.4,
+            width: 1.2,
+            sill: 0.0,
+            door: false,
+        };
         let def = StructureDef {
             name: "two rooms".to_string(),
             wall_color: [0.5; 3],
             floor_color: [0.3; 3],
             rooms: vec![
-                room(0.0, Opening { door: true, ..gap(Side::East) }),
+                room(
+                    0.0,
+                    Opening {
+                        door: true,
+                        ..gap(Side::East)
+                    },
+                ),
                 room(5.5, gap(Side::West)),
             ],
             stairs: vec![],
@@ -2149,7 +2261,10 @@ mod tests {
                 }
             }
         }
-        assert!(seen.contains(&(5, 0)), "the east room's floor is reached through the doorway");
+        assert!(
+            seen.contains(&(5, 0)),
+            "the east room's floor is reached through the doorway"
+        );
     }
 
     /// A 6 by 8 m room with a 1.2 m door north and a bed: 48 floor
@@ -2186,10 +2301,19 @@ mod tests {
             parts: vec![],
         };
         let runs = tile_plan(&def);
-        let count = |kind| runs.iter().filter(|r| r.kind == kind).map(|r| r.to - r.from).sum::<i32>();
+        let count = |kind| {
+            runs.iter()
+                .filter(|r| r.kind == kind)
+                .map(|r| r.to - r.from)
+                .sum::<i32>()
+        };
         assert_eq!(count(TileKind::Door), 1, "one door tile");
         assert_eq!(count(TileKind::Furniture), 2, "the bed on two tiles");
-        assert_eq!(count(TileKind::Floor), 48 - 2, "the floor under all but the bed");
+        assert_eq!(
+            count(TileKind::Floor),
+            48 - 2,
+            "the floor under all but the bed"
+        );
         // The ring round 6 by 8 is 8 by 10 less the inside: 32 tiles, one a door.
         assert_eq!(count(TileKind::Wall), 32 - 1);
         let door = runs.iter().find(|r| r.kind == TileKind::Door).unwrap();
@@ -2235,19 +2359,47 @@ mod tests {
     #[test]
     fn a_hatch_is_a_hole_in_its_floor_left_open_to_below() {
         let mut d = def(vec![room(Vec3::ZERO), room(Vec3::new(0.0, -3.0, 0.0))]);
-        d.hatches.push(Hatch { level: 0.0, min: (1, -2), size: (2, 4), hinge: Side::East });
-        let kind_at = |plan: &[TileRun], t: (i32, i32)| plan.iter().find(|r| r.row == t.1 && t.0 >= r.from && t.0 < r.to).map(|r| r.kind);
+        d.hatches.push(Hatch {
+            level: 0.0,
+            min: (1, -2),
+            size: (2, 4),
+            hinge: Side::East,
+        });
+        let kind_at = |plan: &[TileRun], t: (i32, i32)| {
+            plan.iter()
+                .find(|r| r.row == t.1 && t.0 >= r.from && t.0 < r.to)
+                .map(|r| r.kind)
+        };
         let ground = tile_plan_at(&d, 0.0);
         let hole = d.hatches[0].tiles();
         assert_eq!(hole.len(), 8);
-        assert!(hole.iter().all(|t| kind_at(&ground, *t) == Some(TileKind::Hatch)), "the hole is the hatch's on the ground");
-        assert_eq!(kind_at(&ground, (0, 0)), Some(TileKind::Floor), "the rest is floor");
+        assert!(
+            hole.iter()
+                .all(|t| kind_at(&ground, *t) == Some(TileKind::Hatch)),
+            "the hole is the hatch's on the ground"
+        );
+        assert_eq!(
+            kind_at(&ground, (0, 0)),
+            Some(TileKind::Floor),
+            "the rest is floor"
+        );
         let below = tile_plan_at(&d, -3.0);
-        assert!(hole.iter().all(|t| kind_at(&below, *t) == Some(TileKind::Floor)), "the room below keeps its floor");
+        assert!(
+            hole.iter()
+                .all(|t| kind_at(&below, *t) == Some(TileKind::Floor)),
+            "the room below keeps its floor"
+        );
         let open = open_to_below(&d);
-        assert!(hole.iter().all(|t| open.contains(t)) && open.len() == hole.len(), "the ground open over the hole only: {open:?}");
+        assert!(
+            hole.iter().all(|t| open.contains(t)) && open.len() == hole.len(),
+            "the ground open over the hole only: {open:?}"
+        );
         let ([a, b], across, width) = d.hatches[0].hinge_edge();
-        assert_eq!((a, b), (Vec2::new(3.0, -2.0), Vec2::new(3.0, 2.0)), "the east edge");
+        assert_eq!(
+            (a, b),
+            (Vec2::new(3.0, -2.0), Vec2::new(3.0, 2.0)),
+            "the east edge"
+        );
         assert_eq!((across, width), (Vec2::NEG_X, 2.0));
     }
 
@@ -2275,7 +2427,10 @@ mod tests {
             door: true,
         });
         let plan = floor_plan(&parts_of(&def(vec![r.clone()])), 0.0);
-        assert!(plan.iter().all(|p| p.kind != PartKind::Ceiling), "no roof in a plan");
+        assert!(
+            plan.iter().all(|p| p.kind != PartKind::Ceiling),
+            "no roof in a plan"
+        );
         let floors: Vec<&PlanPart> = plan.iter().filter(|p| p.kind == PartKind::Floor).collect();
         assert_eq!(floors.len(), 1);
         assert!(!floors[0].solid, "the floor is walked on");
@@ -2292,7 +2447,9 @@ mod tests {
         // The door fills that gap, closed.
         let doors = doors_of(&def(vec![r]));
         assert_eq!(doors.len(), 1);
-        assert!((doors[0].center.x - gap.x).abs() < 1e-4 && (doors[0].center.z - gap.y).abs() < 0.2);
+        assert!(
+            (doors[0].center.x - gap.x).abs() < 1e-4 && (doors[0].center.z - gap.y).abs() < 0.2
+        );
         assert!((doors[0].size.x - 1.2).abs() < 1e-4);
     }
 
@@ -2303,9 +2460,18 @@ mod tests {
         let parts = parts_of(&def(vec![lower, upper]));
         let ground = floor_plan(&parts, 0.0);
         let first = floor_plan(&parts, 3.0);
-        assert_eq!(ground.iter().filter(|p| p.kind == PartKind::Floor).count(), 1);
-        assert_eq!(first.iter().filter(|p| p.kind == PartKind::Floor).count(), 1);
-        assert_eq!(ground.iter().filter(|p| p.kind == PartKind::Wall).count(), 4);
+        assert_eq!(
+            ground.iter().filter(|p| p.kind == PartKind::Floor).count(),
+            1
+        );
+        assert_eq!(
+            first.iter().filter(|p| p.kind == PartKind::Floor).count(),
+            1
+        );
+        assert_eq!(
+            ground.iter().filter(|p| p.kind == PartKind::Wall).count(),
+            4
+        );
         assert_eq!(first.iter().filter(|p| p.kind == PartKind::Wall).count(), 4);
     }
 

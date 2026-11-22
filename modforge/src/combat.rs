@@ -208,16 +208,16 @@ impl Protection {
         &self,
         worn: &crate::item::Equipment,
         items: &crate::item::ItemRegistry,
-        area: BodyArea,
         layers: &crate::item::LayerRegistry,
+        area: BodyArea,
     ) -> Protection {
         let worn_armor: f32 = worn
             .items()
             .filter_map(|stack| {
                 let def = items.def(&stack.item)?;
                 crate::item::numbers_of(def, stack, layers).armor
-            .filter(|armor| armor.area == area)
             })
+            .filter(|armor| armor.area == area)
             .map(|armor| armor.amount)
             .sum();
         Protection {
@@ -274,7 +274,12 @@ fn pellet_roll(seed: u64, i: u32) -> (f32, f32) {
 /// (topside combat.md "Guns"): the aim turned by up to
 /// `spread_degrees` either way, from the same seeded pattern as
 /// `pellet_directions`. One pellet with no spread is the aim itself.
-pub fn pellet_directions_2d(forward: glam::Vec2, spread_degrees: f32, pellets: u32, seed: u64) -> Vec<glam::Vec2> {
+pub fn pellet_directions_2d(
+    forward: glam::Vec2,
+    spread_degrees: f32,
+    pellets: u32,
+    seed: u64,
+) -> Vec<glam::Vec2> {
     let forward = forward.normalize_or_zero();
     if pellets <= 1 || spread_degrees <= 0.0 {
         return vec![forward; pellets.max(1) as usize];
@@ -544,7 +549,10 @@ impl FireTimer {
         if self.ready_in > 0.0 && !on_beat {
             return Trigger::Waiting;
         }
-        let delay = if swing == Swing::Block { BLOCK_TIME } else { delay };
+        let delay = if swing == Swing::Block {
+            BLOCK_TIME
+        } else {
+            delay
         };
         self.released = false;
         self.melee = true;
@@ -687,11 +695,22 @@ mod tests {
         let aim = glam::Vec2::X;
         assert_eq!(pellet_directions_2d(aim, 0.0, 1, 7), vec![aim]);
         let a = pellet_directions_2d(aim, 6.0, 6, 7);
-        assert_eq!(a, pellet_directions_2d(aim, 6.0, 6, 7), "same seed, same pattern");
-        assert_ne!(a, pellet_directions_2d(aim, 6.0, 6, 8), "another seed differs");
+        assert_eq!(
+            a,
+            pellet_directions_2d(aim, 6.0, 6, 7),
+            "same seed, same pattern"
+        );
+        assert_ne!(
+            a,
+            pellet_directions_2d(aim, 6.0, 6, 8),
+            "another seed differs"
+        );
         for d in &a {
             assert!((d.length() - 1.0).abs() < 1e-4);
-            assert!(d.angle_to(aim).abs() <= 6f32.to_radians() + 1e-4, "{d} strays");
+            assert!(
+                d.angle_to(aim).abs() <= 6f32.to_radians() + 1e-4,
+                "{d} strays"
+            );
         }
     }
 
@@ -720,11 +739,17 @@ mod tests {
         let beside = Vec2::new(1.2, 0.6);
         let behind = Vec2::new(0.0, -1.0);
         assert!(Swing::Overhead.covers(ahead, facing, 1.8));
-        assert!(!Swing::Overhead.covers(beside, facing, 1.8), "the strip misses one beside");
+        assert!(
+            !Swing::Overhead.covers(beside, facing, 1.8),
+            "the strip misses one beside"
+        );
         assert!(Swing::Left.covers(beside, facing, 1.8));
         assert!(Swing::Right.covers(ahead, facing, 1.8));
         assert!(!Swing::Right.covers(behind, facing, 1.8), "never behind");
-        assert!(!Swing::Overhead.covers(Vec2::new(0.0, 3.0), facing, 1.8), "out of reach");
+        assert!(
+            !Swing::Overhead.covers(Vec2::new(0.0, 3.0), facing, 1.8),
+            "out of reach"
+        );
         assert!(!Swing::Block.covers(ahead, facing, 1.8));
     }
 

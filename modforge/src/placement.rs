@@ -26,7 +26,11 @@ impl Piece {
     }
 
     fn shifted(&self, dx: i32, dy: i32) -> Piece {
-        Piece { x: self.x + dx, y: self.y + dy, ..*self }
+        Piece {
+            x: self.x + dx,
+            y: self.y + dy,
+            ..*self
+        }
     }
 }
 
@@ -41,13 +45,23 @@ pub struct Area {
 
 impl Area {
     pub fn holds(&self, p: &Piece) -> bool {
-        p.x * 2 - p.w >= self.x0 * 2 && p.x * 2 + p.w <= self.x1 * 2 && p.y * 2 - p.h >= self.y0 * 2 && p.y * 2 + p.h <= self.y1 * 2
+        p.x * 2 - p.w >= self.x0 * 2
+            && p.x * 2 + p.w <= self.x1 * 2
+            && p.y * 2 - p.h >= self.y0 * 2
+            && p.y * 2 + p.h <= self.y1 * 2
     }
 }
 
 /// The free spot for a new `w` by `h` piece nearest to `near`, on a
 /// grid of `step`, inside `area` and clear of `pieces`.
-pub fn free_spot(pieces: &[Piece], w: i32, h: i32, area: Area, near: (i32, i32), step: i32) -> Option<Piece> {
+pub fn free_spot(
+    pieces: &[Piece],
+    w: i32,
+    h: i32,
+    area: Area,
+    near: (i32, i32),
+    step: i32,
+) -> Option<Piece> {
     let step = step.max(1);
     let mut best: Option<(i64, Piece)> = None;
     let mut y = area.y0;
@@ -90,7 +104,12 @@ pub fn improve(
     mut judge: impl FnMut(&[Piece]) -> f64,
 ) -> Found {
     let start_score = judge(&start);
-    let mut found = Found { pieces: start, score: start_score, start_score, tries: 1 };
+    let mut found = Found {
+        pieces: start,
+        score: start_score,
+        start_score,
+        tries: 1,
+    };
     let n = found.pieces.len();
     for &step in steps {
         let mut better = true;
@@ -108,7 +127,9 @@ pub fn improve(
                         cand[j] = cand[j].shifted(dx, dy);
                     }
                     let fits = moved.iter().all(|&j| allowed(j, &cand[j]))
-                        && moved.iter().all(|&j| (0..n).all(|k| k == j || !cand[j].overlaps(&cand[k])));
+                        && moved
+                            .iter()
+                            .all(|&j| (0..n).all(|k| k == j || !cand[j].overlaps(&cand[k])));
                     if !fits {
                         continue;
                     }
@@ -144,7 +165,13 @@ mod tests {
     #[test]
     fn climbs_to_the_judges_best_spot() {
         // Best at x = 130: reachable by steps of 100, 20, 10.
-        let f = improve(vec![p(0, 0)], &[100, 20, 10], 500, |_, _| true, |ps| -((ps[0].x - 130).abs() as f64));
+        let f = improve(
+            vec![p(0, 0)],
+            &[100, 20, 10],
+            500,
+            |_, _| true,
+            |ps| -((ps[0].x - 130).abs() as f64),
+        );
         assert_eq!(f.pieces[0].x, 130);
         assert_eq!(f.start_score, -130.0);
         assert_eq!(f.score, 0.0);
@@ -173,7 +200,12 @@ mod tests {
 
     #[test]
     fn free_spot_is_clear_inside_and_nearest() {
-        let area = Area { x0: -100, x1: 100, y0: -50, y1: 0 };
+        let area = Area {
+            x0: -100,
+            x1: 100,
+            y0: -50,
+            y1: 0,
+        };
         let taken = [p(0, -20)];
         let s = free_spot(&taken, 20, 10, area, (0, -20), 10).expect("a spot");
         assert!(area.holds(&s) && !s.overlaps(&taken[0]));

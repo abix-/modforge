@@ -57,29 +57,56 @@ pub struct TestQueue {
 
 impl TestQueue {
     pub const fn new() -> Self {
-        Self { runs: Vec::new(), last_id: 0 }
+        Self {
+            runs: Vec::new(),
+            last_id: 0,
+        }
     }
 
     /// Queue `names` as one run; its id.
     pub fn queue(&mut self, names: Vec<String>) -> u64 {
         self.last_id += 1;
-        let entries = names.into_iter().map(|name| Entry { name, state: State::Queued, output: String::new() }).collect();
-        self.runs.push(Run { id: self.last_id, entries });
+        let entries = names
+            .into_iter()
+            .map(|name| Entry {
+                name,
+                state: State::Queued,
+                output: String::new(),
+            })
+            .collect();
+        self.runs.push(Run {
+            id: self.last_id,
+            entries,
+        });
         self.last_id
     }
 
     /// The next queued test of run `id`, now running; none when nothing is
     /// left queued in it.
     pub fn take(&mut self, id: u64) -> Option<String> {
-        let entry = self.run_mut(id)?.entries.iter_mut().find(|e| e.state == State::Queued)?;
+        let entry = self
+            .run_mut(id)?
+            .entries
+            .iter_mut()
+            .find(|e| e.state == State::Queued)?;
         entry.state = State::Running;
         Some(entry.name.clone())
     }
 
     /// Test `name` of run `id` finished, passed or failed, with its output.
-    pub fn report(&mut self, id: u64, name: &str, passed: bool, output: String) -> Result<(), String> {
+    pub fn report(
+        &mut self,
+        id: u64,
+        name: &str,
+        passed: bool,
+        output: String,
+    ) -> Result<(), String> {
         let run = self.run_mut(id).ok_or_else(|| format!("no run {id}"))?;
-        let entry = run.entries.iter_mut().find(|e| e.name == name && e.state == State::Running).ok_or_else(|| format!("{name} is not running in run {id}"))?;
+        let entry = run
+            .entries
+            .iter_mut()
+            .find(|e| e.name == name && e.state == State::Running)
+            .ok_or_else(|| format!("{name} is not running in run {id}"))?;
         entry.state = if passed { State::Passed } else { State::Failed };
         entry.output = output;
         Ok(())
@@ -139,7 +166,12 @@ pub fn register_ops() {
 fn tests_op(args: &Json) -> Result<Json, String> {
     let mut queue = TEST_QUEUE.lock();
     if let Some(names) = args.get("queue") {
-        let names: Vec<String> = names.as_array().ok_or("queue takes a list of test names")?.iter().filter_map(|n| n.as_str().map(String::from)).collect();
+        let names: Vec<String> = names
+            .as_array()
+            .ok_or("queue takes a list of test names")?
+            .iter()
+            .filter_map(|n| n.as_str().map(String::from))
+            .collect();
         if names.is_empty() {
             return Err("queue takes at least one test name".into());
         }
@@ -152,9 +184,19 @@ fn tests_op(args: &Json) -> Result<Json, String> {
     }
     if let Some(id) = args.get("report") {
         let id = id.as_u64().ok_or("report takes a run id")?;
-        let name = args.get("name").and_then(Json::as_str).ok_or("report needs the test's name")?;
-        let passed = args.get("passed").and_then(Json::as_bool).ok_or("report needs passed, true or false")?;
-        let output = args.get("output").and_then(Json::as_str).unwrap_or_default().to_string();
+        let name = args
+            .get("name")
+            .and_then(Json::as_str)
+            .ok_or("report needs the test's name")?;
+        let passed = args
+            .get("passed")
+            .and_then(Json::as_bool)
+            .ok_or("report needs passed, true or false")?;
+        let output = args
+            .get("output")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_string();
         queue.report(id, name, passed, output)?;
         return Ok(queue.run(Some(id)).map(Run::status).unwrap_or(Json::Null));
     }
@@ -181,7 +223,14 @@ mod tests {
         q.report(id, "b", false, "boom".into()).unwrap();
         assert_eq!(q.take(id), None);
         let s = q.run(Some(id)).unwrap().status();
-        assert_eq!((s["passed"].as_u64(), s["failed"].as_u64(), s["done"].as_bool()), (Some(1), Some(1), Some(true)));
+        assert_eq!(
+            (
+                s["passed"].as_u64(),
+                s["failed"].as_u64(),
+                s["done"].as_bool()
+            ),
+            (Some(1), Some(1), Some(true))
+        );
         assert_eq!(s["tests"][1]["output"], "boom");
     }
 
@@ -189,8 +238,14 @@ mod tests {
     fn a_report_for_a_test_not_running_is_refused() {
         let mut q = TestQueue::new();
         let id = q.queue(names(&["a"]));
-        assert!(q.report(id, "a", true, String::new()).is_err(), "a was never taken");
-        assert!(q.report(id + 1, "a", true, String::new()).is_err(), "no such run");
+        assert!(
+            q.report(id, "a", true, String::new()).is_err(),
+            "a was never taken"
+        );
+        assert!(
+            q.report(id + 1, "a", true, String::new()).is_err(),
+            "no such run"
+        );
     }
 
     #[test]

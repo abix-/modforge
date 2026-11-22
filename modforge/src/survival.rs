@@ -188,7 +188,11 @@ impl SurvivalStats {
         self.rest = if condition.asleep {
             (self.rest + rates.sleep_per_sec * dt).min(FULL)
         } else {
-            let tiring = if condition.night { NIGHT_TIREDNESS } else { 1.0 };
+            let tiring = if condition.night {
+                NIGHT_TIREDNESS
+            } else {
+                1.0
+            };
             (self.rest - rates.rest_per_sec * tiring * dt).max(0.0)
         };
         self.safety = if condition.threat_in_sight {
@@ -401,9 +405,18 @@ mod tests {
 
     #[test]
     fn the_day_starts_at_morning_and_night_tires_the_awake() {
-        assert!(!is_night(day_fraction(0.0, 100.0)), "the world starts at morning");
-        assert!(is_night(day_fraction(60.0, 100.0)), "three fifths in is night");
-        assert!(!is_night(day_fraction(100.0, 100.0)), "a day later it is morning again");
+        assert!(
+            !is_night(day_fraction(0.0, 100.0)),
+            "the world starts at morning"
+        );
+        assert!(
+            is_night(day_fraction(60.0, 100.0)),
+            "three fifths in is night"
+        );
+        assert!(
+            !is_night(day_fraction(100.0, 100.0)),
+            "a day later it is morning again"
+        );
         let rates = SurvivalRates::lasting(100.0, 50.0, 100.0);
         let mut day = SurvivalStats::default();
         let mut night = SurvivalStats::default();

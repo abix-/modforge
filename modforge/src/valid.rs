@@ -47,7 +47,13 @@ fn first_tile(r: &Rect) -> Cell {
 
 /// Everything wrong with the square from `lo` to `hi` of a world, by
 /// name; empty for a valid one.
-pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers: &[Bunker]) -> Vec<String> {
+pub fn problems(
+    world: &mut World2d,
+    r: Registries,
+    lo: Vec2,
+    hi: Vec2,
+    bunkers: &[Bunker],
+) -> Vec<String> {
     let mut map = WalkMap::default();
     let mut key = 0u64;
     let mut add = |map: &mut WalkMap, rects: Vec<Rect>| {
@@ -71,30 +77,54 @@ pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers:
             site.rolled
                 .members
                 .iter()
-                .map(|m| (site.position + Vec2::new(m.offset.x, m.offset.z), tile_plan(&m.structure)))
+                .map(|m| {
+                    (
+                        site.position + Vec2::new(m.offset.x, m.offset.z),
+                        tile_plan(&m.structure),
+                    )
+                })
                 .collect()
         })
         .collect();
     for (site, plans) in sites.iter().zip(&site_plans) {
         for (at, runs) in plans {
-            add(&mut map, placed(*at, runs).filter(|(k, _)| k.solid()).map(|(_, r)| r).collect());
+            add(
+                &mut map,
+                placed(*at, runs)
+                    .filter(|(k, _)| k.solid())
+                    .map(|(_, r)| r)
+                    .collect(),
+            );
         }
         let props = site
             .rolled
             .props
             .iter()
-            .map(|p| Rect::around(site.position + Vec2::new(p.position.x, p.position.z), Vec2::new(p.size.x, p.size.z)))
+            .map(|p| {
+                Rect::around(
+                    site.position + Vec2::new(p.position.x, p.position.z),
+                    Vec2::new(p.size.x, p.size.z),
+                )
+            })
             .collect();
         add(&mut map, props);
     }
     let bunker_plans: Vec<Vec<TileRun>> = bunkers.iter().map(|b| tile_plan(b.def)).collect();
     for (b, runs) in bunkers.iter().zip(&bunker_plans) {
-        add(&mut map, placed(b.at, runs).filter(|(k, _)| k.solid()).map(|(_, r)| r).collect());
+        add(
+            &mut map,
+            placed(b.at, runs)
+                .filter(|(k, _)| k.solid())
+                .map(|(_, r)| r)
+                .collect(),
+        );
     }
 
     let mut out = Vec::new();
     let Some(start) = bunkers.first().and_then(|b| {
-        placed(b.at, &bunker_plans[0]).find(|(k, _)| *k == TileKind::Door).map(|(_, r)| first_tile(&r))
+        placed(b.at, &bunker_plans[0])
+            .find(|(k, _)| *k == TileKind::Door)
+            .map(|(_, r)| first_tile(&r))
     }) else {
         return vec!["the player's bunker has no door".to_string()];
     };
@@ -104,12 +134,21 @@ pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers:
         if site.position.cmplt(lo).any() || site.position.cmpge(hi).any() {
             continue;
         }
-        let name = format!("site {i} ({}, '{}') at {}", site.monument, site.rolled.name, site.position);
+        let name = format!(
+            "site {i} ({}, '{}') at {}",
+            site.monument, site.rolled.name, site.position
+        );
         for (b, (at, runs)) in plans.iter().enumerate() {
             let tiles: Vec<(TileKind, Rect)> = placed(*at, runs).collect();
-            let doors: Vec<Cell> = tiles.iter().filter(|(k, _)| *k == TileKind::Door).map(|(_, r)| first_tile(r)).collect();
+            let doors: Vec<Cell> = tiles
+                .iter()
+                .filter(|(k, _)| *k == TileKind::Door)
+                .map(|(_, r)| first_tile(r))
+                .collect();
             if !doors.iter().any(|d| reached.contains(*d)) {
-                out.push(format!("{name}, building {b}: no door reached from the bunker door"));
+                out.push(format!(
+                    "{name}, building {b}: no door reached from the bunker door"
+                ));
             }
             let unreached: Vec<&Rect> = tiles
                 .iter()
@@ -136,9 +175,13 @@ pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers:
             let at = site.position + Vec2::new(p.x, p.z);
             let tile = cell_of(at);
             if map.blocked(tile) {
-                out.push(format!("{name}, spot {n} for a {what} at {at}: nobody can stand there"));
+                out.push(format!(
+                    "{name}, spot {n} for a {what} at {at}: nobody can stand there"
+                ));
             } else if !reached.contains(tile) {
-                out.push(format!("{name}, spot {n} for a {what} at {at}: not reached from the bunker door"));
+                out.push(format!(
+                    "{name}, spot {n} for a {what} at {at}: not reached from the bunker door"
+                ));
             }
         }
     }
@@ -154,9 +197,14 @@ pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers:
         }
     }
     for (b, runs) in bunkers.iter().zip(&bunker_plans).skip(1) {
-        let door = placed(b.at, runs).find(|(k, _)| *k == TileKind::Door).map(|(_, r)| first_tile(&r));
+        let door = placed(b.at, runs)
+            .find(|(k, _)| *k == TileKind::Door)
+            .map(|(_, r)| first_tile(&r));
         if !door.is_some_and(|d| reached.contains(d)) {
-            out.push(format!("{}: its door is not reached from the player's bunker door", b.name));
+            out.push(format!(
+                "{}: its door is not reached from the player's bunker door",
+                b.name
+            ));
         }
     }
     out
@@ -166,7 +214,10 @@ pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers:
 /// wall, `f` furniture, `#` anything else blocking, `.` reached from the
 /// bunker door, `:` open and not reached.
 fn picture(map: &mut WalkMap, reached: &Reached, tiles: &[(TileKind, Rect)]) -> String {
-    let lo = tiles.iter().map(|(_, r)| first_tile(r)).fold((i32::MAX, i32::MAX), |a, t| (a.0.min(t.0), a.1.min(t.1)));
+    let lo = tiles
+        .iter()
+        .map(|(_, r)| first_tile(r))
+        .fold((i32::MAX, i32::MAX), |a, t| (a.0.min(t.0), a.1.min(t.1)));
     let hi = tiles
         .iter()
         .map(|(_, r)| cell_of(r.max - Vec2::splat(0.5)))
@@ -216,11 +267,13 @@ struct Reached {
 impl Reached {
     fn index(&self, c: Cell) -> Option<usize> {
         let (x, y) = (c.0 - self.origin.0, c.1 - self.origin.1);
-        (x >= 0 && y >= 0 && x < self.side.0 && y < self.side.1).then(|| (y * self.side.0 + x) as usize)
+        (x >= 0 && y >= 0 && x < self.side.0 && y < self.side.1)
+            .then(|| (y * self.side.0 + x) as usize)
     }
 
     fn contains(&self, c: Cell) -> bool {
-        self.index(c).is_some_and(|i| self.bits[i / 64] & (1 << (i % 64)) != 0)
+        self.index(c)
+            .is_some_and(|i| self.bits[i / 64] & (1 << (i % 64)) != 0)
     }
 
     fn insert(&mut self, c: Cell) {
@@ -243,7 +296,12 @@ fn flood(map: &mut WalkMap, lo: Cell, hi: Cell, start: Cell) -> Reached {
     let mut todo = vec![start];
     reached.insert(start);
     while let Some(c) = todo.pop() {
-        for n in [(c.0 + 1, c.1), (c.0 - 1, c.1), (c.0, c.1 + 1), (c.0, c.1 - 1)] {
+        for n in [
+            (c.0 + 1, c.1),
+            (c.0 - 1, c.1),
+            (c.0, c.1 + 1),
+            (c.0, c.1 - 1),
+        ] {
             if reached.index(n).is_some() && !reached.contains(n) && !map.blocked(n) {
                 reached.insert(n);
                 todo.push(n);

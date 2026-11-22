@@ -50,7 +50,10 @@ impl Rect {
 
     /// It covers some of tile `t` (touching an edge is not covering).
     fn covers(self, t: Cell) -> bool {
-        let (lo, hi) = (Vec2::new(t.0 as f32, t.1 as f32) * TILE, Vec2::new(t.0 as f32 + 1.0, t.1 as f32 + 1.0) * TILE);
+        let (lo, hi) = (
+            Vec2::new(t.0 as f32, t.1 as f32) * TILE,
+            Vec2::new(t.0 as f32 + 1.0, t.1 as f32 + 1.0) * TILE,
+        );
         self.min.x < hi.x && self.max.x > lo.x && self.min.y < hi.y && self.max.y > lo.y
     }
 }
@@ -133,7 +136,11 @@ impl WalkMap {
         self.painted.len()
     }
 
-    fn paint(solids: &HashMap<u64, Vec<Rect>>, by_chunk: &HashMap<ChunkKey, HashSet<u64>>, chunk: ChunkKey) -> Painted {
+    fn paint(
+        solids: &HashMap<u64, Vec<Rect>>,
+        by_chunk: &HashMap<ChunkKey, HashSet<u64>>,
+        chunk: ChunkKey,
+    ) -> Painted {
         let mut bits: Painted = [0; (CHUNK * CHUNK / 64) as usize];
         let Some(keys) = by_chunk.get(&chunk) else {
             return bits;
@@ -296,7 +303,13 @@ impl WalkMap {
     /// ways between them are worked out again when next needed.
     fn forget(&mut self, chunk: ChunkKey) {
         self.painted.remove(&chunk);
-        for k in [chunk, (chunk.0 - 1, chunk.1), (chunk.0 + 1, chunk.1), (chunk.0, chunk.1 - 1), (chunk.0, chunk.1 + 1)] {
+        for k in [
+            chunk,
+            (chunk.0 - 1, chunk.1),
+            (chunk.0 + 1, chunk.1),
+            (chunk.0, chunk.1 - 1),
+            (chunk.0, chunk.1 + 1),
+        ] {
             self.ways.remove(&k);
         }
     }
@@ -457,14 +470,23 @@ impl WalkMap {
     /// `SHUT_IN` of them and none is one of `other`'s. The doorways
     /// reached when shut in; None when not (the place is bigger, or joins
     /// the other end).
-    fn shut_in<T>(&mut self, from: impl Iterator<Item = Cell>, other: &HashMap<Cell, T>) -> Option<usize> {
+    fn shut_in<T>(
+        &mut self,
+        from: impl Iterator<Item = Cell>,
+        other: &HashMap<Cell, T>,
+    ) -> Option<usize> {
         let mut seen: HashSet<Cell> = from.collect();
         let mut todo: Vec<Cell> = seen.iter().copied().collect();
         while let Some(door) = todo.pop() {
             if other.contains_key(&door) || seen.len() > SHUT_IN {
                 return None;
             }
-            let next: Vec<Cell> = self.ways_from(door).into_iter().map(|(d, _, _)| d).chain(self.across(door)).collect();
+            let next: Vec<Cell> = self
+                .ways_from(door)
+                .into_iter()
+                .map(|(d, _, _)| d)
+                .chain(self.across(door))
+                .collect();
             for d in next {
                 if seen.insert(d) {
                     todo.push(d);
@@ -519,14 +541,24 @@ impl WalkMap {
         // Shut in, at either end: no doorway reached, so no way, known
         // without looking anywhere else.
         if start_doors.is_empty() || goal_doors.is_empty() {
-            self.last_failed = Some((if start_doors.is_empty() { "the start is shut in" } else { "the goal is shut in" }, 0));
+            self.last_failed = Some((
+                if start_doors.is_empty() {
+                    "the start is shut in"
+                } else {
+                    "the goal is shut in"
+                },
+                0,
+            ));
             return None;
         }
         // Either end shut in a small place (a sealed room, a pocket): its
         // doorways reach only a few others and never the other end's, so
         // the place cannot be reached, known at once with no search of the
         // world around (pathing.md "Search by chunk, then across chunks").
-        for (from, other, why) in [(&goal_doors, &start_doors, "the goal is shut in"), (&start_doors, &goal_doors, "the start is shut in")] {
+        for (from, other, why) in [
+            (&goal_doors, &start_doors, "the goal is shut in"),
+            (&start_doors, &goal_doors, "the start is shut in"),
+        ] {
             if let Some(reached) = self.shut_in(from.keys().copied(), other) {
                 self.last_failed = Some((why, reached));
                 return None;
@@ -551,7 +583,14 @@ impl WalkMap {
         let estimate = |c: Cell| centre(c).distance(centre(goal)) / TILE;
         let Some((doorways, _)) = search(start, next, estimate, |c| c == goal, limit) else {
             let n = expanded.get();
-            self.last_failed = Some((if n >= limit { "searched too far" } else { "no way across" }, n));
+            self.last_failed = Some((
+                if n >= limit {
+                    "searched too far"
+                } else {
+                    "no way across"
+                },
+                n,
+            ));
             return None;
         };
         // Join the ways: out of the start, inside each chunk, across each
@@ -566,7 +605,9 @@ impl WalkMap {
                 tiles.extend(way.iter().copied());
             } else if let Some((_, way)) = goal_doors.get(&a).filter(|_| b == goal) {
                 tiles.extend(way.iter().copied());
-            } else if let Some((_, _, way)) = self.ways_from(a).into_iter().find(|(d, _, _)| *d == b) {
+            } else if let Some((_, _, way)) =
+                self.ways_from(a).into_iter().find(|(d, _, _)| *d == b)
+            {
                 tiles.extend(way);
             } else {
                 tiles.push(b);
@@ -577,7 +618,16 @@ impl WalkMap {
 }
 
 /// The eight neighbours, straight first.
-const NEIGHBOURS: [(i32, i32); 8] = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)];
+const NEIGHBOURS: [(i32, i32); 8] = [
+    (-1, 0),
+    (1, 0),
+    (0, -1),
+    (0, 1),
+    (-1, -1),
+    (1, -1),
+    (-1, 1),
+    (1, 1),
+];
 
 /// A heap entry, cheapest first.
 struct Reverse(usize, f32);
@@ -658,10 +708,28 @@ mod tests {
     /// tile wide (tile 0) when `door` is true.
     fn wall(map: &mut WalkMap, door: bool) {
         if door {
-            map.add(1, vec![Rect { min: Vec2::new(-5.0, 0.0), max: Vec2::new(0.0, 1.0) }]);
-            map.add(2, vec![Rect { min: Vec2::new(1.0, 0.0), max: Vec2::new(5.0, 1.0) }]);
+            map.add(
+                1,
+                vec![Rect {
+                    min: Vec2::new(-5.0, 0.0),
+                    max: Vec2::new(0.0, 1.0),
+                }],
+            );
+            map.add(
+                2,
+                vec![Rect {
+                    min: Vec2::new(1.0, 0.0),
+                    max: Vec2::new(5.0, 1.0),
+                }],
+            );
         } else {
-            map.add(1, vec![Rect { min: Vec2::new(-5.0, 0.0), max: Vec2::new(5.0, 1.0) }]);
+            map.add(
+                1,
+                vec![Rect {
+                    min: Vec2::new(-5.0, 0.0),
+                    max: Vec2::new(5.0, 1.0),
+                }],
+            );
         }
     }
 
@@ -672,7 +740,10 @@ mod tests {
         let (a, b) = (Vec2::new(0.0, -3.0), Vec2::new(0.0, 3.0));
         assert!(!map.line_clear(a, b), "the wall stops the straight line");
         let way = map.find_way(a, b, 20_000).expect("a way round the end");
-        assert!(way.iter().any(|p| p.x.abs() > 5.0), "round the wall's end: {way:?}");
+        assert!(
+            way.iter().any(|p| p.x.abs() > 5.0),
+            "round the wall's end: {way:?}"
+        );
         assert_eq!(*way.last().unwrap(), b);
     }
 
@@ -682,7 +753,10 @@ mod tests {
         wall(&mut map, true);
         let (a, b) = (Vec2::new(0.0, -3.0), Vec2::new(0.0, 3.0));
         let way = map.find_way(a, b, 20_000).expect("through the door");
-        assert!(way.iter().all(|p| p.x.abs() < 1.0), "straight through the doorway: {way:?}");
+        assert!(
+            way.iter().all(|p| p.x.abs() < 1.0),
+            "straight through the doorway: {way:?}"
+        );
     }
 
     /// A room 400 m off with no door, across a chunk edge (x 416): the
@@ -694,14 +768,50 @@ mod tests {
         let room = |map: &mut WalkMap, door: bool| {
             // Walls round x 410..422, y 0..10, a doorway at x 415 on the
             // south wall when `door`.
-            map.add(1, vec![Rect { min: Vec2::new(409.0, 10.0), max: Vec2::new(423.0, 11.0) }]);
-            map.add(2, vec![Rect { min: Vec2::new(409.0, -1.0), max: Vec2::new(410.0, 11.0) }]);
-            map.add(3, vec![Rect { min: Vec2::new(422.0, -1.0), max: Vec2::new(423.0, 11.0) }]);
+            map.add(
+                1,
+                vec![Rect {
+                    min: Vec2::new(409.0, 10.0),
+                    max: Vec2::new(423.0, 11.0),
+                }],
+            );
+            map.add(
+                2,
+                vec![Rect {
+                    min: Vec2::new(409.0, -1.0),
+                    max: Vec2::new(410.0, 11.0),
+                }],
+            );
+            map.add(
+                3,
+                vec![Rect {
+                    min: Vec2::new(422.0, -1.0),
+                    max: Vec2::new(423.0, 11.0),
+                }],
+            );
             if door {
-                map.add(4, vec![Rect { min: Vec2::new(409.0, -1.0), max: Vec2::new(415.0, 0.0) }]);
-                map.add(5, vec![Rect { min: Vec2::new(416.0, -1.0), max: Vec2::new(423.0, 0.0) }]);
+                map.add(
+                    4,
+                    vec![Rect {
+                        min: Vec2::new(409.0, -1.0),
+                        max: Vec2::new(415.0, 0.0),
+                    }],
+                );
+                map.add(
+                    5,
+                    vec![Rect {
+                        min: Vec2::new(416.0, -1.0),
+                        max: Vec2::new(423.0, 0.0),
+                    }],
+                );
             } else {
-                map.add(4, vec![Rect { min: Vec2::new(409.0, -1.0), max: Vec2::new(423.0, 0.0) }]);
+                map.add(
+                    4,
+                    vec![Rect {
+                        min: Vec2::new(409.0, -1.0),
+                        max: Vec2::new(423.0, 0.0),
+                    }],
+                );
                 map.remove(5);
             }
         };
@@ -709,10 +819,21 @@ mod tests {
         let mut map = WalkMap::default();
         room(&mut map, false);
         assert_eq!(map.find_way(from, inside, 2_000), None);
-        assert_eq!(map.last_failed.map(|(why, _)| why), Some("the goal is shut in"));
-        assert!(map.last_searched <= 4 * (CHUNK * CHUNK) as usize, "flooded {} tiles", map.last_searched);
+        assert_eq!(
+            map.last_failed.map(|(why, _)| why),
+            Some("the goal is shut in")
+        );
+        assert!(
+            map.last_searched <= 4 * (CHUNK * CHUNK) as usize,
+            "flooded {} tiles",
+            map.last_searched
+        );
         room(&mut map, true);
-        assert!(map.find_way(from, inside, 2_000).is_some(), "through the door: {:?}", map.last_failed);
+        assert!(
+            map.find_way(from, inside, 2_000).is_some(),
+            "through the door: {:?}",
+            map.last_failed
+        );
     }
 
     #[test]
@@ -730,9 +851,15 @@ mod tests {
         let mut map = WalkMap::default();
         let far = Vec2::new(-400_000.0, 250_000.0);
         map.add(9, vec![Rect::around(far, Vec2::new(10.0, 0.2))]);
-        let way = map.find_way(far - Vec2::Y * 3.0, far + Vec2::Y * 3.0, 20_000).expect("round it");
+        let way = map
+            .find_way(far - Vec2::Y * 3.0, far + Vec2::Y * 3.0, 20_000)
+            .expect("round it");
         assert!(way.len() > 2);
-        assert!(map.painted_chunks() < 20, "{} chunks painted", map.painted_chunks());
+        assert!(
+            map.painted_chunks() < 20,
+            "{} chunks painted",
+            map.painted_chunks()
+        );
     }
 
     /// A way across chunks: 150 tiles east past a wall 60 tiles long,
@@ -741,17 +868,34 @@ mod tests {
     #[test]
     fn a_way_across_chunks_goes_round_a_long_wall() {
         let mut map = WalkMap::default();
-        map.add(1, vec![Rect { min: Vec2::new(70.0, -30.0), max: Vec2::new(71.0, 30.0) }]);
+        map.add(
+            1,
+            vec![Rect {
+                min: Vec2::new(70.0, -30.0),
+                max: Vec2::new(71.0, 30.0),
+            }],
+        );
         let (a, b) = (Vec2::new(0.5, 0.5), Vec2::new(150.5, 0.5));
         let way = map.find_way(a, b, 2_000).expect("round the wall");
         assert_eq!(*way.last().unwrap(), b);
         for p in &way[..way.len() - 1] {
-            assert!(!map.blocked(cell_of(*p)), "the way stands on open tiles: {p}");
+            assert!(
+                !map.blocked(cell_of(*p)),
+                "the way stands on open tiles: {p}"
+            );
         }
-        assert!(way.iter().any(|p| p.y.abs() >= 30.0), "round the wall's end");
+        assert!(
+            way.iter().any(|p| p.y.abs() >= 30.0),
+            "round the wall's end"
+        );
         // Consecutive points are neighbouring tiles: nothing is skipped.
         for pair in way.windows(2) {
-            assert!(pair[0].distance(pair[1]) <= 1.5, "a gap in the way: {} to {}", pair[0], pair[1]);
+            assert!(
+                pair[0].distance(pair[1]) <= 1.5,
+                "a gap in the way: {} to {}",
+                pair[0],
+                pair[1]
+            );
         }
     }
 
@@ -764,15 +908,34 @@ mod tests {
         map.add(
             1,
             vec![
-                Rect { min: lo, max: Vec2::new(hi.x, lo.y + 1.0) },
-                Rect { min: Vec2::new(lo.x, hi.y - 1.0), max: hi },
-                Rect { min: lo, max: Vec2::new(lo.x + 1.0, hi.y) },
-                Rect { min: Vec2::new(hi.x - 1.0, lo.y), max: hi },
+                Rect {
+                    min: lo,
+                    max: Vec2::new(hi.x, lo.y + 1.0),
+                },
+                Rect {
+                    min: Vec2::new(lo.x, hi.y - 1.0),
+                    max: hi,
+                },
+                Rect {
+                    min: lo,
+                    max: Vec2::new(lo.x + 1.0, hi.y),
+                },
+                Rect {
+                    min: Vec2::new(hi.x - 1.0, lo.y),
+                    max: hi,
+                },
             ],
         );
-        assert!(map.find_way(Vec2::new(0.5, 0.5), Vec2::new(103.5, 3.5), 2_000).is_none());
+        assert!(
+            map.find_way(Vec2::new(0.5, 0.5), Vec2::new(103.5, 3.5), 2_000)
+                .is_none()
+        );
         let chunk = (CHUNK * CHUNK) as usize;
-        assert!(map.last_searched <= 2 * chunk, "flooded {} tiles", map.last_searched);
+        assert!(
+            map.last_searched <= 2 * chunk,
+            "flooded {} tiles",
+            map.last_searched
+        );
     }
 
     #[test]
@@ -783,12 +946,27 @@ mod tests {
         map.add(
             1,
             vec![
-                Rect { min: Vec2::new(lo.x, lo.y), max: Vec2::new(hi.x, lo.y + 0.2) },
-                Rect { min: Vec2::new(lo.x, hi.y - 0.2), max: Vec2::new(hi.x, hi.y) },
-                Rect { min: Vec2::new(lo.x, lo.y), max: Vec2::new(lo.x + 0.2, hi.y) },
-                Rect { min: Vec2::new(hi.x - 0.2, lo.y), max: Vec2::new(hi.x, hi.y) },
+                Rect {
+                    min: Vec2::new(lo.x, lo.y),
+                    max: Vec2::new(hi.x, lo.y + 0.2),
+                },
+                Rect {
+                    min: Vec2::new(lo.x, hi.y - 0.2),
+                    max: Vec2::new(hi.x, hi.y),
+                },
+                Rect {
+                    min: Vec2::new(lo.x, lo.y),
+                    max: Vec2::new(lo.x + 0.2, hi.y),
+                },
+                Rect {
+                    min: Vec2::new(hi.x - 0.2, lo.y),
+                    max: Vec2::new(hi.x, hi.y),
+                },
             ],
         );
-        assert!(map.find_way(Vec2::new(10.0, 0.0), Vec2::ZERO, 5_000).is_none());
+        assert!(
+            map.find_way(Vec2::new(10.0, 0.0), Vec2::ZERO, 5_000)
+                .is_none()
+        );
     }
 }

@@ -11,7 +11,16 @@ use std::hash::Hash;
 pub type Cell = (i32, i32);
 
 /// The eight neighbours, straight first.
-const NEIGHBOURS: [(i32, i32); 8] = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)];
+const NEIGHBOURS: [(i32, i32); 8] = [
+    (-1, 0),
+    (1, 0),
+    (0, -1),
+    (0, 1),
+    (-1, -1),
+    (1, -1),
+    (-1, 1),
+    (1, 1),
+];
 
 struct Open<N>(f32, N);
 impl<N> PartialEq for Open<N> {
@@ -110,7 +119,13 @@ mod tests {
     fn the_path_goes_round_a_wall() {
         let wall = |c: Cell| c.0 == 5 && (-3..=3).contains(&c.1);
         let step = |from: Cell, to: Cell| {
-            (!wall(to)).then(|| if from.0 != to.0 && from.1 != to.1 { 1.414 } else { 1.0 })
+            (!wall(to)).then(|| {
+                if from.0 != to.0 && from.1 != to.1 {
+                    1.414
+                } else {
+                    1.0
+                }
+            })
         };
         let goal = (10, 0);
         let estimate = |c: Cell| (((goal.0 - c.0).pow(2) + (goal.1 - c.1).pow(2)) as f32).sqrt();

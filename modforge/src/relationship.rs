@@ -73,7 +73,10 @@ pub fn feelings(memory: &Memory, heard: impl Fn(&str) -> f32) -> Vec<(ActorId, f
             people.push(who);
         }
     }
-    people.into_iter().filter_map(|who| feeling(memory, who, &heard).map(|f| (who, f))).collect()
+    people
+        .into_iter()
+        .filter_map(|who| feeling(memory, who, &heard).map(|f| (who, f)))
+        .collect()
 }
 
 /// A faction's standing toward someone: its members' feelings taken
@@ -83,7 +86,9 @@ pub fn feelings(memory: &Memory, heard: impl Fn(&str) -> f32) -> Vec<(ActorId, f
 pub fn standing(feelings: impl IntoIterator<Item = Option<f32>>) -> Option<f32> {
     let (sum, members, felt) = feelings
         .into_iter()
-        .fold((0.0, 0u32, false), |(s, n, felt), f| (s + f.unwrap_or(0.0), n + 1, felt || f.is_some()));
+        .fold((0.0, 0u32, false), |(s, n, felt), f| {
+            (s + f.unwrap_or(0.0), n + 1, felt || f.is_some())
+        });
     felt.then(|| sum / members as f32)
 }
 
@@ -118,7 +123,10 @@ mod tests {
 
     /// A line heard, by its name.
     fn said(name: &str) -> crate::memory::Line {
-        crate::memory::Line { name: name.to_string(), words: format!("({name})") }
+        crate::memory::Line {
+            name: name.to_string(),
+            words: format!("({name})"),
+        }
     }
 
     #[test]
@@ -141,7 +149,10 @@ mod tests {
     fn a_threat_heard_is_hostile() {
         let mut mara = Memory::default();
         mara.did(Did::Heard(PLAYER, said("threatens Mara")), 1);
-        assert_eq!(stands(feeling(&mara, PLAYER, threat), None, Relation::Neutral), Relation::Hostile);
+        assert_eq!(
+            stands(feeling(&mara, PLAYER, threat), None, Relation::Neutral),
+            Relation::Hostile
+        );
     }
 
     #[test]
@@ -157,12 +168,33 @@ mod tests {
         let mut hit = Memory::default();
         hit.did(Did::WasHit(Some(PLAYER), 30.0), 1);
         let mates = [Memory::default(), Memory::default(), Memory::default()];
-        let faction = standing(std::iter::once(&hit).chain(&mates).map(|m| feeling(m, PLAYER, threat)));
-        assert_eq!(faction, Some(-0.15), "one grudge in four moves the faction a little");
-        assert_eq!(stands(feeling(&hit, PLAYER, threat), faction, Relation::Neutral), Relation::Hostile);
-        assert_eq!(stands(feeling(&mates[0], PLAYER, threat), faction, Relation::Neutral), Relation::Neutral);
+        let faction = standing(
+            std::iter::once(&hit)
+                .chain(&mates)
+                .map(|m| feeling(m, PLAYER, threat)),
+        );
+        assert_eq!(
+            faction,
+            Some(-0.15),
+            "one grudge in four moves the faction a little"
+        );
+        assert_eq!(
+            stands(feeling(&hit, PLAYER, threat), faction, Relation::Neutral),
+            Relation::Hostile
+        );
+        assert_eq!(
+            stands(
+                feeling(&mates[0], PLAYER, threat),
+                faction,
+                Relation::Neutral
+            ),
+            Relation::Neutral
+        );
         // Nobody with a feeling: no standing, the table decides.
-        assert_eq!(standing(mates.iter().map(|m| feeling(m, PLAYER, threat))), None);
+        assert_eq!(
+            standing(mates.iter().map(|m| feeling(m, PLAYER, threat))),
+            None
+        );
     }
 
     #[test]
@@ -172,10 +204,17 @@ mod tests {
         let mut b = Memory::default();
         b.did(Did::Died(Some(PLAYER), "pipe".to_string()), 1);
         let newcomer_memory = Memory::default();
-        let faction = standing([&a, &b, &newcomer_memory].into_iter().map(|m| feeling(m, PLAYER, threat)));
+        let faction = standing(
+            [&a, &b, &newcomer_memory]
+                .into_iter()
+                .map(|m| feeling(m, PLAYER, threat)),
+        );
         let newcomer = feeling(&newcomer_memory, PLAYER, threat);
         assert_eq!(newcomer, None);
-        assert_eq!(stands(newcomer, faction, Relation::Neutral), Relation::Hostile);
+        assert_eq!(
+            stands(newcomer, faction, Relation::Neutral),
+            Relation::Hostile
+        );
         // With no faction standing either, the table decides.
         assert_eq!(stands(None, None, Relation::Friendly), Relation::Friendly);
     }
@@ -195,6 +234,13 @@ mod tests {
         let mut friend = Memory::default();
         friend.did(Did::Heard(PLAYER, said("hello")), 1);
         let warm = |_: &str| 0.6;
-        assert_eq!(stands(feeling(&friend, PLAYER, warm), Some(-0.9), Relation::Hostile), Relation::Friendly);
+        assert_eq!(
+            stands(
+                feeling(&friend, PLAYER, warm),
+                Some(-0.9),
+                Relation::Hostile
+            ),
+            Relation::Friendly
+        );
     }
 }

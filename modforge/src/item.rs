@@ -445,11 +445,18 @@ pub fn create_layered(
 ) -> Result<ItemStack, String> {
     let layers = names
         .iter()
-        .map(|name| registry.def(name).ok_or_else(|| format!("no layer '{name}'")))
+        .map(|name| {
+            registry
+                .def(name)
+                .ok_or_else(|| format!("no layer '{name}'"))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     for (i, layer) in layers.iter().enumerate() {
         if !def.layer_slots.contains(&layer.slot) {
-            return Err(format!("'{}' has no {} for '{}'", def.name, layer.slot, layer.name));
+            return Err(format!(
+                "'{}' has no {} for '{}'",
+                def.name, layer.slot, layer.name
+            ));
         }
         if layers[..i].iter().any(|l| l.slot == layer.slot) {
             return Err(format!("'{}' has one {} only", def.name, layer.slot));
@@ -808,7 +815,10 @@ mod tests {
         }
         assert_eq!(gear.items().count(), EQUIPMENT_SLOTS);
         // Full: the next is handed back.
-        assert_eq!(gear.wear(plain("one too many", 1)).unwrap_err().item, "one too many");
+        assert_eq!(
+            gear.wear(plain("one too many", 1)).unwrap_err().item,
+            "one too many"
+        );
         // Taking one off frees its slot for the next.
         assert_eq!(gear.take_off(2).unwrap().item, "wearable 2");
         assert!(gear.get(2).is_none());
@@ -883,16 +893,6 @@ mod tests {
     }
 
     #[test]
-    fn layers_change_the_numbers_and_only_go_where_the_item_takes_them() {
-        use crate::combat::{DamageDef, DamageRegistry, DamageType, Falloff};
-        let handle = |name: &str, damage: &str, reach: f32| ItemDef {
-            kind: ItemKind::Weapon,
-            max_stack: 1,
-            combat: Some(CombatStats {
-                damage: damage.to_string(),
-                delay: 0.6,
-                reach,
-    #[test]
     fn affixes_change_the_numbers_and_keep_stacks_apart() {
         let pipe = ItemDef {
             kind: ItemKind::Weapon,
@@ -922,6 +922,16 @@ mod tests {
         assert!(!plain.stacks_with(&light));
     }
 
+    #[test]
+    fn layers_change_the_numbers_and_only_go_where_the_item_takes_them() {
+        use crate::combat::{DamageDef, DamageRegistry, DamageType, Falloff};
+        let handle = |name: &str, damage: &str, reach: f32| ItemDef {
+            kind: ItemKind::Weapon,
+            max_stack: 1,
+            combat: Some(CombatStats {
+                damage: damage.to_string(),
+                delay: 0.6,
+                reach,
                 pellets: 1,
                 spread_degrees: 0.0,
                 ammo: None,
@@ -934,7 +944,11 @@ mod tests {
         let wooden = handle("wooden handle", "handle swing", 1.8);
         let pole = handle("long pole", "handle swing", 2.8);
         let mut damage = DamageRegistry::default();
-        for (name, amount) in [("pipe swing", 20.0), ("handle swing", 15.0), ("nail hit", 30.0)] {
+        for (name, amount) in [
+            ("pipe swing", 20.0),
+            ("handle swing", 15.0),
+            ("nail hit", 30.0),
+        ] {
             damage
                 .register(DamageDef {
                     name: name.to_string(),
@@ -965,13 +979,20 @@ mod tests {
         let plain_pipe = create_layered(&pipe, &[], &layers, 1, &[], 0.0, 1).unwrap();
         let nailed = create_layered(&pipe, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
         assert_eq!(nailed.layers, ["nails"]);
-        let fights = |def: &ItemDef, stack: &ItemStack| numbers_of(def, stack, &layers).combat.unwrap();
+        let fights =
+            |def: &ItemDef, stack: &ItemStack| numbers_of(def, stack, &layers).combat.unwrap();
         let plain_hit = fights(&pipe, &plain_pipe);
         let nail_hit = fights(&pipe, &nailed);
         let amount = |c: &CombatStats| damage.def(&c.damage).unwrap().amount;
         assert!(amount(&nail_hit) > amount(&plain_hit), "nails hit harder");
-        assert_eq!(nail_hit.reach, plain_hit.reach, "the head does not change reach");
-        assert!(!nailed.stacks_with(&plain_pipe), "a nailed pipe is not a plain pipe");
+        assert_eq!(
+            nail_hit.reach, plain_hit.reach,
+            "the head does not change reach"
+        );
+        assert!(
+            !nailed.stacks_with(&plain_pipe),
+            "a nailed pipe is not a plain pipe"
+        );
 
         // A long pole reaches farther than a wooden handle, the same head on each.
         let on_pole = create_layered(&pole, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
@@ -982,8 +1003,14 @@ mod tests {
         let can = def("canned food");
         assert!(create_layered(&can, &[nails.clone()], &layers, 1, &[], 0.0, 1).is_err());
         assert!(create_layered(&pipe, &[nails.clone(), nails], &layers, 1, &[], 0.0, 1).is_err());
-        assert!(create_layered(&pipe, &["gold".to_string()], &layers, 1, &[], 0.0, 1).is_err(), "no such layer");
-        assert_eq!(numbers_of(&can, &create(&can, 1, &[], 0.0, 1), &layers).combat, None);
+        assert!(
+            create_layered(&pipe, &["gold".to_string()], &layers, 1, &[], 0.0, 1).is_err(),
+            "no such layer"
+        );
+        assert_eq!(
+            numbers_of(&can, &create(&can, 1, &[], 0.0, 1), &layers).combat,
+            None
+        );
     }
 
     #[test]
@@ -1028,9 +1055,21 @@ mod tests {
         };
         let long = with(&["pipe barrel"]);
         let short = with(&["short pipe barrel"]);
-        assert!(short.reach < long.reach && short.spread_degrees > long.spread_degrees, "a short barrel reaches less and spreads more");
-        assert!(with(&["pipe barrel", "wooden stock"]).spread_degrees < long.spread_degrees, "a stock narrows the spread");
-        assert!(with(&["pipe barrel", "taped grip"]).delay < long.delay, "a grip fires sooner");
-        assert_eq!(long.damage, "shotgun pellet", "a part without damage keeps the gun's");
+        assert!(
+            short.reach < long.reach && short.spread_degrees > long.spread_degrees,
+            "a short barrel reaches less and spreads more"
+        );
+        assert!(
+            with(&["pipe barrel", "wooden stock"]).spread_degrees < long.spread_degrees,
+            "a stock narrows the spread"
+        );
+        assert!(
+            with(&["pipe barrel", "taped grip"]).delay < long.delay,
+            "a grip fires sooner"
+        );
+        assert_eq!(
+            long.damage, "shotgun pellet",
+            "a part without damage keeps the gun's"
+        );
     }
 }

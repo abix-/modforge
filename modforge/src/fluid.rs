@@ -32,7 +32,10 @@ pub fn transfer(from: &mut f32, to: &mut f32, room: f32, most: f32) -> f32 {
 /// The room left in a container stack: its size less what it holds; none
 /// for a stack that is not a container.
 pub fn room(stack: &ItemStack, items: &ItemRegistry) -> f32 {
-    items.def(&stack.item).and_then(|d| d.holds_litres).map_or(0.0, |size| (size - stack.litres).max(0.0))
+    items
+        .def(&stack.item)
+        .and_then(|d| d.holds_litres)
+        .map_or(0.0, |size| (size - stack.litres).max(0.0))
 }
 
 /// Fills a container at a source: up to its size, from what the source
@@ -83,12 +86,20 @@ pub fn pour_into(held: &mut Inventory, from: &mut f32, items: &ItemRegistry) -> 
 
 /// Every litre an inventory's containers hold.
 pub fn litres_in(held: &Inventory) -> f32 {
-    held.slots.iter().flatten().map(|s| s.litres * s.count as f32).sum()
+    held.slots
+        .iter()
+        .flatten()
+        .map(|s| s.litres * s.count as f32)
+        .sum()
 }
 
 /// The room in an inventory's containers, in litres.
 pub fn room_in(held: &Inventory, items: &ItemRegistry) -> f32 {
-    held.slots.iter().flatten().map(|s| room(s, items) * s.count as f32).sum()
+    held.slots
+        .iter()
+        .flatten()
+        .map(|s| room(s, items) * s.count as f32)
+        .sum()
 }
 
 #[cfg(test)]
@@ -145,9 +156,17 @@ mod tests {
         assert!(river.is_infinite(), "a river never runs dry");
         let mut empty = stack("5 L water bottle", 0.0);
         let mut store = 3.0;
-        assert_eq!(fill(&mut empty, &mut store, &items), 3.0, "the store's 3 L, not 5");
+        assert_eq!(
+            fill(&mut empty, &mut store, &items),
+            3.0,
+            "the store's 3 L, not 5"
+        );
         assert_eq!((empty.litres, store), (3.0, 0.0));
-        assert_eq!(fill(&mut empty, &mut store, &items), 0.0, "a dry store gives nothing");
+        assert_eq!(
+            fill(&mut empty, &mut store, &items),
+            0.0,
+            "a dry store gives nothing"
+        );
     }
 
     /// Poured into the barrel, a bottle empties into it, never past its
@@ -187,7 +206,10 @@ mod tests {
         assert_eq!((carried, litres_in(&inventory)), (0.0, 5.0));
         assert_eq!(take_from(&mut inventory, 9.0), 5.0, "no more than it holds");
         // A mouthful drunk fills thirst at THIRST_PER_LITRE a litre.
-        let mut stats = crate::survival::SurvivalStats { thirst: 10.0, ..Default::default() };
+        let mut stats = crate::survival::SurvivalStats {
+            thirst: 10.0,
+            ..Default::default()
+        };
         stats.drink(MOUTHFUL);
         assert_eq!(stats.thirst, 10.0 + MOUTHFUL * THIRST_PER_LITRE);
     }

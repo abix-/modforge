@@ -184,7 +184,13 @@ impl Bindings {
                 (Key::Digit9, Tapped(Hotbar { index: 8 })),
                 (Key::Digit0, Tapped(Hotbar { index: 9 })),
                 (Key::O, Tapped(Drop { slot: None })),
-                (Key::T, Tapped(Transfer { half: false, slot: None })),
+                (
+                    Key::T,
+                    Tapped(Transfer {
+                        half: false,
+                        slot: None,
+                    }),
+                ),
                 (Key::Enter, Tapped(Respawn)),
                 (Key::Space, Tapped(Roll)),
                 (Key::M, Tapped(Map)),
@@ -227,7 +233,10 @@ impl Bindings {
                     move_sum = Some((sx + x, sy + y));
                 }
                 Binding::Tapped(Action::Transfer { .. }) => {
-                    out.push(Action::Transfer { half: shift, slot: None });
+                    out.push(Action::Transfer {
+                        half: shift,
+                        slot: None,
+                    });
                 }
                 Binding::Held(a) | Binding::Tapped(a) => out.push(*a),
             }
@@ -380,11 +389,17 @@ mod tests {
         let mut b = Bindings::defaults();
         assert_eq!(
             b.resolve(&[Key::T], &[Key::T]),
-            vec![Action::Transfer { half: false, slot: None }]
+            vec![Action::Transfer {
+                half: false,
+                slot: None
+            }]
         );
         assert_eq!(
             b.resolve(&[Key::T, Key::ShiftLeft], &[Key::T]),
-            vec![Action::Transfer { half: true, slot: None }]
+            vec![Action::Transfer {
+                half: true,
+                slot: None
+            }]
         );
         b.bind(Key::MouseRight, Binding::Held(Action::Attack));
         b.bind(Key::MouseLeft, Binding::Tapped(Action::Use));

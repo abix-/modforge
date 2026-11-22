@@ -104,9 +104,10 @@ impl HandleInner {
 /// Record the undo of a started poller and wrap it in its handle.
 fn handle_for(name: &'static str, inner: Arc<HandleInner>) -> PollerHandle {
     let for_undo = inner.clone();
-    let undo = crate::shutdown::SHUTDOWN_REGISTRY.record("poller", name.to_string(), 250, move || {
-        for_undo.stop_and_join()
-    });
+    let undo =
+        crate::shutdown::SHUTDOWN_REGISTRY.record("poller", name.to_string(), 250, move || {
+            for_undo.stop_and_join()
+        });
     PollerHandle { inner, _undo: undo }
 }
 

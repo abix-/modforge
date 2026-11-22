@@ -113,7 +113,10 @@ mod tests {
     fn the_same_seed_and_storm_pick_the_same_reality() {
         let registry = three();
         for storms in 1..20 {
-            assert_eq!(registry.pick(7, storms, "first"), registry.pick(7, storms, "first"));
+            assert_eq!(
+                registry.pick(7, storms, "first"),
+                registry.pick(7, storms, "first")
+            );
         }
     }
 
@@ -132,9 +135,16 @@ mod tests {
     #[test]
     fn every_other_reality_can_be_picked() {
         let registry = three();
-        let picked: std::collections::HashSet<String> =
-            (1..200).map(|storms| registry.pick(7, storms, "first").unwrap().name.clone()).collect();
-        assert_eq!(picked, ["second", "third"].map(str::to_string).into_iter().collect());
+        let picked: std::collections::HashSet<String> = (1..200)
+            .map(|storms| registry.pick(7, storms, "first").unwrap().name.clone())
+            .collect();
+        assert_eq!(
+            picked,
+            ["second", "third"]
+                .map(str::to_string)
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]

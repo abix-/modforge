@@ -52,7 +52,9 @@ impl Place {
             let at = (self.position + Vec2::new(m.offset.x, m.offset.z)).round();
             for run in tile_plan(&m.structure) {
                 for x in run.from..run.to {
-                    tiles.push(cell_of(at + Vec2::new(x as f32 + 0.5, run.row as f32 + 0.5)));
+                    tiles.push(cell_of(
+                        at + Vec2::new(x as f32 + 0.5, run.row as f32 + 0.5),
+                    ));
                 }
             }
         }
@@ -66,7 +68,12 @@ impl Place {
                 }
             }
         }
-        let spots = self.rolled.npc_spots.iter().map(|s| s.position).chain(self.rolled.loot_spots.iter().map(|s| s.position));
+        let spots = self
+            .rolled
+            .npc_spots
+            .iter()
+            .map(|s| s.position)
+            .chain(self.rolled.loot_spots.iter().map(|s| s.position));
         tiles.extend(spots.map(|p| cell_of(self.position + Vec2::new(p.x, p.z))));
         tiles
     }
@@ -119,14 +126,18 @@ impl Places {
     }
 
     fn spacing(&self, m: Makers, k: usize) -> f32 {
-        m.monuments.def(&self.kinds[k].monument).map_or(100.0, |d| d.spacing)
+        m.monuments
+            .def(&self.kinds[k].monument)
+            .map_or(100.0, |d| d.spacing)
     }
 
     /// The farthest any site's ground reaches from its position: a rolled
     /// site's ground is at most 30% of its spacing (the rule in
     /// `roll_cell`); a fixed site's is its own.
     pub fn widest(&mut self, m: Makers) -> f32 {
-        let rolled = (0..self.kinds.len()).map(|k| 0.3 * self.spacing(m, k)).fold(0.0, f32::max);
+        let rolled = (0..self.kinds.len())
+            .map(|k| 0.3 * self.spacing(m, k))
+            .fold(0.0, f32::max);
         (0..self.fixed.len())
             .filter_map(|i| self.fixed_site(m, i))
             .map(|p| p.ground)
@@ -142,8 +153,15 @@ impl Places {
         let position = at.round();
         let tile = cell_of(position);
         let found = (|| {
-            let biome = m.ground.biomes.get(m.ground.biome_at(tile) as usize)?.clone();
-            let rolled = m.monuments.roll(&monument, m.buildings, tile_hash(m.ground.seed, tile, 1)).ok()?;
+            let biome = m
+                .ground
+                .biomes
+                .get(m.ground.biome_at(tile) as usize)?
+                .clone();
+            let rolled = m
+                .monuments
+                .roll(&monument, m.buildings, tile_hash(m.ground.seed, tile, 1))
+                .ok()?;
             let ground = crate::worldgen::monument_ground(&rolled);
             let place = Place {
                 monument,
@@ -158,7 +176,12 @@ impl Places {
             place
                 .footprint()
                 .iter()
-                .all(|t| !matches!(m.ground.ground_at(*t), crate::ground::Ground::OutOfMap | crate::ground::Ground::Cliff))
+                .all(|t| {
+                    !matches!(
+                        m.ground.ground_at(*t),
+                        crate::ground::Ground::OutOfMap | crate::ground::Ground::Cliff
+                    )
+                })
                 .then_some(place)
         })();
         self.fixed_cache.insert(i, found.clone());
@@ -187,25 +210,40 @@ impl Places {
         // kind are always at least 60% of a spacing apart and no cell
         // needs to ask the cells of its own kind around it.
         let jitter = Vec2::new(((h >> 16) & 0xFFFF) as f32, ((h >> 32) & 0xFFFF) as f32) / 65535.0;
-        let at = (Vec2::new(cell.0 as f32, cell.1 as f32) + Vec2::splat(0.3) + jitter * 0.4) * spacing;
+        let at =
+            (Vec2::new(cell.0 as f32, cell.1 as f32) + Vec2::splat(0.3) + jitter * 0.4) * spacing;
         // Whole metres, as every member offset is: buildings then stand on
         // whole tiles with no snapping, and their spots stay where the
         // roll put them in the building.
         let position = at.round();
         let tile = cell_of(position);
-        let biome = m.ground.biomes.get(m.ground.biome_at(tile) as usize)?.clone();
-        let allowed = m.biomes.def(&biome).is_some_and(|b| b.monuments.iter().any(|x| *x == kind.monument));
+        let biome = m
+            .ground
+            .biomes
+            .get(m.ground.biome_at(tile) as usize)?
+            .clone();
+        let allowed = m
+            .biomes
+            .def(&biome)
+            .is_some_and(|b| b.monuments.iter().any(|x| *x == kind.monument));
         if !allowed {
             return None;
         }
-        let rolled = m.monuments.roll(&kind.monument, m.buildings, tile_hash(seed, cell, 1)).ok()?;
+        let rolled = m
+            .monuments
+            .roll(&kind.monument, m.buildings, tile_hash(seed, cell, 1))
+            .ok()?;
         let ground = crate::worldgen::monument_ground(&rolled);
         // Too big for its spacing: it could reach a neighbour of its own
         // kind, so it does not stand here.
         if 2.0 * ground + BETWEEN > 0.6 * spacing {
             return None;
         }
-        if self.keep_clear.iter().any(|(c, r)| c.distance(position) < r + ground) {
+        if self
+            .keep_clear
+            .iter()
+            .any(|(c, r)| c.distance(position) < r + ground)
+        {
             return None;
         }
         let place = Place {
@@ -216,7 +254,11 @@ impl Places {
             ground,
         };
         // The whole footprint on land.
-        if place.footprint().iter().any(|t| !m.ground.ground_at(*t).is_land()) {
+        if place
+            .footprint()
+            .iter()
+            .any(|t| !m.ground.ground_at(*t).is_land())
+        {
             return None;
         }
         // Clear of any earlier kind's site nearby (only earlier kinds, so
@@ -224,7 +266,10 @@ impl Places {
         for j in 0..k {
             let reach = place.ground + BETWEEN + self.spacing(m, j).max(spacing);
             let sp = self.spacing(m, j);
-            let (lo, hi) = (((position - reach) / sp).floor(), ((position + reach) / sp).floor());
+            let (lo, hi) = (
+                ((position - reach) / sp).floor(),
+                ((position + reach) / sp).floor(),
+            );
             for cy in lo.y as i32..=hi.y as i32 {
                 for cx in lo.x as i32..=hi.x as i32 {
                     if let Some(other) = self.in_cell(m, j, (cx, cy))
@@ -272,7 +317,9 @@ mod tests {
     use super::*;
     use crate::biome::BiomeDef;
     use crate::ground::{ClimateRule, Ground, GroundDef};
-    use crate::monument::{Arrangement, BuildingSize, BuildingSlot, BuildingTypeDef, MonumentTypeDef};
+    use crate::monument::{
+        Arrangement, BuildingSize, BuildingSlot, BuildingTypeDef, MonumentTypeDef,
+    };
 
     fn registries() -> (BiomeRegistry, MonumentRegistry, BuildingRegistry) {
         let mut biomes = BiomeRegistry::default();
@@ -315,7 +362,11 @@ mod tests {
                     MonumentTypeDef {
                         name: name.to_string(),
                         slots: (0..slots)
-                            .map(|_| BuildingSlot { choices: vec!["shed".to_string()], min: 1, max: 1 })
+                            .map(|_| BuildingSlot {
+                                choices: vec!["shed".to_string()],
+                                min: 1,
+                                max: 1,
+                            })
                             .collect(),
                         arrangement: Arrangement::Clustered,
                         danger: 1,
@@ -370,8 +421,14 @@ mod tests {
 
     fn kinds() -> Vec<SiteKind> {
         vec![
-            SiteKind { monument: "stop".to_string(), chance: 0.6 },
-            SiteKind { monument: "wreck".to_string(), chance: 0.5 },
+            SiteKind {
+                monument: "stop".to_string(),
+                chance: 0.6,
+            },
+            SiteKind {
+                monument: "wreck".to_string(),
+                chance: 0.5,
+            },
         ]
     }
 
@@ -380,18 +437,35 @@ mod tests {
     #[test]
     fn a_fixed_site_stands_where_it_is_given() {
         let (biomes, monuments, buildings) = registries();
-        let g = GroundGen::new(GroundDef { water_level: -2.0, cliff_every: 0.0, ..ground(&biomes).def }, 5, &biomes).unwrap();
+        let g = GroundGen::new(
+            GroundDef {
+                water_level: -2.0,
+                cliff_every: 0.0,
+                ..ground(&biomes).def
+            },
+            5,
+            &biomes,
+        )
+        .unwrap();
         let m = Makers {
             ground: &g,
             biomes: &biomes,
             monuments: &monuments,
             buildings: &buildings,
         };
-        let mut places = Places::new(vec![], vec![]).with_fixed(vec![("stop".to_string(), Vec2::new(40.3, -20.0))]);
+        let mut places = Places::new(vec![], vec![])
+            .with_fixed(vec![("stop".to_string(), Vec2::new(40.3, -20.0))]);
         let found = places.in_area(m, Vec2::splat(-100.0), Vec2::splat(100.0));
         assert_eq!(found.len(), 1);
-        assert_eq!((found[0].monument.as_str(), found[0].position), ("stop", Vec2::new(40.0, -20.0)));
-        assert!(places.in_area(m, Vec2::splat(50.0), Vec2::splat(100.0)).is_empty());
+        assert_eq!(
+            (found[0].monument.as_str(), found[0].position),
+            ("stop", Vec2::new(40.0, -20.0))
+        );
+        assert!(
+            places
+                .in_area(m, Vec2::splat(50.0), Vec2::splat(100.0))
+                .is_empty()
+        );
         assert!(places.widest(m) >= found[0].ground && found[0].ground > 0.0);
     }
 
@@ -411,12 +485,25 @@ mod tests {
         let area = a.in_area(m, Vec2::splat(-600.0), Vec2::splat(600.0));
         assert!(area.len() > 10, "{} sites", area.len());
         for p in &area {
-            assert!(p.footprint().iter().all(|t| g.ground_at(*t).is_land()), "{} at {} stands off land", p.monument, p.position);
-            assert!(p.position.length() >= 30.0 + p.ground, "clear of the bunker");
+            assert!(
+                p.footprint().iter().all(|t| g.ground_at(*t).is_land()),
+                "{} at {} stands off land",
+                p.monument,
+                p.position
+            );
+            assert!(
+                p.position.length() >= 30.0 + p.ground,
+                "clear of the bunker"
+            );
         }
         for (i, p) in area.iter().enumerate() {
             for q in &area[i + 1..] {
-                assert!(p.position.distance(q.position) >= p.ground + q.ground, "{} and {} overlap", p.position, q.position);
+                assert!(
+                    p.position.distance(q.position) >= p.ground + q.ground,
+                    "{} and {} overlap",
+                    p.position,
+                    q.position
+                );
             }
         }
         // Asked for a corner first, then the rest: the same sites.

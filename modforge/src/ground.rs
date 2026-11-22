@@ -156,7 +156,12 @@ impl GroundChunk {
                 out.push(Rect { min, max });
             }
         }
-        out.extend(self.things.iter().filter(|t| t.source.is_none()).map(Thing::rect));
+        out.extend(
+            self.things
+                .iter()
+                .filter(|t| t.source.is_none())
+                .map(Thing::rect),
+        );
         out
     }
 }
@@ -228,7 +233,10 @@ impl GroundGen {
 
     /// The hidden elevation at a tile, -1 to 1.
     pub fn elevation(&self, t: Cell) -> f32 {
-        fbm(&self.elevation, crate::walk::centre(t) / self.def.feature_size)
+        fbm(
+            &self.elevation,
+            crate::walk::centre(t) / self.def.feature_size,
+        )
     }
 
     /// The chunks inside the edge, lowest first and one past the highest,
@@ -261,7 +269,10 @@ impl GroundGen {
                 .into_iter()
                 .any(|n| level(self.elevation(n)) != here);
             if crosses {
-                let gap = fbm(&self.gaps, crate::walk::centre(t) / (self.def.feature_size * 0.1));
+                let gap = fbm(
+                    &self.gaps,
+                    crate::walk::centre(t) / (self.def.feature_size * 0.1),
+                );
                 if (gap + 1.0) / 2.0 >= self.def.cliff_gaps {
                     return Ground::Cliff;
                 }
@@ -299,7 +310,12 @@ impl GroundGen {
         self.def
             .climate
             .iter()
-            .position(|r| m >= r.moisture.0 && m <= r.moisture.1 && h >= r.temperature.0 && h <= r.temperature.1)
+            .position(|r| {
+                m >= r.moisture.0
+                    && m <= r.moisture.1
+                    && h >= r.temperature.0
+                    && h <= r.temperature.1
+            })
             .unwrap_or(self.def.climate.len().saturating_sub(1)) as u16
     }
 
@@ -323,7 +339,11 @@ impl GroundGen {
                 if !g.is_land() {
                     continue;
                 }
-                let Some(def) = self.biomes.get(b as usize).and_then(|name| biomes.def(name)) else {
+                let Some(def) = self
+                    .biomes
+                    .get(b as usize)
+                    .and_then(|name| biomes.def(name))
+                else {
                     continue;
                 };
                 for (k, spec) in def.scatter.iter().enumerate() {
@@ -416,14 +436,34 @@ mod tests {
     #[test]
     fn past_the_edge_is_out_of_the_map() {
         let reg = biomes();
-        let small = GroundGen::new(GroundDef { chunks_across: Some(4), water_level: -2.0, cliff_every: 0.0, ..def() }, 5, &reg).unwrap();
+        let small = GroundGen::new(
+            GroundDef {
+                chunks_across: Some(4),
+                water_level: -2.0,
+                cliff_every: 0.0,
+                ..def()
+            },
+            5,
+            &reg,
+        )
+        .unwrap();
         assert_eq!(small.chunk_range(), Some((-2, 2)));
         assert!(small.inside((-2, 1)) && !small.inside((2, 0)) && !small.inside((0, -3)));
-        assert!(small.chunk((1, 1), &reg).ground.iter().all(|g| g.is_land()), "inside is land");
+        assert!(
+            small.chunk((1, 1), &reg).ground.iter().all(|g| g.is_land()),
+            "inside is land"
+        );
         let past = small.chunk((2, 0), &reg);
         assert!(past.ground.iter().all(|g| *g == Ground::OutOfMap) && past.things.is_empty());
-        assert!(small.ground_at((2 * CHUNK - 1, 0)).is_land(), "the last tile inside");
-        assert_eq!(small.ground_at((2 * CHUNK, 0)), Ground::OutOfMap, "the first tile past");
+        assert!(
+            small.ground_at((2 * CHUNK - 1, 0)).is_land(),
+            "the last tile inside"
+        );
+        assert_eq!(
+            small.ground_at((2 * CHUNK, 0)),
+            Ground::OutOfMap,
+            "the first tile past"
+        );
     }
 
     #[test]
@@ -432,7 +472,11 @@ mod tests {
         let a = GroundGen::new(def(), 7, &reg).unwrap();
         let b = GroundGen::new(def(), 7, &reg).unwrap();
         let (first, second) = (a.chunk((3, -2), &reg), a.chunk((0, 0), &reg));
-        assert_eq!(b.chunk((0, 0), &reg), second, "made second or first, the same");
+        assert_eq!(
+            b.chunk((0, 0), &reg),
+            second,
+            "made second or first, the same"
+        );
         assert_eq!(b.chunk((3, -2), &reg), first);
         let c = GroundGen::new(def(), 8, &reg).unwrap();
         assert_ne!(c.chunk((0, 0), &reg), second, "another seed, another chunk");
@@ -473,17 +517,43 @@ mod tests {
                 things += chunk.things.len();
             }
         }
-        assert!(land > water && water > 0 && cliff > 0 && things > 0, "land {land}, water {water}, cliff {cliff}, things {things}");
-        for kind in [Ground::Grass, Ground::Dirt, Ground::Sand, Ground::ForestFloor] {
+        assert!(
+            land > water && water > 0 && cliff > 0 && things > 0,
+            "land {land}, water {water}, cliff {cliff}, things {things}"
+        );
+        for kind in [
+            Ground::Grass,
+            Ground::Dirt,
+            Ground::Sand,
+            Ground::ForestFloor,
+        ] {
             assert!(kinds.contains(&kind), "no {kind:?} anywhere: {kinds:?}");
         }
         // Gaps: with the gaps turned off there are more cliff tiles.
-        let solid = GroundGen::new(GroundDef { cliff_gaps: 0.0, ..def() }, 11, &reg).unwrap();
+        let solid = GroundGen::new(
+            GroundDef {
+                cliff_gaps: 0.0,
+                ..def()
+            },
+            11,
+            &reg,
+        )
+        .unwrap();
         let solid_cliffs: usize = (-8..8)
             .flat_map(|cy| (-8..8).map(move |cx| (cx, cy)))
-            .map(|k| solid.chunk(k, &reg).ground.iter().filter(|g| **g == Ground::Cliff).count())
+            .map(|k| {
+                solid
+                    .chunk(k, &reg)
+                    .ground
+                    .iter()
+                    .filter(|g| **g == Ground::Cliff)
+                    .count()
+            })
             .sum();
-        assert!(solid_cliffs > cliff, "gaps open the cliff lines: {solid_cliffs} without, {cliff} with");
+        assert!(
+            solid_cliffs > cliff,
+            "gaps open the cliff lines: {solid_cliffs} without, {cliff} with"
+        );
     }
 
     /// Rivers: with no lakes and no cliffs, rivers alone make water, a
@@ -491,20 +561,50 @@ mod tests {
     #[test]
     fn rivers_wind_through_the_ground_with_fords() {
         let reg = biomes();
-        let flat = GroundDef { water_level: -2.0, cliff_every: 0.0, ..def() };
+        let flat = GroundDef {
+            water_level: -2.0,
+            cliff_every: 0.0,
+            ..def()
+        };
         let dry = GroundGen::new(flat.clone(), 11, &reg).unwrap();
-        let wet = GroundGen::new(GroundDef { river_width: 0.04, ..flat.clone() }, 11, &reg).unwrap();
-        let unforded = GroundGen::new(GroundDef { river_width: 0.04, river_fords: 0.0, ..flat }, 11, &reg).unwrap();
+        let wet = GroundGen::new(
+            GroundDef {
+                river_width: 0.04,
+                ..flat.clone()
+            },
+            11,
+            &reg,
+        )
+        .unwrap();
+        let unforded = GroundGen::new(
+            GroundDef {
+                river_width: 0.04,
+                river_fords: 0.0,
+                ..flat
+            },
+            11,
+            &reg,
+        )
+        .unwrap();
         let water = |g: &GroundGen| -> usize {
             (-8..8)
                 .flat_map(|cy| (-8..8).map(move |cx| (cx, cy)))
-                .map(|k| g.chunk(k, &reg).ground.iter().filter(|t| **t == Ground::Water).count())
+                .map(|k| {
+                    g.chunk(k, &reg)
+                        .ground
+                        .iter()
+                        .filter(|t| **t == Ground::Water)
+                        .count()
+                })
                 .sum()
         };
         let (none, some, all) = (water(&dry), water(&wet), water(&unforded));
         assert_eq!(none, 0, "no rivers, no water");
         assert!(some > 1000, "rivers make water: {some} tiles");
-        assert!(all > some, "fords leave river tiles walkable: {all} without fords, {some} with");
+        assert!(
+            all > some,
+            "fords leave river tiles walkable: {all} without fords, {some} with"
+        );
     }
 
     /// A thing carries its scatter's picture, so the game draws a tree as
@@ -513,9 +613,14 @@ mod tests {
     fn a_thing_carries_its_scatters_picture() {
         let reg = biomes();
         let maker = GroundGen::new(def(), 11, &reg).unwrap();
-        let things: Vec<Thing> = (-4..4).flat_map(|cx| maker.chunk((cx, 0), &reg).things).collect();
+        let things: Vec<Thing> = (-4..4)
+            .flat_map(|cx| maker.chunk((cx, 0), &reg).things)
+            .collect();
         assert!(!things.is_empty());
-        assert!(things.iter().all(|t| t.picture.as_deref() == Some("tree")), "every thing is the scatter's tree");
+        assert!(
+            things.iter().all(|t| t.picture.as_deref() == Some("tree")),
+            "every thing is the scatter's tree"
+        );
     }
 
     #[test]

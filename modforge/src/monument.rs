@@ -934,7 +934,8 @@ impl MonumentRegistry {
         let mut props = Vec::new();
         for spec in &def.props {
             let count = roll.between(spec.count.0, spec.count.1);
-            let clear = Vec2::new(spec.size.x, spec.size.z).length() / 2.0 + 1.5 * std::f32::consts::SQRT_2;
+            let clear =
+                Vec2::new(spec.size.x, spec.size.z).length() / 2.0 + 1.5 * std::f32::consts::SQRT_2;
             for _ in 0..count {
                 if spec.centred {
                     props.push(crate::structure::Prop {
@@ -946,7 +947,8 @@ impl MonumentRegistry {
                     continue;
                 }
                 let angle = roll.measure(0.0, std::f32::consts::TAU);
-                let distance = roll.measure(clear.max(spec.radius * 0.4 + 1.0), spec.radius.max(clear));
+                let distance =
+                    roll.measure(clear.max(spec.radius * 0.4 + 1.0), spec.radius.max(clear));
                 props.push(crate::structure::Prop {
                     position: Vec3::new(
                         angle.cos() * distance,
@@ -1290,18 +1292,30 @@ mod tests {
     #[test]
     fn every_door_is_a_two_tile_block_with_a_doorway_in_its_frame() {
         use crate::structure::{DOORWAY, TileKind, door_blocks, tile_plan};
-        let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
+        let def = generate_building(
+            &building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)),
+            &mut Roll::new(1),
+        );
         let blocks = door_blocks(&def);
         assert!(!blocks.is_empty(), "the front door at least");
         for b in &blocks {
             assert!((b.width - 2.0).abs() < 1e-3, "a 2 tile block: {b:?}");
             assert!((b.doorway() - DOORWAY).abs() < 1e-3);
             let [l, r] = b.posts();
-            assert!((l.1 - 0.4).abs() < 1e-3 && (r.1 - 0.4).abs() < 1e-3, "two 0.4 m posts");
-            assert!((b.hinge() - (b.centre - b.along * 0.6)).length() < 1e-3, "the hinge at the doorway's edge");
+            assert!(
+                (l.1 - 0.4).abs() < 1e-3 && (r.1 - 0.4).abs() < 1e-3,
+                "two 0.4 m posts"
+            );
+            assert!(
+                (b.hinge() - (b.centre - b.along * 0.6)).length() < 1e-3,
+                "the hinge at the doorway's edge"
+            );
         }
         // The front door's block on the ground plan's door tiles.
-        let front = blocks.iter().find(|b| b.floor.abs() < 0.01).expect("the front door on the ground");
+        let front = blocks
+            .iter()
+            .find(|b| b.floor.abs() < 0.01)
+            .expect("the front door on the ground");
         let doors: Vec<(i32, i32)> = tile_plan(&def)
             .iter()
             .filter(|r| r.kind == TileKind::Door)
@@ -1309,7 +1323,11 @@ mod tests {
             .collect();
         for t in &doors {
             let centre = Vec2::new(t.0 as f32 + 0.5, t.1 as f32 + 0.5);
-            assert!((centre - front.centre).length() < 1.0, "door tile {t:?} in the block at {:?}", front.centre);
+            assert!(
+                (centre - front.centre).length() < 1.0,
+                "door tile {t:?} in the block at {:?}",
+                front.centre
+            );
         }
         assert_eq!(doors.len(), 2, "the ground's door is 2 tiles");
     }
@@ -1317,17 +1335,40 @@ mod tests {
     #[test]
     fn every_step_has_headroom_under_the_flight_above() {
         use crate::structure::{DOORWAY_HEIGHT, PartKind, parts_of};
-        let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
+        let def = generate_building(
+            &building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)),
+            &mut Roll::new(1),
+        );
         let parts = parts_of(&def);
-        let solid: Vec<_> = parts.iter().filter(|p| matches!(p.kind, PartKind::Step | PartKind::Landing | PartKind::Furniture)).collect();
+        let solid: Vec<_> = parts
+            .iter()
+            .filter(|p| {
+                matches!(
+                    p.kind,
+                    PartKind::Step | PartKind::Landing | PartKind::Furniture
+                )
+            })
+            .collect();
         for step in parts.iter().filter(|p| p.kind == PartKind::Step) {
             let top = step.center.y + step.size.y / 2.0;
             let (lo, hi) = (step.center - step.size / 2.0, step.center + step.size / 2.0);
             for above in &solid {
-                let (alo, ahi) = (above.center - above.size / 2.0, above.center + above.size / 2.0);
-                let overlaps = alo.x < hi.x - 1e-3 && ahi.x > lo.x + 1e-3 && alo.z < hi.z - 1e-3 && ahi.z > lo.z + 1e-3;
+                let (alo, ahi) = (
+                    above.center - above.size / 2.0,
+                    above.center + above.size / 2.0,
+                );
+                let overlaps = alo.x < hi.x - 1e-3
+                    && ahi.x > lo.x + 1e-3
+                    && alo.z < hi.z - 1e-3
+                    && ahi.z > lo.z + 1e-3;
                 if overlaps && alo.y > top + 1e-3 {
-                    assert!(alo.y - top >= DOORWAY_HEIGHT, "only {:.2} m over a step at {:.2} up to a part at {:.2}", alo.y - top, top, alo.y);
+                    assert!(
+                        alo.y - top >= DOORWAY_HEIGHT,
+                        "only {:.2} m over a step at {:.2} up to a part at {:.2}",
+                        alo.y - top,
+                        top,
+                        alo.y
+                    );
                 }
             }
         }
@@ -1336,22 +1377,60 @@ mod tests {
     #[test]
     fn the_stairwell_fits_two_side_by_side_and_an_elevator() {
         use crate::structure::{STEP_DEPTH, STEP_RISE_MAX};
-        let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
-        let tower = def.rooms.iter().find(|r| r.interior.y > 6.0).expect("a stair tower spanning the levels");
-        assert!((tower.interior.x - 2.0 * 1.8).abs() < 1e-3, "two 1.8 m flights side by side: {}", tower.interior.x);
-        assert!(def.stairs.iter().all(|s| (s.width - 1.8).abs() < 1e-3), "every flight 1.8 m wide");
-        assert!(STEP_RISE_MAX <= 0.19 && STEP_DEPTH >= 0.28, "a comfortable climb");
+        let def = generate_building(
+            &building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)),
+            &mut Roll::new(1),
+        );
+        let tower = def
+            .rooms
+            .iter()
+            .find(|r| r.interior.y > 6.0)
+            .expect("a stair tower spanning the levels");
+        assert!(
+            (tower.interior.x - 2.0 * 1.8).abs() < 1e-3,
+            "two 1.8 m flights side by side: {}",
+            tower.interior.x
+        );
+        assert!(
+            def.stairs.iter().all(|s| (s.width - 1.8).abs() < 1e-3),
+            "every flight 1.8 m wide"
+        );
+        assert!(
+            STEP_RISE_MAX <= 0.19 && STEP_DEPTH >= 0.28,
+            "a comfortable climb"
+        );
         // Door landing, flights, half landing: the elevator's 2 m and a
         // stair width in front of it, then the flights, then a stair width.
         let run = ((def.stairs[0].rise / STEP_RISE_MAX).ceil()) * STEP_DEPTH;
-        assert!((tower.interior.z - (ELEVATOR + 1.8 + run + 1.8)).abs() < 1e-3, "length {}", tower.interior.z);
+        assert!(
+            (tower.interior.z - (ELEVATOR + 1.8 + run + 1.8)).abs() < 1e-3,
+            "length {}",
+            tower.interior.z
+        );
         // One doorway a level: the tower's in line with the room's at z 0.
-        let room = def.rooms.iter().find(|r| r.origin.y.abs() < 0.5 && r.interior.y < 6.0).expect("the ground room");
-        let into_tower = room.openings.iter().find(|o| o.side == Side::East).expect("the room's doorway into the tower");
+        let room = def
+            .rooms
+            .iter()
+            .find(|r| r.origin.y.abs() < 0.5 && r.interior.y < 6.0)
+            .expect("the ground room");
+        let into_tower = room
+            .openings
+            .iter()
+            .find(|o| o.side == Side::East)
+            .expect("the room's doorway into the tower");
         for o in &tower.openings {
-            assert!((tower.origin.z + o.offset - (room.origin.z + into_tower.offset)).abs() < 1e-3, "the tower's doorway at z {} beside the room's at {}", tower.origin.z + o.offset, room.origin.z + into_tower.offset);
+            assert!(
+                (tower.origin.z + o.offset - (room.origin.z + into_tower.offset)).abs() < 1e-3,
+                "the tower's doorway at z {} beside the room's at {}",
+                tower.origin.z + o.offset,
+                room.origin.z + into_tower.offset
+            );
         }
-        assert_eq!(tower.openings.len(), 3, "one doorway on each of the three levels");
+        assert_eq!(
+            tower.openings.len(),
+            3,
+            "one doorway on each of the three levels"
+        );
     }
 
     #[test]
@@ -1361,27 +1440,57 @@ mod tests {
         for seed in 0..20 {
             let def = generate_building(&bunker, &mut Roll::new(seed));
             let all = levels(&def);
-            assert_eq!(all.len(), 3, "seed {seed}: the ground and two below, {all:?}");
-            assert!(all[0].0 < all[1].0 && all[1].0 < 0.0 && all[2].0.abs() < 1e-3, "seed {seed}: lowest first, the ground last, {all:?}");
+            assert_eq!(
+                all.len(),
+                3,
+                "seed {seed}: the ground and two below, {all:?}"
+            );
+            assert!(
+                all[0].0 < all[1].0 && all[1].0 < 0.0 && all[2].0.abs() < 1e-3,
+                "seed {seed}: lowest first, the ground last, {all:?}"
+            );
             for (y, _) in &all[..2] {
                 let below = tile_plan_at(&def, *y);
-                assert!(below.iter().any(|r| r.kind == TileKind::Floor) && below.iter().any(|r| r.kind == TileKind::Wall), "seed {seed}: the level at {y} has floor and walls");
+                assert!(
+                    below.iter().any(|r| r.kind == TileKind::Floor)
+                        && below.iter().any(|r| r.kind == TileKind::Wall),
+                    "seed {seed}: the level at {y} has floor and walls"
+                );
             }
-            assert!(!open_to_below(&def).is_empty(), "seed {seed}: the stair tower leaves the ground open over the way down");
+            assert!(
+                !open_to_below(&def).is_empty(),
+                "seed {seed}: the stair tower leaves the ground open over the way down"
+            );
         }
-        let shack = generate_building(&building("shack", (1, 1), (1, 1), (1, 1), (0, 0)), &mut Roll::new(1));
-        assert!(open_to_below(&shack).is_empty(), "nothing below: the ground is whole");
+        let shack = generate_building(
+            &building("shack", (1, 1), (1, 1), (1, 1), (0, 0)),
+            &mut Roll::new(1),
+        );
+        assert!(
+            open_to_below(&shack).is_empty(),
+            "nothing below: the ground is whole"
+        );
         let office = building("office", (2, 4), (1, 2), (2, 2), (0, 0));
         for seed in 0..20 {
             let def = generate_building(&office, &mut Roll::new(seed));
             let levels = levels(&def);
             assert_eq!(levels.len(), 2, "seed {seed}: two floors, {levels:?}");
             let (up, height) = levels[1];
-            assert!((2.8..=3.4).contains(&up) && (up - height).abs() < 1e-3, "seed {seed}: the second floor at the first's height, {levels:?}");
-            assert_eq!(tile_plan_at(&def, 0.0), tile_plan(&def), "seed {seed}: the ground is the ground plan");
+            assert!(
+                (2.8..=3.4).contains(&up) && (up - height).abs() < 1e-3,
+                "seed {seed}: the second floor at the first's height, {levels:?}"
+            );
+            assert_eq!(
+                tile_plan_at(&def, 0.0),
+                tile_plan(&def),
+                "seed {seed}: the ground is the ground plan"
+            );
             let upper = tile_plan_at(&def, up);
             let has = |kind| upper.iter().any(|r| r.kind == kind);
-            assert!(has(TileKind::Floor) && has(TileKind::Wall), "seed {seed}: the upper level has floor and walls");
+            assert!(
+                has(TileKind::Floor) && has(TileKind::Wall),
+                "seed {seed}: the upper level has floor and walls"
+            );
         }
     }
 
@@ -1549,7 +1658,12 @@ mod tests {
         .unwrap();
         for seed in 0..5u64 {
             let site = m.roll("wreck", &b, seed).unwrap();
-            assert!(site.props.iter().all(|p| p.picture.as_deref() == Some("car wreck")), "every prop carries its def's picture");
+            assert!(
+                site.props
+                    .iter()
+                    .all(|p| p.picture.as_deref() == Some("car wreck")),
+                "every prop carries its def's picture"
+            );
             assert!(site.members.is_empty());
             assert_eq!(site.loot_spots.len(), 1, "one box at the origin");
             assert!(site.npc_spots.is_empty());

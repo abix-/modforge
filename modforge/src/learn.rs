@@ -45,7 +45,11 @@ pub fn alive_for(
     }
     let (mut hunger, mut thirst) = (needs.hunger.min(FULL), needs.thirst.min(FULL));
     let known = memory.known.iter().flat_map(|k| {
-        let share = if Some(k.key) == store { 1.0 } else { KNOWN_ELSEWHERE };
+        let share = if Some(k.key) == store {
+            1.0
+        } else {
+            KNOWN_ELSEWHERE
+        };
         k.held.iter().flatten().map(move |held| (held, share))
     });
     for ((item, count), share) in carried.iter().map(|c| (c, 1.0)).chain(known) {
@@ -54,8 +58,15 @@ pub fn alive_for(
             thirst += food.thirst * *count as f32 * share;
         }
     }
-    let last = |points: f32, per_sec: f32| if per_sec > 0.0 { points / per_sec } else { f32::INFINITY };
-    last(hunger, rates.hunger_per_sec).min(last(thirst, rates.thirst_per_sec)) * health_fraction.min(1.0)
+    let last = |points: f32, per_sec: f32| {
+        if per_sec > 0.0 {
+            points / per_sec
+        } else {
+            f32::INFINITY
+        }
+    };
+    last(hunger, rates.hunger_per_sec).min(last(thirst, rates.thirst_per_sec))
+        * health_fraction.min(1.0)
 }
 
 /// How a need or health stands, in three bands, so like moments match.
@@ -235,7 +246,9 @@ impl Learned {
         self.values
             .iter()
             .filter(|((s, c), _)| {
-                *c == choice && at_stake(s) == at_stake(situation) && s.differs(situation) <= MOST_DIFFERENT
+                *c == choice
+                    && at_stake(s) == at_stake(situation)
+                    && s.differs(situation) <= MOST_DIFFERENT
             })
             .min_by_key(|((s, _), _)| s.differs(situation))
             .map(|(_, v)| *v)
@@ -278,7 +291,11 @@ mod tests {
                 max_stack: 10,
                 quality_siblings: 1,
                 combat: None,
-                food: Some(FoodStats { hunger, thirst, health: 0.0 }),
+                food: Some(FoodStats {
+                    hunger,
+                    thirst,
+                    health: 0.0,
+                }),
                 storage: None,
                 armor: None,
                 good_for: Default::default(),
@@ -298,7 +315,11 @@ mod tests {
     }
 
     fn needs(hunger: f32, thirst: f32) -> SurvivalStats {
-        SurvivalStats { hunger, thirst, ..SurvivalStats::default() }
+        SurvivalStats {
+            hunger,
+            thirst,
+            ..SurvivalStats::default()
+        }
     }
 
     fn held(list: &[(&str, u32)]) -> Vec<(String, u32)> {
@@ -311,18 +332,46 @@ mod tests {
     #[test]
     fn staying_alive_is_one_measure() {
         let (items, memory) = (items(), Memory::default());
-        let alive = |needs: SurvivalStats, health: f32, carried: &[(String, u32)], store: Option<u64>, memory: &Memory| {
+        let alive = |needs: SurvivalStats,
+                     health: f32,
+                     carried: &[(String, u32)],
+                     store: Option<u64>,
+                     memory: &Memory| {
             alive_for(&needs, rates(), health, carried, store, memory, &items)
         };
-        assert_eq!(alive(needs(50.0, 80.0), 1.0, &[], None, &memory), 50.0, "hunger runs out first");
-        assert_eq!(alive(needs(50.0, 80.0), 1.0, &held(&[("can", 2)]), None, &memory), 80.0, "two cans: thirst first now");
+        assert_eq!(
+            alive(needs(50.0, 80.0), 1.0, &[], None, &memory),
+            50.0,
+            "hunger runs out first"
+        );
+        assert_eq!(
+            alive(needs(50.0, 80.0), 1.0, &held(&[("can", 2)]), None, &memory),
+            80.0,
+            "two cans: thirst first now"
+        );
         let mut knows = Memory::default();
         knows.see(1, "storage box", glam::Vec3::ZERO, 0);
         knows.checked(1, held(&[("can", 10), ("bottle", 10)]), 0.0, 0);
-        assert_eq!(alive(needs(50.0, 80.0), 1.0, &[], Some(1), &knows), 350.0, "their own store adds days");
-        assert_eq!(alive(needs(50.0, 80.0), 1.0, &[], None, &knows), 200.0, "a box out there counts half");
-        assert_eq!(alive(needs(50.0, 80.0), 0.5, &[], None, &memory), 25.0, "a hit takes from it");
-        assert_eq!(alive(needs(50.0, 80.0), 0.0, &[], None, &memory), 0.0, "death is zero");
+        assert_eq!(
+            alive(needs(50.0, 80.0), 1.0, &[], Some(1), &knows),
+            350.0,
+            "their own store adds days"
+        );
+        assert_eq!(
+            alive(needs(50.0, 80.0), 1.0, &[], None, &knows),
+            200.0,
+            "a box out there counts half"
+        );
+        assert_eq!(
+            alive(needs(50.0, 80.0), 0.5, &[], None, &memory),
+            25.0,
+            "a hit takes from it"
+        );
+        assert_eq!(
+            alive(needs(50.0, 80.0), 0.0, &[], None, &memory),
+            0.0,
+            "death is zero"
+        );
     }
 
     /// Eating what you need changes nothing (the food moves from the bag
@@ -330,13 +379,21 @@ mod tests {
     #[test]
     fn eating_past_full_loses_food() {
         let (items, memory) = (items(), Memory::default());
-        let alive = |needs: SurvivalStats, carried: &[(String, u32)]| alive_for(&needs, rates(), 1.0, carried, None, &memory, &items);
-        assert_eq!(alive(needs(40.0, 100.0), &held(&[("can", 1)])), alive(needs(70.0, 100.0), &[]));
+        let alive = |needs: SurvivalStats, carried: &[(String, u32)]| {
+            alive_for(&needs, rates(), 1.0, carried, None, &memory, &items)
+        };
+        assert_eq!(
+            alive(needs(40.0, 100.0), &held(&[("can", 1)])),
+            alive(needs(70.0, 100.0), &[])
+        );
         // Plenty to drink, so hunger is what counts.
         let bottles = ("bottle", 5);
         let full_before = alive(needs(90.0, 100.0), &held(&[("can", 1), bottles]));
         let full_ate = alive(needs(120.0, 100.0), &held(&[bottles]));
-        assert!(full_ate < full_before, "{full_ate} after, {full_before} before");
+        assert!(
+            full_ate < full_before,
+            "{full_ate} after, {full_before} before"
+        );
     }
 
     fn moment(hunger: Band, at_home: bool) -> Situation {
@@ -364,12 +421,20 @@ mod tests {
         let hungry_home = moment(Band::Low, true);
         let offered = [Choice::CarryOn, Choice::Look];
         let mut learned = Learned::default();
-        assert_eq!(learned.pick(&hungry_home, &offered), 0, "nothing learned: instinct's order");
+        assert_eq!(
+            learned.pick(&hungry_home, &offered),
+            0,
+            "nothing learned: instinct's order"
+        );
         learned.score(0, 60.0);
         learned.chose(hungry_home, Choice::CarryOn);
         learned.died(60 * 60);
         assert!(learned.values[&(hungry_home, Choice::CarryOn)] < 0.0);
-        assert_eq!(learned.pick(&hungry_home, &offered), 1, "what went badly loses to what is untried");
+        assert_eq!(
+            learned.pick(&hungry_home, &offered),
+            1,
+            "what went badly loses to what is untried"
+        );
         // The next life looks, and finds a box of food.
         learned.score(0, 60.0);
         learned.chose(hungry_home, Choice::Look);
@@ -378,7 +443,10 @@ mod tests {
         // A moment a little different (not at home) is judged by this one.
         let hungry_out = moment(Band::Low, false);
         assert_eq!(learned.pick(&hungry_out, &offered), 1);
-        assert_eq!(learned.value(&hungry_out, Choice::Look), learned.value(&hungry_home, Choice::Look));
+        assert_eq!(
+            learned.value(&hungry_out, Choice::Look),
+            learned.value(&hungry_home, Choice::Look)
+        );
     }
 
     /// Found in the real game: wandering found a box of food while calm,
@@ -393,9 +461,16 @@ mod tests {
         learned.chose(calm, Choice::Wander);
         learned.score(60, 1900.0);
         assert!(learned.values[&(calm, Choice::Wander)] > INSTINCT_STEP);
-        let threatened = Situation { hostile_in_sight: true, ..calm };
+        let threatened = Situation {
+            hostile_in_sight: true,
+            ..calm
+        };
         assert_eq!(learned.value(&threatened, Choice::Wander), None);
-        assert_eq!(learned.pick(&threatened, &[Choice::Fight, Choice::Wander]), 0, "fights");
+        assert_eq!(
+            learned.pick(&threatened, &[Choice::Fight, Choice::Wander]),
+            0,
+            "fights"
+        );
         // A value is what a choice tends to bring, not a sum: the same
         // find again does not make it grow without end.
         let once = learned.values[&(calm, Choice::Wander)];
@@ -428,7 +503,13 @@ mod tests {
         learned.chose(a, Choice::Wander);
         learned.chose(b, Choice::Fight);
         learned.died(0);
-        let (wander, fight) = (learned.values[&(a, Choice::Wander)], learned.values[&(b, Choice::Fight)]);
-        assert!(fight < wander && wander < 0.0, "fight {fight}, wander {wander}");
+        let (wander, fight) = (
+            learned.values[&(a, Choice::Wander)],
+            learned.values[&(b, Choice::Fight)],
+        );
+        assert!(
+            fight < wander && wander < 0.0,
+            "fight {fight}, wander {wander}"
+        );
     }
 }

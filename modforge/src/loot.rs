@@ -30,7 +30,11 @@ pub struct LootTable {
 
 /// Roll a spot of `danger` from `table`: (item, layers, count) stacks,
 /// only from the entries that danger allows, weighted.
-pub fn roll_loot(table: &LootTable, danger: u32, roll: &mut Roll) -> Vec<(String, Vec<String>, u32)> {
+pub fn roll_loot(
+    table: &LootTable,
+    danger: u32,
+    roll: &mut Roll,
+) -> Vec<(String, Vec<String>, u32)> {
     let open: Vec<&LootEntry> = table
         .entries
         .iter()
@@ -110,6 +114,10 @@ mod tests {
         let (deep, rare) = count(5);
         assert!(deep > safe, "more at danger 5: {deep} vs {safe}");
         assert!(rare, "the rifle turns up somewhere at danger 5");
-        assert_eq!(roll_loot(&table(), 3, &mut Roll::new(9)), roll_loot(&table(), 3, &mut Roll::new(9)), "same seed, same loot");
+        assert_eq!(
+            roll_loot(&table(), 3, &mut Roll::new(9)),
+            roll_loot(&table(), 3, &mut Roll::new(9)),
+            "same seed, same loot"
+        );
     }
 }

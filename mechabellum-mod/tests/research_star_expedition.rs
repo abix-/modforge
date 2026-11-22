@@ -105,6 +105,199 @@ fn live_proxy() {
     }
 }
 
+/// Every registered mediator's name (PureMVC View.mediatorMap keys):
+/// the menus' and windows' button handlers live on them.
+#[test]
+fn live_mediators() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let view = api.op("invoke_static", json!({"class": "Il2CppPureMVC.Core.View", "method": "get_instance", "args": []}));
+    let Some(view_h) = handle_of(&view.result) else {
+        println!("View.instance carried no handle: {:?} {}", view.error, view.result);
+        return;
+    };
+    let call = |h: i64, method: &str| api.op("invoke_method", json!({"handle": h, "method": method, "args": []}));
+    let Some(map_h) = handle_of(&call(view_h, "get_mediatorMap").result) else {
+        println!("no View.mediatorMap");
+        return;
+    };
+    let Some(keys_h) = handle_of(&call(map_h, "get_Keys").result) else {
+        println!("no mediatorMap.Keys");
+        return;
+    };
+    let n = common::count_of(&api, keys_h).unwrap_or(0);
+    let mut names: Vec<String> = (0..n)
+        .map(|i| {
+            let r = api.op("invoke_method", json!({"handle": keys_h, "method": "get_Item", "args": [i]}));
+            r.result.as_str().map(str::to_string).unwrap_or_else(|| format!("{:?} {}", r.error, r.result))
+        })
+        .collect();
+    names.sort();
+    println!("{n} mediators: {}", names.join(", "));
+    // KeyCollection has no get_Item; ask for names directly
+    // (MECHABELLUM_MEDIATORS, comma separated, adds more).
+    let mut try_names: Vec<String> = ["MainMenuBarMediator", "AsyncBattleWindowMediator", "AsyncBattleMapWindowMediator", "MainMenuMediator", "HomeWindowMediator"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if let Ok(extra) = std::env::var("MECHABELLUM_MEDIATORS") {
+        try_names.extend(extra.split(',').map(|s| s.trim().to_string()));
+    }
+    for name in try_names {
+        let has = api.op("invoke_method", json!({"handle": view_h, "method": "HasMediator", "args": [name]}));
+        println!("HasMediator({name}) = {} {:?}", has.result, has.error);
+    }
+}
+
+/// Press a window's button the way the game's pointer handler does
+/// (InteractiveUIComponent.DispatchClickEvent). MECHABELLUM_PRESS is
+/// "Window.getter" (default MainMenuBar.get_AsyncBattleButton); a
+/// getter that gives a holder rather than the button is inspected and
+/// its InteractiveUIComponent fields pressed if MECHABELLUM_PRESS_FIELD
+/// names one. CHANGES WHAT THE GAME SHOWS, so it runs only with
+/// MECHABELLUM_PRESS set.
+#[test]
+fn press_button() {
+    let Ok(spec) = std::env::var("MECHABELLUM_PRESS") else {
+        println!("SKIP: set MECHABELLUM_PRESS=Window.getter");
+        return;
+    };
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let (window, getter) = spec.split_once('.').expect("Window.getter");
+    let class = format!("GameRiver.Client.{window}");
+    let Some(w) = shown(&api, &class).into_iter().next() else {
+        println!("no {class} showing");
+        return;
+    };
+    // "Window.?" lists the active window's button fields instead.
+    if getter == "?" {
+        let fields = api.op("inspect_object", json!({"handle": w})).result["fields"].as_object().cloned().unwrap_or_default();
+        for (k, v) in fields {
+            if v["il2cpp_type"].as_str().is_some_and(|t| t.contains("Interactive") || t.contains("Button")) {
+                println!("  {k}: {}", v["il2cpp_type"]);
+            }
+        }
+        return;
+    }
+    // "Window.field:name" presses a button held in a field.
+    let b = match getter.strip_prefix("field:") {
+        Some(f) => api.op("read_field", json!({"handle": w, "field": f})),
+        None => api.op("invoke_method", json!({"handle": w, "method": getter, "args": []})),
+    };
+    let Some(mut bh) = handle_of(&b.result) else {
+        println!("{getter}: {:?} {}", b.error, b.result);
+        return;
+    };
+    println!("{getter} -> {}", b.result["il2cpp_type"]);
+    if let Ok(f) = std::env::var("MECHABELLUM_PRESS_FIELD") {
+        let r = api.op("read_field", json!({"handle": bh, "field": f}));
+        bh = handle_of(&r.result).unwrap_or_else(|| panic!("{f}: {:?} {}", r.error, r.result));
+        println!("{f} -> {}", r.result["il2cpp_type"]);
+    }
+    let c = api.op("invoke_method", json!({"handle": bh, "method": "DispatchClickEvent", "args": []}));
+    println!("DispatchClickEvent ok {} {:?} {}", c.ok, c.error, c.result);
+    if !c.ok {
+        let fields = api.op("inspect_object", json!({"handle": bh})).result["fields"].clone();
+        println!("{}", serde_json::to_string_pretty(&fields).unwrap_or_default());
+    }
+}
+
+/// Start a Star Expedition run the way the start button does once its
+/// checks pass (AsyncBattleWindowMediator StartGameButton_OnClicked,
+/// its confirm action: AsyncBattleProxy.RequestEnterScene). CHANGES
+/// THE GAME, so it runs only with MECHABELLUM_START=1.
+#[test]
+fn start_expedition() {
+    if std::env::var("MECHABELLUM_START").ok().as_deref() != Some("1") {
+        println!("SKIP: set MECHABELLUM_START=1 to start a Star Expedition run");
+        return;
+    }
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let model = api.op("invoke_static", json!({"class": "Il2CppPureMVC.Core.Model", "method": "get_instance", "args": []}));
+    let model_h = handle_of(&model.result).expect("Model.instance");
+    for name in ["AsyncBattleProxy", "GameRiver.Client.AsyncBattleProxy"] {
+        let p = api.op("invoke_method", json!({"handle": model_h, "method": "RetrieveProxy", "args": [name]}));
+        println!("RetrieveProxy({name}) -> {} {:?}", p.result["il2cpp_type"], p.error);
+        if let Some(h) = handle_of(&p.result) {
+            let r = api.op("invoke_method", json!({"handle": h, "method": "RequestEnterScene", "args": []}));
+            println!("RequestEnterScene ok {} {:?} {}", r.ok, r.error, r.result);
+            return;
+        }
+    }
+}
+
+/// Which windows are showing now: each instance's
+/// gameObject.activeInHierarchy (windows stay loaded when hidden).
+#[test]
+fn showing() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for w in [
+        "MainMenuBar",
+        "AsyncBattleWindow",
+        "AsyncBattleSoloWindow",
+        "AsyncBattleMapWindow",
+        "ChooseAdvanceTeamWindow",
+        "ChooseRecommendFormPanel",
+        "ReinforcementShopPanel",
+        "AsyncBattleResultPanel",
+    ] {
+        let class = format!("GameRiver.Client.{w}");
+        let all = find_instances(&api, &class, true).unwrap_or_default().len();
+        println!("{w}: {} of {all} showing", shown(&api, &class).len());
+    }
+}
+
+/// The question a popup asks: every text field of each PopupWindow
+/// on screen (the game's yes/no box, Cpp2IL dump GRClient PopupWindow:
+/// SetMessage, SetCallback, OnClickConfirm, OnClickDiscard). Read-only.
+#[test]
+fn popup() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for w in shown(&api, "GameRiver.Client.PopupWindow") {
+        println!("--- PopupWindow {w}");
+        let fields = api.op("inspect_object", json!({"handle": w})).result["fields"].as_object().cloned().unwrap_or_default();
+        for (k, v) in fields {
+            let t = v["il2cpp_type"].as_str().unwrap_or("");
+            if !t.contains("Text") {
+                continue;
+            }
+            let Some(h) = handle_of(&v) else { continue };
+            let text = api.op("invoke_method", json!({"handle": h, "method": "get_text", "args": []})).result;
+            println!("  {k}: {text}");
+        }
+    }
+}
+
+/// The instances of `class` whose gameObject is active in the
+/// hierarchy (on screen).
+fn shown(api: &unityforge::client::Api<serde_json::Value>, class: &str) -> Vec<i64> {
+    let mut out = Vec::new();
+    for v in find_instances(api, class, true).unwrap_or_default() {
+        let Some(h) = handle_of(&v) else { continue };
+        let go = api.op("invoke_method", json!({"handle": h, "method": "get_gameObject", "args": []}));
+        if let Some(g) = handle_of(&go.result)
+            && api.op("invoke_method", json!({"handle": g, "method": "get_activeInHierarchy", "args": []})).result == json!(true)
+        {
+            out.push(h);
+        }
+    }
+    out
+}
+
 #[test]
 fn live_candidates() {
     let api = api();

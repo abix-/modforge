@@ -575,6 +575,81 @@ fn current_fight_kept() {
     println!("FightController.Current before {before} after {after}: kept {}", before == after && !before.is_null());
 }
 
+/// A whole deploy round through the deploy_round op: plan, buy, spend
+/// what is left, place over the real cards, move. Prints the plan's
+/// outcome, every buy, the placement's outcome and every move, and the
+/// supply after. CHANGES THE FIELD, so it runs only with
+/// MECHABELLUM_APPLY=1.
+#[test]
+fn deploy_round_op() {
+    if std::env::var("MECHABELLUM_APPLY").ok().as_deref() != Some("1") {
+        println!("SKIP: set MECHABELLUM_APPLY=1 to buy and place on the field");
+        return;
+    }
+    let api = api().with_timeout(std::time::Duration::from_secs(1800));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let budget: u64 = std::env::var("MECHABELLUM_PLAN_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+    let r = api.op("deploy_round", json!({"budget": budget}));
+    if !r.ok {
+        println!("deploy_round: {:?}", r.error);
+        return;
+    }
+    let x = &r.result;
+    println!("plan outcome {}", x["plan"]["outcome"]);
+    for b in x["buys"].as_array().into_iter().flatten() {
+        println!("  buy {b}");
+    }
+    println!("placement {}", x["placement"]);
+    for s in x["moves"]["steps"].as_array().into_iter().flatten() {
+        println!("  move {s}");
+    }
+    println!("not moved {}; now {}", x["moves"]["not_moved"], x["moves"]["now"]);
+}
+
+/// Does moving a unit cost supply? Reads the supply, moves our first
+/// card 10 to the right through apply_deploy (no buys; every other card
+/// is given its own spot), reads the supply again. 500 - 400 of buys
+/// left 50, not 100, after 5 moves (2026-11-07). CHANGES THE FIELD, so
+/// it runs only with MECHABELLUM_APPLY=1.
+#[test]
+fn move_cost() {
+    if std::env::var("MECHABELLUM_APPLY").ok().as_deref() != Some("1") {
+        println!("SKIP: set MECHABELLUM_APPLY=1");
+        return;
+    }
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let sides = api.op("deploy", json!({}));
+    let Some(ours) = sides.result.as_array().and_then(|a| a.iter().find(|s| s["ours"] == json!(true))) else {
+        println!("deploy: {:?}", sides.error);
+        return;
+    };
+    // bound is [x, y, width, height] from the corner; a spot is a centre.
+    let mut units: Vec<serde_json::Value> = ours["cards"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| {
+            let b = &c["bound"];
+            let f = |i: usize| b[i].as_f64().unwrap_or(0.0);
+            json!({"card": c["card"], "x": (f(0) + f(2) / 2.0) as i64, "y": (f(1) + f(3) / 2.0) as i64})
+        })
+        .collect();
+    let Some(first) = units.first_mut() else { return };
+    first["x"] = json!(first["x"].as_i64().unwrap_or(0) + 10);
+    let r = api.op("apply_deploy", json!({"buy": [], "units": units}));
+    let supply = |r: &serde_json::Value| r["now"]["supply"].clone();
+    println!("moves: {}", r.result["steps"].as_array().map(|s| s.iter().filter(|x| x["ok"] == json!(true)).count()).unwrap_or(0));
+    println!("apply ok {} {:?}; supply after {}", r.ok, r.error, supply(&r.result));
+    for s in r.result["steps"].as_array().into_iter().flatten() {
+        println!("  {s}");
+    }
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]

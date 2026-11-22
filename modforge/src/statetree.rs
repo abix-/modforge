@@ -29,7 +29,11 @@ pub enum Target {
     None,
     /// A remembered thing: its memory key, where it is, and the need
     /// that sent them, if one did.
-    Thing { key: u64, at: Vec3, need: Option<Need> },
+    Thing {
+        key: u64,
+        at: Vec3,
+        need: Option<Need>,
+    },
     /// A point on the ground.
     Point(Vec3),
     /// Who they fight or run from, and where the fight began.
@@ -138,7 +142,13 @@ impl<X: Context> StateTree<X> {
 
     /// Walk down from `from` to a leaf that can be entered, and what it
     /// is about; `chose` gets each learned choice taken on the way.
-    fn select(&self, from: StateId, ctx: &mut X::Of<'_>, about: &Target, chose: &mut Vec<Choice>) -> Option<(StateId, Target)> {
+    fn select(
+        &self,
+        from: StateId,
+        ctx: &mut X::Of<'_>,
+        about: &Target,
+        chose: &mut Vec<Choice>,
+    ) -> Option<(StateId, Target)> {
         let state = &self.states[from];
         let target = match state.enter {
             Some(enter) => enter(ctx, about)?,
@@ -149,7 +159,9 @@ impl<X: Context> StateTree<X> {
             return Some((from, target));
         }
         match state.select {
-            Select::InOrder => children.into_iter().find_map(|c| self.select(c, ctx, &target, chose)),
+            Select::InOrder => children
+                .into_iter()
+                .find_map(|c| self.select(c, ctx, &target, chose)),
             Select::Learned(pick) => {
                 // Every child that can be entered is a choice; a child with
                 // no choice named is never offered.
@@ -193,7 +205,10 @@ impl<X: Context> StateTree<X> {
         loop {
             if let Some(start) = from.take() {
                 *record = match self.select(start, ctx, &record.target, &mut chose) {
-                    Some((state, target)) => Record { state: Some(state), target },
+                    Some((state, target)) => Record {
+                        state: Some(state),
+                        target,
+                    },
                     None => Record::default(),
                 };
             }
@@ -204,7 +219,9 @@ impl<X: Context> StateTree<X> {
                 return chose;
             }
             ran.push(leaf);
-            let status = self.states[leaf].task.map_or(Status::Succeeded, |task| task(ctx, &record.target));
+            let status = self.states[leaf]
+                .task
+                .map_or(Status::Succeeded, |task| task(ctx, &record.target));
             let target = record.target;
             let fired = self.up_from(leaf).find_map(|s| {
                 self.states[s]
@@ -346,7 +363,10 @@ mod tests {
         p.danger = false;
         let mut record = Record::default();
         tree.think(&mut p, &mut record);
-        assert!(tree.is_under(record.state.unwrap(), LIFE), "no danger: the day's life");
+        assert!(
+            tree.is_under(record.state.unwrap(), LIFE),
+            "no danger: the day's life"
+        );
     }
 
     #[test]
@@ -361,7 +381,11 @@ mod tests {
             tree.think(&mut p, &mut record);
         }
         assert_eq!(record.state, Some(WALK));
-        assert!(p.entered.is_empty(), "no state's enter was asked while walking: {:?}", p.entered);
+        assert!(
+            p.entered.is_empty(),
+            "no state's enter was asked while walking: {:?}",
+            p.entered
+        );
         assert_eq!(p.ran.iter().filter(|r| **r == "walk").count(), 6);
     }
 
@@ -374,11 +398,22 @@ mod tests {
         assert_eq!(record.state, Some(WALK));
         p.danger = true;
         tree.think(&mut p, &mut record);
-        assert_eq!(record.state, Some(HIDE), "danger on the life takes them out of the walk");
-        assert_eq!(p.ran.last(), Some(&"hide"), "and they hide in the same think");
+        assert_eq!(
+            record.state,
+            Some(HIDE),
+            "danger on the life takes them out of the walk"
+        );
+        assert_eq!(
+            p.ran.last(),
+            Some(&"hide"),
+            "and they hide in the same think"
+        );
         p.danger = false;
         tree.think(&mut p, &mut record);
-        assert!(tree.is_under(record.state.unwrap(), LIFE), "safe again: they choose again");
+        assert!(
+            tree.is_under(record.state.unwrap(), LIFE),
+            "safe again: they choose again"
+        );
     }
 
     #[test]
@@ -393,13 +428,20 @@ mod tests {
         assert_eq!(p.ran, vec!["eat"]);
         assert_eq!(record.state, None, "ate: nothing more this think");
         assert_eq!(tree.think(&mut p, &mut record), vec![Choice::Wander]);
-        assert_eq!(record.state, Some(WALK), "the next think chose again from the root");
+        assert_eq!(
+            record.state,
+            Some(WALK),
+            "the next think chose again from the root"
+        );
         p.walk = Some(Status::Failed);
         tree.think(&mut p, &mut record);
         assert_eq!(record.state, None, "the walk failed");
         p.entered.clear();
         tree.think(&mut p, &mut record);
-        assert!(p.entered.contains(&"walk"), "the failure went up to the root and they chose again");
+        assert!(
+            p.entered.contains(&"walk"),
+            "the failure went up to the root and they chose again"
+        );
     }
 
     #[test]
@@ -412,9 +454,19 @@ mod tests {
         };
         let mut record = Record::default();
         let chose = tree.think(&mut p, &mut record);
-        assert_eq!(p.offered, vec![Choice::GoToNeed, Choice::Wander], "offered in the tree's order");
+        assert_eq!(
+            p.offered,
+            vec![Choice::GoToNeed, Choice::Wander],
+            "offered in the tree's order"
+        );
         assert_eq!(chose, vec![Choice::Wander]);
-        assert_eq!(record, Record { state: Some(WALK), target: Target::Point(Vec3::X) });
+        assert_eq!(
+            record,
+            Record {
+                state: Some(WALK),
+                target: Target::Point(Vec3::X)
+            }
+        );
         assert!(p.hungry, "the eat was offered but not taken");
     }
 }

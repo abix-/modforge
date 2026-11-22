@@ -83,7 +83,28 @@ fn choices() -> Result<Json, String> {
     Ok(Json::Array(out))
 }
 
+/// Take lineup choice `n` (the `choice` the lineup op gives) by
+/// pressing its icon, as the player's click does
+/// (ChooseAdvanceTeamWindowMediator OnClickAdvanceTeamIcon). Main
+/// thread only.
+fn choose(n: i64) -> Result<Json, String> {
+    let win = window()?.ok_or("the lineup screen is not open")?;
+    let icons = object(win.read_field("advanceTeamIcons")?).ok_or("no advanceTeamIcons")?;
+    let icon = object(icons.invoke("get_Item", &json!([n]))?).ok_or_else(|| format!("no choice {n}"))?;
+    crate::act::press(&icon)?;
+    Ok(json!({"chose": n}))
+}
+
 pub fn install() {
+    modforge::ops::OP_REGISTRY.register(modforge::ops::OpDef::new(
+        "choose_lineup",
+        "Take a lineup choice by pressing its icon, as the player does: {choice: the lineup op's choice number}",
+        "{choice: i64}",
+        |args| {
+            let n = args.get("choice").and_then(Json::as_i64).ok_or("choice: number")?;
+            unityforge::main_thread_queue::MAIN_QUEUE.run_result("choose_lineup", std::time::Duration::from_secs(10), move || choose(n))
+        },
+    ));
     modforge::ops::OP_REGISTRY.register(modforge::ops::OpDef::new(
         "lineup",
         "The starting lineup choices on screen, each with its units and totals (life, damage per second, hits air), most damage first",

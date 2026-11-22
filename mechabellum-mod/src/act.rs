@@ -24,6 +24,25 @@ use unityforge::mono::{MonoObject, invoke_static, owned_object, with_object};
 
 use crate::deploy::{bound, current_match, field, object};
 
+/// Press a button the way the game's pointer handler does
+/// (InteractiveUIComponent.DispatchClickEvent, research_star_expedition
+/// press_button). `o` is the button, or a view holding one in a field,
+/// as a lineup choice's AdvanceTeamIcon does. Main thread only.
+pub(crate) fn press(o: &MonoObject) -> Result<(), String> {
+    if o.invoke("DispatchClickEvent", &json!([])).is_ok() {
+        return Ok(());
+    }
+    let d = o.dump()?;
+    for (k, v) in d["fields"].as_object().into_iter().flatten() {
+        if v["il2cpp_type"].as_str().is_some_and(|t| t.ends_with("InteractiveUIComponent"))
+            && let Some(b) = field(o, k)?
+        {
+            return b.invoke("DispatchClickEvent", &json!([])).map(|_| ());
+        }
+    }
+    Err("no button to press".into())
+}
+
 fn controller() -> Result<MonoObject, String> {
     field(&current_match()?, "localPlayerController")?.ok_or_else(|| "no localPlayerController".into())
 }
@@ -91,12 +110,27 @@ fn buy(slot: i64) -> Result<(), String> {
     perform(&pc, &a)
 }
 
-/// Move the card so its centre is at (x, y). Main thread only.
-fn move_card(card: i32, x: i64, y: i64) -> Result<(), String> {
+/// The card's centre now (mapElement.bound is x, y from the corner,
+/// width, height).
+fn centre(card: &MonoObject) -> Result<(i64, i64), String> {
+    let b = field(card, "mapElement")?
+        .and_then(|me| me.read_field("bound").ok())
+        .and_then(|v| v.as_str().and_then(bound))
+        .ok_or("no mapElement.bound")?;
+    Ok(((b[0] + b[2] / 2.0) as i64, (b[1] + b[3] / 2.0) as i64))
+}
+
+/// Move the card so its centre is at (x, y); false when it already is
+/// there (nothing is done). Main thread only.
+fn move_card(card: i32, x: i64, y: i64) -> Result<bool, String> {
+    if with_object(card, centre)? == (x, y) {
+        return Ok(false);
+    }
     let pc = controller()?;
     let a = action("Il2CppGameRiver.PAD_MoveUnit")?;
     a.invoke("AddMoveData", &json!([{"$handle": pc.handle().0}, {"$handle": card}, {"x": x, "y": y}, false]))?;
-    perform(&pc, &a)
+    perform(&pc, &a)?;
+    Ok(true)
 }
 
 fn job<T: Send + 'static>(name: &'static str, f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -193,7 +227,7 @@ fn place(before: &[(i64, i32)], bought: &[(i64, i32)], units: &[(i64, i64, i64)]
         for k in todo {
             let (handle, (x, y)) = (order[k].1, targets[k].unwrap_or_default());
             match job("act move", move || move_card(handle, x, y)) {
-                Ok(()) => steps.push(json!({"move": k, "card": order[k].0, "x": x, "y": y, "ok": true})),
+                Ok(moved) => steps.push(json!({"move": k, "card": order[k].0, "x": x, "y": y, "ok": true, "moved": moved})),
                 Err(e) => {
                     steps.push(json!({"move": k, "card": order[k].0, "x": x, "y": y, "ok": false, "error": e}));
                     left.push(k);
@@ -224,7 +258,50 @@ fn place(before: &[(i64, i32)], bought: &[(i64, i32)], units: &[(i64, i64, i64)]
     }))
 }
 
+/// A whole deploy round: plan the buys (plan_deploy, its best plan),
+/// buy them; spend any supply still left on the dearest item that fits
+/// (a buy can cost more than its plan said: 500 less 400 of buys left
+/// 50, research_deploy shop_prices, 2026-11-07); then plan the
+/// placement again over the real cards, each checked by the game's own
+/// TerritoryManager.CanMoveUnit (a bought unit's planned spot was
+/// refused once), and move them there.
+fn round(budget: usize, steps: Vec<i32>) -> Result<Json, String> {
+    let plan = crate::sim::plan_deploy(budget, steps.clone(), 12)?;
+    let best = plan["plans"].get(0).cloned().unwrap_or(Json::Null);
+    let slots: Vec<i64> = best["buy"].as_array().into_iter().flatten().filter_map(|b| b["slot"].as_i64()).collect();
+    let mut buys = Vec::new();
+    for &slot in &slots {
+        let r = job("act buy", move || buy(slot));
+        buys.push(json!({"buy": slot, "planned": true, "ok": r.is_ok(), "error": r.err()}));
+    }
+    for _ in 0..10 {
+        let (items, supply) = job("act shop", crate::sim::shop)?;
+        let Some(b) = items.iter().filter(|b| b.price <= supply).max_by_key(|b| b.price).copied() else { break };
+        let r = job("act buy", move || buy(b.slot));
+        let ok = r.is_ok();
+        buys.push(json!({"buy": b.slot, "card": b.card, "price": b.price, "planned": false, "ok": ok, "error": r.err()}));
+        if !ok {
+            break;
+        }
+    }
+    let placed = crate::sim::plan_placement(budget * 2, steps)?;
+    let units: Vec<(i64, i64, i64)> = placed["best"]["units"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|u| Some((u["card"].as_i64()?, u["x"].as_i64()?, u["y"].as_i64()?)))
+        .collect();
+    let moved = apply(Vec::new(), units)?;
+    Ok(json!({"plan": best, "buys": buys, "placement": {"start": placed["start"]["outcome"], "best": placed["best"]["outcome"]}, "moves": moved}))
+}
+
 pub fn install() {
+    modforge::ops::OP_REGISTRY.register(modforge::ops::OpDef::new(
+        "deploy_round",
+        "A whole deploy round through the game's own actions: plan the buys, buy them, spend any supply left, plan the placement over the real cards and move them: {budget: tries per search, default 30; steps}",
+        "{budget?: u64, steps?: [i32]}",
+        |args| round(args.get("budget").and_then(Json::as_u64).unwrap_or(30) as usize, crate::sim::steps_arg(args)),
+    ));
     modforge::ops::OP_REGISTRY.register(modforge::ops::OpDef::new(
         "apply_deploy",
         "Buy and place as a plan_deploy plan says, through the game's own buy and move actions: {buy: [{slot}], units: [{card, x, y}]} (the field's cards first, then the bought ones)",

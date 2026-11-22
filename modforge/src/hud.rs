@@ -232,7 +232,13 @@ pub enum Hint {
 
 impl Hint {
     /// Every hint, in the order shown.
-    pub const ALL: [Hint; 5] = [Hint::Move, Hint::Look, Hint::Use, Hint::Inventory, Hint::Hotbar];
+    pub const ALL: [Hint; 5] = [
+        Hint::Move,
+        Hint::Look,
+        Hint::Use,
+        Hint::Inventory,
+        Hint::Hotbar,
+    ];
 
     /// The key and what it does.
     pub fn text(self) -> &'static str {
@@ -375,7 +381,10 @@ impl Holders<'_> {
     pub fn stack(&self, slot: SlotRef) -> Option<&ItemStack> {
         match slot.holder {
             Holder::Equipment => self.equipment.get(slot.index),
-            holder => self.get(holder).and_then(|inv| inv.slots.get(slot.index)).and_then(|s| s.as_ref()),
+            holder => self
+                .get(holder)
+                .and_then(|inv| inv.slots.get(slot.index))
+                .and_then(|s| s.as_ref()),
         }
     }
 
@@ -389,11 +398,17 @@ impl Holders<'_> {
         let Some(slot) = inv.slots.get_mut(other.index) else {
             return;
         };
-        if slot.as_ref().is_none_or(|s| registry.def(&s.item).is_some_and(|d| d.armor.is_some())) {
+        if slot
+            .as_ref()
+            .is_none_or(|s| registry.def(&s.item).is_some_and(|d| d.armor.is_some()))
+        {
             // Two borrows of self: the slot above, then the equipment.
             let mut taken = slot.take();
             self.equipment.swap_with(worn, &mut taken);
-            if let Some(slot) = self.get_mut(other.holder).and_then(|inv| inv.slots.get_mut(other.index)) {
+            if let Some(slot) = self
+                .get_mut(other.holder)
+                .and_then(|inv| inv.slots.get_mut(other.index))
+            {
                 *slot = taken;
             }
         }
@@ -457,16 +472,24 @@ fn move_some(holders: &mut Holders<'_>, from: SlotRef, to: SlotRef, n: u32, max_
         return;
     };
     let fits = match holders.stack(to) {
-        None => holders.get(to.holder).is_some_and(|inv| to.index < inv.slots.len()),
+        None => holders
+            .get(to.holder)
+            .is_some_and(|inv| to.index < inv.slots.len()),
         Some(there) => there.stacks_with(&moving) && there.count + n <= max_stack,
     };
     if !fits {
         return;
     }
-    let Some(taken) = holders.get_mut(from.holder).and_then(|inv| inv.remove(from.index, n)) else {
+    let Some(taken) = holders
+        .get_mut(from.holder)
+        .and_then(|inv| inv.remove(from.index, n))
+    else {
         return;
     };
-    if let Some(slot) = holders.get_mut(to.holder).and_then(|inv| inv.slots.get_mut(to.index)) {
+    if let Some(slot) = holders
+        .get_mut(to.holder)
+        .and_then(|inv| inv.slots.get_mut(to.index))
+    {
         match slot {
             Some(there) => there.count += taken.count,
             None => *slot = Some(taken),
@@ -503,7 +526,9 @@ pub fn end_drag(
     }
     let max_stack = holders.max_stack_of(from, registry);
     let count = holders.stack(from).map_or(0, |s| s.count);
-    let split = state.split.filter(|n| state.selected == Some(from) && *n < count);
+    let split = state
+        .split
+        .filter(|n| state.selected == Some(from) && *n < count);
     if let Some(n) = split
         && from.holder != Holder::Equipment
         && slot.holder != Holder::Equipment
@@ -747,17 +772,54 @@ mod tests {
 
     #[test]
     fn a_click_puts_a_stack_on_the_table_and_a_second_takes_it_off() {
-        let mut t = Trading { with: 3, name: "Roxanne".to_string(), ..Default::default() };
-        t.toggle(SlotRef { holder: Holder::Inventory, index: 2 }, 5);
-        t.toggle(SlotRef { holder: Holder::Theirs, index: 0 }, 1);
-        assert_eq!((t.mine.clone(), t.theirs.clone()), (vec![(2, 5)], vec![(0, 1)]));
+        let mut t = Trading {
+            with: 3,
+            name: "Roxanne".to_string(),
+            ..Default::default()
+        };
+        t.toggle(
+            SlotRef {
+                holder: Holder::Inventory,
+                index: 2,
+            },
+            5,
+        );
+        t.toggle(
+            SlotRef {
+                holder: Holder::Theirs,
+                index: 0,
+            },
+            1,
+        );
+        assert_eq!(
+            (t.mine.clone(), t.theirs.clone()),
+            (vec![(2, 5)], vec![(0, 1)])
+        );
         t.refused = true;
-        t.toggle(SlotRef { holder: Holder::Inventory, index: 2 }, 5);
+        t.toggle(
+            SlotRef {
+                holder: Holder::Inventory,
+                index: 2,
+            },
+            5,
+        );
         assert!(t.mine.is_empty(), "clicked again: off the table");
         assert!(!t.refused, "a changed offer is a new offer");
-        t.toggle(SlotRef { holder: Holder::Hotbar, index: 0 }, 1);
+        t.toggle(
+            SlotRef {
+                holder: Holder::Hotbar,
+                index: 0,
+            },
+            1,
+        );
         assert!(t.mine.is_empty(), "the hotbar is not traded from");
-        t.toggle(SlotRef { holder: Holder::Inventory, index: 4 }, 0);
+        t.toggle(
+            SlotRef {
+                holder: Holder::Inventory,
+                index: 4,
+            },
+            0,
+        );
         assert!(t.mine.is_empty(), "an empty slot puts nothing on the table");
     }
 
@@ -774,18 +836,44 @@ mod tests {
                 .collect(),
             ..Talking::default()
         };
-        assert_eq!(choice_for_key(&talking, 0), Some(Said::Line { line: 0, key: 0 }), "1 says the first");
-        assert_eq!(choice_for_key(&talking, 2), Some(Said::Line { line: 2, key: 0 }), "3 says the third");
-        assert_eq!(choice_for_key(&talking, 3), None, "a number past the last says nothing");
-        assert_eq!(choice_for_key(&Talking::default(), 0), None, "no choices, nothing");
+        assert_eq!(
+            choice_for_key(&talking, 0),
+            Some(Said::Line { line: 0, key: 0 }),
+            "1 says the first"
+        );
+        assert_eq!(
+            choice_for_key(&talking, 2),
+            Some(Said::Line { line: 2, key: 0 }),
+            "3 says the third"
+        );
+        assert_eq!(
+            choice_for_key(&talking, 3),
+            None,
+            "a number past the last says nothing"
+        );
+        assert_eq!(
+            choice_for_key(&Talking::default(), 0),
+            None,
+            "no choices, nothing"
+        );
     }
 
     #[test]
     fn each_control_done_is_its_hint() {
         use crate::actions::Action;
         assert_eq!(Hint::of(&Action::Move { x: 0.0, y: 1.0 }), Some(Hint::Move));
-        assert_eq!(Hint::of(&Action::Move { x: 0.0, y: 0.0 }), None, "standing still moves nothing");
-        assert_eq!(Hint::of(&Action::Look { yaw: 0.1, pitch: 0.0 }), Some(Hint::Look));
+        assert_eq!(
+            Hint::of(&Action::Move { x: 0.0, y: 0.0 }),
+            None,
+            "standing still moves nothing"
+        );
+        assert_eq!(
+            Hint::of(&Action::Look {
+                yaw: 0.1,
+                pitch: 0.0
+            }),
+            Some(Hint::Look)
+        );
         assert_eq!(Hint::of(&Action::Use), Some(Hint::Use));
         assert_eq!(Hint::of(&Action::Inventory), Some(Hint::Inventory));
         assert_eq!(Hint::of(&Action::Hotbar { index: 2 }), Some(Hint::Hotbar));
@@ -1044,7 +1132,7 @@ mod tests {
             layer_slots: Vec::new(),
             breaks_when_struck: false,
             holds_litres: None,
-})
+        })
         .unwrap();
         let mut state = HudState::new();
         let mut inv = Inventory::new(3);
@@ -1063,7 +1151,10 @@ mod tests {
         // The vest dragged onto slot 3 of the row is worn there.
         start_drag(&mut state, &holders, at(Holder::Inventory, 0));
         end_drag(&mut state, &mut holders, worn_(3), &reg);
-        assert_eq!(holders.equipment.get(3).map(|s| s.item.as_str()), Some("vest"));
+        assert_eq!(
+            holders.equipment.get(3).map(|s| s.item.as_str()),
+            Some("vest")
+        );
         assert!(holders.inventory.slots[0].is_none());
 
         // Scrap is not wearable: dragged on, nothing moves.
@@ -1077,12 +1168,18 @@ mod tests {
         assert_eq!(state.dragging, Some(worn_(3)), "a worn slot starts a drag");
         end_drag(&mut state, &mut holders, worn_(6), &reg);
         assert!(holders.equipment.get(3).is_none());
-        assert_eq!(holders.equipment.get(6).map(|s| s.item.as_str()), Some("vest"));
+        assert_eq!(
+            holders.equipment.get(6).map(|s| s.item.as_str()),
+            Some("vest")
+        );
 
         // Onto the scrap: the scrap would go on, so nothing moves.
         start_drag(&mut state, &holders, worn_(6));
         end_drag(&mut state, &mut holders, at(Holder::Inventory, 1), &reg);
-        assert_eq!(holders.equipment.get(6).map(|s| s.item.as_str()), Some("vest"));
+        assert_eq!(
+            holders.equipment.get(6).map(|s| s.item.as_str()),
+            Some("vest")
+        );
 
         // Off, onto an empty hotbar slot: taken off.
         start_drag(&mut state, &holders, worn_(6));
@@ -1142,7 +1239,10 @@ mod tests {
         let dropped = drop_from(&mut holders, inv_(0)).unwrap();
         assert_eq!((dropped.item.as_str(), dropped.count), ("scrap", 5));
         assert!(holders.inventory.slots[0].is_none());
-        assert!(drop_from(&mut holders, inv_(0)).is_none(), "an empty slot drops nothing");
+        assert!(
+            drop_from(&mut holders, inv_(0)).is_none(),
+            "an empty slot drops nothing"
+        );
     }
 
     #[test]
@@ -1243,7 +1343,7 @@ mod tests {
             layer_slots: Vec::new(),
             breaks_when_struck: false,
             holds_litres: None,
-})
+        })
         .unwrap();
         reg.register(crate::item::ItemDef {
             name: "hatchet".to_string(),
@@ -1261,7 +1361,7 @@ mod tests {
             layer_slots: Vec::new(),
             breaks_when_struck: false,
             holds_litres: None,
-})
+        })
         .unwrap();
         let mut stats = crate::survival::SurvivalStats::default();
         let mut gear = Equipment::default();
@@ -1274,7 +1374,11 @@ mod tests {
         assert_eq!(bar.held, Some(0));
         assert_eq!(bar.held_stack().unwrap().item, "pipe");
         assert!(bar.slots.slots[0].is_some(), "the pipe stays in the bar");
-        assert_eq!(gear.items().count(), 0, "the hands hold a bar slot, not a copy");
+        assert_eq!(
+            gear.items().count(),
+            0,
+            "the hands hold a bar slot, not a copy"
+        );
 
         // Another key switches; the same key again puts it away.
         hotbar_key(&mut stats, &mut bar, 1, &reg, &mut gear).unwrap();

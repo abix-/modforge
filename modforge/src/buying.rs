@@ -46,7 +46,10 @@ impl Walk<'_> {
     /// Extra cost of buying offer `i` once more into `b`, if allowed.
     fn price(&self, b: &Basket, i: usize) -> Option<i64> {
         let o = &self.offers[i];
-        if b.buys.len() >= self.max_buys || o.most.is_some_and(|m| b.buys.iter().filter(|&&x| x == o.id).count() >= m) {
+        if b.buys.len() >= self.max_buys
+            || o.most
+                .is_some_and(|m| b.buys.iter().filter(|&&x| x == o.id).count() >= m)
+        {
             return None;
         }
         let unlock = match o.unlock {
@@ -90,10 +93,27 @@ impl Walk<'_> {
 /// Every basket that leaves nothing more affordable, most spent first,
 /// then fewer unlocks.
 pub fn baskets(offers: &[Offer], money: i64, max_buys: usize, max_unlocks: usize) -> Vec<Basket> {
-    let mut w = Walk { offers, money, max_buys, max_unlocks, out: Vec::new() };
-    w.go(Basket { buys: Vec::new(), unlocks: Vec::new(), spent: 0 }, 0);
+    let mut w = Walk {
+        offers,
+        money,
+        max_buys,
+        max_unlocks,
+        out: Vec::new(),
+    };
+    w.go(
+        Basket {
+            buys: Vec::new(),
+            unlocks: Vec::new(),
+            spent: 0,
+        },
+        0,
+    );
     let mut out = w.out;
-    out.sort_by(|a, b| b.spent.cmp(&a.spent).then(a.unlocks.len().cmp(&b.unlocks.len())));
+    out.sort_by(|a, b| {
+        b.spent
+            .cmp(&a.spent)
+            .then(a.unlocks.len().cmp(&b.unlocks.len()))
+    });
     out
 }
 
@@ -102,15 +122,36 @@ mod tests {
     use super::*;
 
     fn open(id: i64, cost: i64) -> Offer {
-        Offer { id, cost, unlock: None, most: None }
+        Offer {
+            id,
+            cost,
+            unlock: None,
+            most: None,
+        }
     }
 
     #[test]
     fn a_shop_slot_is_bought_once() {
-        let once = |id, cost| Offer { id, cost, unlock: None, most: Some(1) };
+        let once = |id, cost| Offer {
+            id,
+            cost,
+            unlock: None,
+            most: Some(1),
+        };
         // 500 money, slots 100, 200, 100, 200, 100: never the same slot
         // twice, and 500 spent exactly where it fits.
-        let b = baskets(&[once(0, 100), once(1, 200), once(2, 100), once(3, 200), once(4, 100)], 500, 9, 0);
+        let b = baskets(
+            &[
+                once(0, 100),
+                once(1, 200),
+                once(2, 100),
+                once(3, 200),
+                once(4, 100),
+            ],
+            500,
+            9,
+            0,
+        );
         for x in &b {
             let mut ids = x.buys.clone();
             ids.dedup();
@@ -141,9 +182,30 @@ mod tests {
 
     #[test]
     fn an_unlock_is_paid_once_and_capped() {
-        let locked = Offer { id: 3, cost: 100, unlock: Some(50), most: None };
-        let b = baskets(&[locked.clone(), Offer { id: 4, cost: 100, unlock: Some(0), most: None }], 300, 2, 1);
-        let two = b.iter().find(|x| x.buys == vec![3, 3]).expect("two of the same locked card");
+        let locked = Offer {
+            id: 3,
+            cost: 100,
+            unlock: Some(50),
+            most: None,
+        };
+        let b = baskets(
+            &[
+                locked.clone(),
+                Offer {
+                    id: 4,
+                    cost: 100,
+                    unlock: Some(0),
+                    most: None,
+                },
+            ],
+            300,
+            2,
+            1,
+        );
+        let two = b
+            .iter()
+            .find(|x| x.buys == vec![3, 3])
+            .expect("two of the same locked card");
         assert_eq!(two.spent, 250);
         assert_eq!(two.unlocks, vec![3]);
         // Two different locked cards need two unlocks; only one allowed.

@@ -71,8 +71,16 @@ const INSIDE: f32 = 2.0;
 /// a world with no edge), pulled back along the same line to just inside
 /// them (a square world's corners reach farther than its sides, so a place
 /// near a corner sets the circle past the sides).
-pub fn edge_point(centre: (f32, f32), places: &[(f32, f32)], bounds: Option<((f32, f32), (f32, f32))>, roll: u64) -> Option<(f32, f32)> {
-    let rim = places.iter().map(|p| ((p.0 - centre.0).powi(2) + (p.1 - centre.1).powi(2)).sqrt()).fold(None, |m: Option<f32>, d| Some(m.map_or(d, |m| m.max(d))))?;
+pub fn edge_point(
+    centre: (f32, f32),
+    places: &[(f32, f32)],
+    bounds: Option<((f32, f32), (f32, f32))>,
+    roll: u64,
+) -> Option<(f32, f32)> {
+    let rim = places
+        .iter()
+        .map(|p| ((p.0 - centre.0).powi(2) + (p.1 - centre.1).powi(2)).sqrt())
+        .fold(None, |m: Option<f32>, d| Some(m.map_or(d, |m| m.max(d))))?;
     let angle = (roll % 6283) as f64 / 1000.0;
     let (x, y) = point_at_angle((centre.0 as i64, centre.1 as i64), angle, rim as f64);
     let (x, y) = (x as f32, y as f32);
@@ -90,7 +98,9 @@ pub fn edge_point(centre: (f32, f32), places: &[(f32, f32)], bounds: Option<((f3
             1.0
         }
     };
-    let share = inside(dx, lo_x, hi_x, centre.0).min(inside(dy, lo_y, hi_y, centre.1)).max(0.0);
+    let share = inside(dx, lo_x, hi_x, centre.0)
+        .min(inside(dy, lo_y, hi_y, centre.1))
+        .max(0.0);
     Some((centre.0 + dx * share, centre.1 + dy * share))
 }
 
@@ -104,17 +114,31 @@ mod tests {
     use super::*;
 
     fn word(key: u64, reaches_at: u64) -> Word {
-        Word { key, kind: "tap".to_string(), place: (0.0, 0.0, 0.0), edge: (100.0, 0.0), reaches_at }
+        Word {
+            key,
+            kind: "tap".to_string(),
+            place: (0.0, 0.0, 0.0),
+            edge: (100.0, 0.0),
+            reaches_at,
+        }
     }
 
     #[test]
     fn a_group_comes_once_word_reaches_the_edge_and_not_again_for_an_hour() {
         let mut edge = Edge::default();
         edge.told(word(7, 100));
-        assert_eq!(edge.due(50, 1000), None, "the word has not reached the edge yet");
+        assert_eq!(
+            edge.due(50, 1000),
+            None,
+            "the word has not reached the edge yet"
+        );
         assert_eq!(edge.due(100, 1000).map(|w| w.key), Some(7));
         edge.told(word(7, 150));
-        assert_eq!(edge.due(500, 1000), None, "the next group not before the hour is out");
+        assert_eq!(
+            edge.due(500, 1000),
+            None,
+            "the next group not before the hour is out"
+        );
         assert_eq!(edge.due(1100, 1000).map(|w| w.key), Some(7));
     }
 
@@ -128,7 +152,8 @@ mod tests {
 
     #[test]
     fn the_edge_is_as_far_out_as_the_farthest_place() {
-        let at = edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], None, 1571).expect("a point");
+        let at =
+            edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], None, 1571).expect("a point");
         let d = (at.0.powi(2) + at.1.powi(2)).sqrt();
         assert!((d - 300.0).abs() < 2.0, "the edge at {at:?}, {d} out");
         assert_eq!(edge_point((0.0, 0.0), &[], None, 3), None);
@@ -143,9 +168,17 @@ mod tests {
         let corner = [(495.0, 495.0)];
         // Angle 4.712 (three quarter turn): straight toward -y.
         let at = edge_point((0.0, 0.0), &corner, bounds, 4712).expect("a point");
-        assert!(at.1 >= -500.0 && at.1 <= -497.0 && at.0.abs() < 2.0, "pulled in to just inside the side: {at:?}");
-        let near = edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], bounds, 1571).expect("a point");
-        assert_eq!(near, edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], None, 1571).expect("a point"), "inside already: unchanged");
+        assert!(
+            at.1 >= -500.0 && at.1 <= -497.0 && at.0.abs() < 2.0,
+            "pulled in to just inside the side: {at:?}"
+        );
+        let near =
+            edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], bounds, 1571).expect("a point");
+        assert_eq!(
+            near,
+            edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], None, 1571).expect("a point"),
+            "inside already: unchanged"
+        );
     }
 
     #[test]

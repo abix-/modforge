@@ -68,7 +68,9 @@ static CALLS: Mutex<Option<&'static Calls>> = Mutex::new(None);
 
 fn function(class: &str, name: &str) -> Result<&'static UFunction, String> {
     let c = crate::ue::find_class_fast(class).ok_or_else(|| format!("class {class} not found"))?;
-    let f = c.get_function(class, name).ok_or_else(|| format!("{class}::{name} not found"))?;
+    let f = c
+        .get_function(class, name)
+        .ok_or_else(|| format!("{class}::{name} not found"))?;
     // SAFETY: UFunctions are class members and live as long as the class.
     Ok(unsafe { &*(f as *const UFunction) })
 }
@@ -146,7 +148,12 @@ unsafe fn walk_path(c: &Calls, ctx: &UObject, a: [f64; 3], b: [f64; 3]) -> Optio
     // TArray<FVector>: data pointer, then i32 count.
     // SAFETY: PathPoints is a reflected field of the live path object.
     let base = unsafe { path.field_ptr(off) } as *const u8;
-    let (data, num) = unsafe { ((base as *const usize).read_unaligned(), (base.add(8) as *const i32).read_unaligned()) };
+    let (data, num) = unsafe {
+        (
+            (base as *const usize).read_unaligned(),
+            (base.add(8) as *const i32).read_unaligned(),
+        )
+    };
     if data == 0 || !(2..=4096).contains(&num) {
         return None;
     }
@@ -205,7 +212,10 @@ fn frame(pc: &UObject) {
         route.legs = Some(legs);
     }
     // Drop every waypoint up to the furthest one the player stands at.
-    if let Some(i) = (route.next..route.points.len()).rev().find(|&i| reached(player, route.points[i])) {
+    if let Some(i) = (route.next..route.points.len())
+        .rev()
+        .find(|&i| reached(player, route.points[i]))
+    {
         route.next = i + 1;
     }
     let mut line: Vec<[f64; 3]> = Vec::new();
@@ -213,8 +223,11 @@ fn frame(pc: &UObject) {
         let target = route.points[route.next];
         // The leg into the next waypoint: walk it if that leg is walked
         // (or it is the first), else straight from the player.
-        let walked = route.next == 0 || route.kinds.get(route.next - 1).is_some_and(|k| k == "walk");
-        let lead = walked.then(|| unsafe { walk_path(c, pc, player, target) }).flatten();
+        let walked =
+            route.next == 0 || route.kinds.get(route.next - 1).is_some_and(|k| k == "walk");
+        let lead = walked
+            .then(|| unsafe { walk_path(c, pc, player, target) })
+            .flatten();
         match lead {
             Some(p) => line.extend(p),
             None => line.extend([player, target]),
@@ -228,11 +241,18 @@ fn frame(pc: &UObject) {
     }
     let up = route.height;
     let points = line.into_iter().map(|p| [p[0], p[1], p[2] + up]).collect();
-    crate::overlay::set_lines(vec![OverlayLine { points, color: route.color, thickness: route.thickness }]);
+    crate::overlay::set_lines(vec![OverlayLine {
+        points,
+        color: route.color,
+        thickness: route.thickness,
+    }]);
 }
 
 fn point(v: &Value) -> Result<[f64; 3], String> {
-    let a = v.as_array().filter(|a| a.len() == 3).ok_or("a point is [x, y, z]")?;
+    let a = v
+        .as_array()
+        .filter(|a| a.len() == 3)
+        .ok_or("a point is [x, y, z]")?;
     let f = |i: usize| a[i].as_f64().ok_or("point values are numbers");
     Ok([f(0)?, f(1)?, f(2)?])
 }

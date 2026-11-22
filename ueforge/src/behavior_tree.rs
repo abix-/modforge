@@ -38,7 +38,11 @@ pub enum Action {
 }
 
 fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a.into_iter().zip(b).map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt()
+    a.into_iter()
+        .zip(b)
+        .map(|(a, b)| (a - b).powi(2))
+        .sum::<f64>()
+        .sqrt()
 }
 
 /// Transfer movement ownership between native combat and assignment movement.
@@ -180,8 +184,7 @@ impl AiOrderExecution {
             == Some(3);
         if moving
             && self.destination.is_some_and(|(previous, old_radius)| {
-                old_radius == radius
-                    && distance(previous, position) < radius * 0.5
+                old_radius == radius && distance(previous, position) < radius * 0.5
             })
         {
             return Ok(());

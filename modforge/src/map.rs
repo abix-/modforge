@@ -55,12 +55,22 @@ impl Map {
     /// Whether tile `c` has been seen.
     pub fn seen(&self, c: Cell) -> bool {
         let (key, bit) = split(c);
-        self.chunks.get(&key).is_some_and(|chunk| chunk.bits[bit / 64] & (1 << (bit % 64)) != 0)
+        self.chunks
+            .get(&key)
+            .is_some_and(|chunk| chunk.bits[bit / 64] & (1 << (bit % 64)) != 0)
     }
 
     /// How many tiles have been seen.
     pub fn tiles_seen(&self) -> usize {
-        self.chunks.values().map(|c| c.bits.iter().map(|b| b.count_ones() as usize).sum::<usize>()).sum()
+        self.chunks
+            .values()
+            .map(|c| {
+                c.bits
+                    .iter()
+                    .map(|b| b.count_ones() as usize)
+                    .sum::<usize>()
+            })
+            .sum()
     }
 
     /// Join `other` into this map (topside life.md: what their bunker tells
@@ -84,7 +94,13 @@ impl Map {
     /// Look around from tile `from`: every tile within `radius` the eyes
     /// reach is seen at `now`; a tile `opaque` says blocks sight is seen
     /// (a wall's face) but hides what is past it.
-    pub fn look(&mut self, from: Cell, radius: i32, opaque: &mut dyn FnMut(Cell) -> bool, now: u64) {
+    pub fn look(
+        &mut self,
+        from: Cell,
+        radius: i32,
+        opaque: &mut dyn FnMut(Cell) -> bool,
+        now: u64,
+    ) {
         self.see(from, now);
         for (xx, xy, yx, yy) in OCTANTS {
             self.cast(from, 1, 1.0, 0.0, radius, (xx, xy, yx, yy), opaque, now);
@@ -138,7 +154,16 @@ impl Map {
                     }
                 } else if dark && j < radius {
                     blocked = true;
-                    self.cast(from, j + 1, start, left, radius, (xx, xy, yx, yy), opaque, now);
+                    self.cast(
+                        from,
+                        j + 1,
+                        start,
+                        left,
+                        radius,
+                        (xx, xy, yx, yy),
+                        opaque,
+                        now,
+                    );
                     next_start = right;
                 }
             }
@@ -182,7 +207,10 @@ mod tests {
         let mut map = Map::default();
         map.look((0, 0), 25, &mut room_wall, 1);
         assert!(map.seen((10, 0)), "the wall's face is seen");
-        assert!(map.seen((5, 5)) && map.seen((-20, 0)), "open ground around is seen");
+        assert!(
+            map.seen((5, 5)) && map.seen((-20, 0)),
+            "open ground around is seen"
+        );
         assert!(!map.seen((13, 0)), "the inside stays unseen");
         assert!(!map.seen((30, 0)), "past the radius stays unseen");
         let before = map.tiles_seen();
@@ -190,7 +218,11 @@ mod tests {
         map.look((13, 0), 25, &mut room_wall, 2);
         assert!(map.seen((13, 0)) && map.seen((15, 2)));
         assert!(map.tiles_seen() > before);
-        assert_eq!(map.chunk_seen_at((0, 0)), Some(2), "the chunk was last seen at the second look");
+        assert_eq!(
+            map.chunk_seen_at((0, 0)),
+            Some(2),
+            "the chunk was last seen at the second look"
+        );
     }
 
     #[test]

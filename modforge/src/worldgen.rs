@@ -374,7 +374,10 @@ impl World {
                 };
                 let p = self.cell_center(c, r);
                 if self.def.near_a_bunker(p, self.def.bunker_clear)
-                    || self.sites.iter().any(|s| s.position.distance(p) < s.ground.max(s.spacing * 0.3))
+                    || self
+                        .sites
+                        .iter()
+                        .any(|s| s.position.distance(p) < s.ground.max(s.spacing * 0.3))
                 {
                     continue;
                 }
@@ -741,7 +744,10 @@ impl World {
             }
         }
         for s in scatter {
-            out.push(crate::walk::Rect::around(s.position, Vec2::new(s.size.x, s.size.z)));
+            out.push(crate::walk::Rect::around(
+                s.position,
+                Vec2::new(s.size.x, s.size.z),
+            ));
         }
         for w in &self.walls {
             let (min, max) = w.footprint();
@@ -760,7 +766,12 @@ pub fn monument_ground(m: &crate::structure::MonumentDef) -> f32 {
     for member in &m.members {
         let offset = Vec2::new(member.offset.x, member.offset.z);
         for run in crate::structure::tile_plan(&member.structure) {
-            for (x, z) in [(run.from, run.row), (run.to, run.row), (run.from, run.row + 1), (run.to, run.row + 1)] {
+            for (x, z) in [
+                (run.from, run.row),
+                (run.to, run.row),
+                (run.from, run.row + 1),
+                (run.to, run.row + 1),
+            ] {
                 reach(offset + Vec2::new(x as f32, z as f32));
             }
         }
@@ -769,7 +780,12 @@ pub fn monument_ground(m: &crate::structure::MonumentDef) -> f32 {
         let half = Vec2::new(p.size.x, p.size.z) / 2.0;
         reach(Vec2::new(p.position.x, p.position.z).abs() + half);
     }
-    for spot in m.loot_spots.iter().map(|s| s.position).chain(m.npc_spots.iter().map(|s| s.position)) {
+    for spot in m
+        .loot_spots
+        .iter()
+        .map(|s| s.position)
+        .chain(m.npc_spots.iter().map(|s| s.position))
+    {
         reach(Vec2::new(spot.x, spot.z));
     }
     far + 2.0
@@ -797,12 +813,19 @@ fn path(world: &World, blocked: &[bool], from: Vec2, to: Vec2) -> Result<Vec<Vec
             return None;
         }
         let flat = world.def.cell * if a.0 != b.0 && a.1 != b.1 { 1.414 } else { 1.0 };
-        let rise = (world.height_at_cell(bc, br) - world.height_at_cell(a.0 as usize, a.1 as usize)).abs();
+        let rise =
+            (world.height_at_cell(bc, br) - world.height_at_cell(a.0 as usize, a.1 as usize)).abs();
         Some(flat + rise * SLOPE_COST)
     };
-    grid_path(start, goal, step, |c| center(c).distance(center(goal)), usize::MAX)
-        .map(|cells| cells.into_iter().map(center).collect())
-        .ok_or_else(|| "no road: the site is cut off by water or walls".to_string())
+    grid_path(
+        start,
+        goal,
+        step,
+        |c| center(c).distance(center(goal)),
+        usize::MAX,
+    )
+    .map(|cells| cells.into_iter().map(center).collect())
+    .ok_or_else(|| "no road: the site is cut off by water or walls".to_string())
 }
 
 /// Carve a maze of `n` by `n` cells by recursive backtracker: walk
@@ -1209,15 +1232,25 @@ mod tests {
         let world = roll_world(&def(), 3, &biomes, &monuments, &buildings).unwrap();
         let scatter = world.scatter(&scattering);
         assert!(!scatter.is_empty());
-        assert_eq!(scatter, world.scatter(&scattering), "same seed, same scatter");
+        assert_eq!(
+            scatter,
+            world.scatter(&scattering),
+            "same seed, same scatter"
+        );
         let road = world.road_cells();
         for s in &scatter {
             let (c, r) = world.cell_of(s.position);
             assert!(!world.is_water(c, r));
-            assert!(s.position.distance(world.def.bunker) >= world.def.bunker_clear - world.def.cell);
+            assert!(
+                s.position.distance(world.def.bunker) >= world.def.bunker_clear - world.def.cell
+            );
             // The jitter keeps a piece inside its own cell's half width
             // of 0.3 cells, so its cell is the one it was rolled in.
-            assert!(!road[world.index(c, r)], "scatter on a road at {:?}", s.position);
+            assert!(
+                !road[world.index(c, r)],
+                "scatter on a road at {:?}",
+                s.position
+            );
         }
     }
 
@@ -1244,20 +1277,33 @@ mod tests {
         for seed in 0..5 {
             let world = roll_world(&def, seed, &biomes, &monuments, &buildings).unwrap();
             let (c, r) = world.cell_of(other);
-            assert_eq!(world.heights[world.index(c, r)], 0.0, "seed {seed}: flat at the bunker's height");
+            assert_eq!(
+                world.heights[world.index(c, r)],
+                0.0,
+                "seed {seed}: flat at the bunker's height"
+            );
             assert!(!world.is_water(c, r), "seed {seed}: on land");
             let near = world.def.bunker_clear - world.def.cell;
             for s in &world.sites {
-                assert!(s.position.distance(other) >= near, "seed {seed}: a site at the other bunker");
+                assert!(
+                    s.position.distance(other) >= near,
+                    "seed {seed}: a site at the other bunker"
+                );
             }
             for s in world.scatter(&scattering) {
-                assert!(s.position.distance(other) >= near, "seed {seed}: scatter at the other bunker");
+                assert!(
+                    s.position.distance(other) >= near,
+                    "seed {seed}: scatter at the other bunker"
+                );
             }
             let road = world.road_cells();
             for (i, on) in road.iter().enumerate() {
                 if *on {
                     let p = world.cell_center(i % world.cells, i / world.cells);
-                    assert!(p.distance(other) >= near, "seed {seed}: a road at the other bunker");
+                    assert!(
+                        p.distance(other) >= near,
+                        "seed {seed}: a road at the other bunker"
+                    );
                 }
             }
         }
@@ -1682,7 +1728,8 @@ mod tests {
     fn the_labyrinth_is_flat_with_walls_and_sites_and_roads_in_corridors() {
         let (biomes, monuments, buildings) = registries();
         for seed in 1..=6u64 {
-            let world = roll_world(&labyrinth_def(), seed, &biomes, &monuments, &buildings).unwrap();
+            let world =
+                roll_world(&labyrinth_def(), seed, &biomes, &monuments, &buildings).unwrap();
             assert!(world.heights.iter().all(|h| *h == 0.0), "seed {seed}: flat");
             assert!(
                 world.walls.len() > 100,

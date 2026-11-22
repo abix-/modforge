@@ -88,6 +88,147 @@ fn azure_torch() {
     item_stats(&["azure", "torch"]);
 }
 
+/// The operator asks what the trident is for. The item data for
+/// "trident", then every loaded Blueprint class named trident or spear
+/// with its parents and functions, each function's bytecode scanned
+/// (common::scan_script) for what it calls.
+#[test]
+fn trident() {
+    item_stats(&["trident"]);
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let l = name.to_ascii_lowercase();
+        if !(l.contains("trident") || l.contains("spear")) || l.contains("anim") || l.contains("boner") {
+            continue;
+        }
+        println!("== {name} ({})", common::super_chain(&api, addr).join(" < "));
+        for (f, n) in common::class_functions(&api, addr) {
+            common::scan_script(&api, f, &format!("{name}::{n}"));
+        }
+    }
+}
+
+/// How does the Trident turn into the Ruby Trident Key? Every Blueprint
+/// function whose bytecode touches Evolution or Evolve (the weapon
+/// stats' Evolution field names the key), printed with the calls
+/// around each touch, and functions named evolve fully scanned.
+#[test]
+fn weapon_evolution() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let mut cache = Default::default();
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        for (f, n) in common::class_functions(&api, addr) {
+            if n.to_ascii_lowercase().contains("evol") {
+                common::scan_script(&api, f, &format!("{name}::{n}"));
+                continue;
+            }
+            let Some((_, _, refs)) = common::script_refs(&api, f, &mut cache) else { continue };
+            let hits: Vec<usize> = refs
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.1.to_string().to_ascii_lowercase().contains("evol"))
+                .map(|(i, _)| i)
+                .collect();
+            if hits.is_empty() {
+                continue;
+            }
+            println!("== {name}::{n} touches evolution {} times", hits.len());
+            for h in hits {
+                let run: Vec<String> = refs[h.saturating_sub(10)..(h + 14).min(refs.len())].iter().map(|(_, r)| r.to_string()).collect();
+                println!("   {}", run.join("  "));
+            }
+        }
+    }
+}
+
+/// The operator found a mysterious statue of Homopicium holding a
+/// large red ruby sphere and asks why. Item data saying ruby,
+/// homopicium or statue, then every loaded Blueprint class whose name
+/// says statue, homopicium, ruby, orb, sphere or socket, with parents
+/// and each function's bytecode scanned for what it calls.
+#[test]
+fn ruby_statue() {
+    item_stats(&["ruby", "homopicium", "statue"]);
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let words = ["statue", "homopicium", "ruby", "orb", "sphere", "socket"];
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let l = name.to_ascii_lowercase();
+        if !words.iter().any(|w| l.contains(w)) || l.contains("anim") {
+            continue;
+        }
+        println!("== {name} ({})", common::super_chain(&api, addr).join(" < "));
+        for (f, n) in common::class_functions(&api, addr) {
+            common::scan_script(&api, f, &format!("{name}::{n}"));
+        }
+    }
+}
+
+/// No class is named Homopicium, so: every actor the game's own sphere
+/// overlap (KismetSystemLibrary::SphereOverlapActors, object types
+/// 0 to 5) finds within 15 m of the player, nearest first, with its
+/// class and mesh asset name. Read only.
+#[test]
+fn near_player() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 4).into_iter().next() else {
+        return;
+    };
+    let loc = |obj: &str| {
+        let r = api.op("object.call", json!({"object": format!("addr:{obj}"), "class": "Actor", "function": "K2_GetActorLocation"}));
+        let v = &r.result["ReturnValue"];
+        Some([v["X"].as_f64()?, v["Y"].as_f64()?, v["Z"].as_f64()?])
+    };
+    let Some(p) = loc(&format!("0x{player:X}")) else { return };
+    println!("player at ({:.0}, {:.0}, {:.0})", p[0], p[1], p[2]);
+    let r = api.op(
+        "object.call",
+        json!({"object": "singleton:KismetSystemLibrary", "class": "KismetSystemLibrary", "function": "SphereOverlapActors", "params": {
+            "WorldContextObject": format!("0x{player:X}"),
+            "SpherePos": {"X": p[0], "Y": p[1], "Z": p[2]},
+            "SphereRadius": 1500.0,
+            "ObjectTypes": [0, 1, 2, 3, 4, 5],
+            "ActorsToIgnore": [],
+        }}),
+    );
+    let Some(found) = r.result["OutActors"].as_array() else {
+        println!("overlap: ok={} {}", r.ok, r.result);
+        return;
+    };
+    println!("{} actors", found.len());
+    let mut near = Vec::new();
+    for a in found {
+        let addr = a["addr"].as_str().unwrap_or("0").to_string();
+        let Some(q) = loc(&addr) else { continue };
+        let d = ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2) + (q[2] - p[2]).powi(2)).sqrt() / 100.0;
+        let mut mesh = String::new();
+        for (comp, field) in [("StaticMeshComponent", "StaticMesh"), ("SkeletalMeshComponent", "SkeletalMesh")] {
+            let c = api.op("object.get", json!({"object": format!("addr:{addr}"), "fields": [comp]}));
+            let Some(c) = c.result[comp]["addr"].as_str() else { continue };
+            let m = api.op("object.get", json!({"object": format!("addr:{c}"), "fields": [field]}));
+            if let Some(n) = m.result[field]["name"].as_str() {
+                mesh = n.to_string();
+            }
+        }
+        near.push((d, format!("{} {} mesh {mesh} at ({:.0}, {:.0}, {:.0})", a["class"].as_str().unwrap_or("?"), a["name"].as_str().unwrap_or("?"), q[0], q[1], q[2])));
+    }
+    near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (d, s) in near {
+        println!("{d:5.1} m  {s}");
+    }
+}
+
 /// The operator has 2 wind gems: what are they for? The item data for
 /// "wind", then PlayerMathFunctions_C::GetFSChargeCount (counts an item
 /// and an item tag in the inventory) and every player, wind dash and

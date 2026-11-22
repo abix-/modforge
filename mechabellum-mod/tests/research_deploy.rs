@@ -162,6 +162,55 @@ fn units_on_field() {
     }
 }
 
+/// How a card on the field compares with its battle record unit: each
+/// local card's id, GetLevel and GetSellSupply, then every field of
+/// each record unit this round (GetCurrentRecord, our seat, the last
+/// round). Shows what a card bought this round must be written as.
+#[test]
+fn card_levels() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let call = |h: i64, m: &str, args: Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args})).result;
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no panel holds a match");
+        return;
+    };
+    let Some(pc) = field(m, "localPlayerController") else { return };
+    let Some(units) = field(pc, "unitManager").and_then(|um| field(um, "units")) else { return };
+    for u in 0..common::count_of(&api, units).unwrap_or(0) {
+        let Some(card) = handle_of(&call(units, "get_Item", json!([u]))) else { continue };
+        let id = field(card, "unitData").map(|d| api.op("read_field", json!({"handle": d, "field": "id"})).result);
+        println!("card {u}: id {id:?} GetLevel {} GetSellSupply {}", call(card, "GetLevel", json!([])), call(card, "GetSellSupply", json!([])));
+    }
+    let Some(rec) = field(pc, "replaySystem")
+        .and_then(|rs| field(rs, "battleRecorder"))
+        .and_then(|br| handle_of(&call(br, "GetCurrentRecord", json!([]))))
+    else {
+        println!("no current record");
+        return;
+    };
+    let seat = api.op("read_field", json!({"handle": rec, "field": "_Seat_k__BackingField"})).result.as_i64().unwrap_or(0);
+    let round = (call(rec, "GetRoundCount", json!([])).as_i64().unwrap_or(0) - 1).max(0);
+    let Some(pd) = field(rec, "playerRecords")
+        .and_then(|prs| handle_of(&call(prs, "get_Item", json!([seat]))))
+        .and_then(|pr| handle_of(&call(pr, "GetRoundRecord", json!([round]))))
+        .and_then(|rr| field(rr, "playerData"))
+    else {
+        println!("no playerData");
+        return;
+    };
+    println!("seat {seat} round {round} unitIndex {}", api.op("read_field", json!({"handle": pd, "field": "unitIndex"})).result);
+    let Some(rus) = field(pd, "units") else { return };
+    for u in 0..common::count_of(&api, rus).unwrap_or(0) {
+        let Some(r) = handle_of(&call(rus, "get_Item", json!([u]))) else { continue };
+        show(&api, r, &format!("  record {u} "));
+    }
+}
+
 /// Where the game lets our first unit go: TerritoryManager.CanMoveUnit
 /// (unit, position, isForce false), the game's own check (Cpp2IL dump,
 /// GRCore TerritoryManager), asked over a grid of positions. Prints the
@@ -277,6 +326,43 @@ fn shop() {
                 read("name"), read("baseMoney"), read("mechCount"), read("unlockPrice"), call(sm, "CanBuyUnit", json!([id])).result
             );
         }
+    }
+}
+
+/// What each shop item really costs: its reinforcePrice field, its
+/// price rate, IReinforceItem.GetPrice, and the shop's own
+/// CheckCanBuy answer, with the supply. A planned fourth buy at its
+/// listed 100 was refused with 50 left (2026-11-07).
+#[test]
+fn shop_prices() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let read = |h: i64, f: &str| api.op("read_field", json!({"handle": h, "field": f})).result;
+    let call = |h: i64, m: &str, args: Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(pc) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")).and_then(|m| field(m, "localPlayerController")) else {
+        println!("no match");
+        return;
+    };
+    println!("supply {}", field(pc, "player").map(|p| read(p, "supply")).unwrap_or_default());
+    let Some(rs) = field(pc, "reinforcementShopManager") else { return };
+    let Some(items) = field(rs, "reinforceItems") else { return };
+    for i in 0..common::count_of(&api, items).unwrap_or(0) {
+        let Some(it) = handle_of(&call(items, "get_Item", json!([i])).result) else { continue };
+        let card = field(it, "_config_k__BackingField").map(|c| read(c, "relatedID")).unwrap_or_default();
+        let check = call(rs, "CheckCanBuy", json!([{"$handle": it}]));
+        let bought = call(rs, "HasBuyItem", json!([{"$handle": it}])).result;
+        println!(
+            "slot {i}: card {card} reinforcePrice {} priceRate {} GetPrice {} bought {bought} CheckCanBuy {} {:?}",
+            read(it, "reinforcePrice"),
+            read(it, "_priceRate_k__BackingField"),
+            call(it, "GetPrice", json!([])).result,
+            check.result.get("str").cloned().unwrap_or(check.result.clone()),
+            check.error
+        );
     }
 }
 

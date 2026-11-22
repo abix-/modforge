@@ -208,7 +208,9 @@ mod tests {
     #[test]
     fn list_ops_says_which_ops_are_for_the_hud() {
         let r = OpRegistry::new();
-        r.register(OpDef::new("walk_class", "debug", "{class: str}", |_| Ok(json!(null))));
+        r.register(OpDef::new("walk_class", "debug", "{class: str}", |_| {
+            Ok(json!(null))
+        }));
         r.register(OpDef::new("settings", "the mod's settings", "{}", |_| Ok(json!(null))).hud());
         let ops = r.list_json()["ops"].clone();
         assert_eq!(ops[0]["hud"], json!(false));

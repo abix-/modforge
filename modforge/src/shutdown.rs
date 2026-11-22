@@ -161,8 +161,9 @@ impl ShutdownRegistry {
     pub fn undo_all(&self, name: &str) {
         let mut taken: Vec<Entry> = {
             let mut g = self.entries.lock();
-            let (take, keep): (Vec<Entry>, Vec<Entry>) =
-                std::mem::take(&mut *g).into_iter().partition(|e| e.name == name);
+            let (take, keep): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut *g)
+                .into_iter()
+                .partition(|e| e.name == name);
             *g = keep;
             take
         };
@@ -259,10 +260,14 @@ mod tests {
     fn run_all_orders_then_newest_first_and_survives_panic() {
         static REG: ShutdownRegistry = ShutdownRegistry::new();
         static SEEN: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
-        REG.record("x", String::new(), 200, || SEEN.lock().push("200-old")).keep();
-        REG.record("x", String::new(), 100, || panic!("boom")).keep();
-        REG.record("x", String::new(), 200, || SEEN.lock().push("200-new")).keep();
-        REG.record("x", String::new(), 100, || SEEN.lock().push("100")).keep();
+        REG.record("x", String::new(), 200, || SEEN.lock().push("200-old"))
+            .keep();
+        REG.record("x", String::new(), 100, || panic!("boom"))
+            .keep();
+        REG.record("x", String::new(), 200, || SEEN.lock().push("200-new"))
+            .keep();
+        REG.record("x", String::new(), 100, || SEEN.lock().push("100"))
+            .keep();
         REG.run_all();
         assert_eq!(*SEEN.lock(), vec!["100", "200-new", "200-old"]);
     }

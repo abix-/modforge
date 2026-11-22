@@ -254,24 +254,28 @@ pub fn ensure_installed() -> Result<String, String> {
             .unwrap_or_else(|| "HUD".into())
             .into_boxed_str(),
     );
-    let installed = ProcessEventHook::install_for_object(class, hud, move |this, function, parms, original| {
-        // SAFETY: the engine's own call, passed on unchanged first.
-        unsafe { original.call(this, function, parms) };
-        if function as *const UFunction as usize != calls.draw_hud {
-            return;
-        }
-        let this_addr = this as *const UObject as usize;
-        let drawn = modforge::seh::guard(|| {
-            // SAFETY: game thread, inside AHUD::DrawHUD on the live HUD.
-            unsafe { draw(calls, &*(this_addr as *const UObject)) }
-        });
-        if drawn.is_err() {
-            LINES.lock().clear();
-            crate::log!("overlay: drawing faulted; lines cleared");
-        }
-    })
-    .map_err(|e| format!("overlay hook on {class}: {e}"))?;
-    *hook = Some(Installed { _hook: installed, hud_vtable: vtable });
+    let installed =
+        ProcessEventHook::install_for_object(class, hud, move |this, function, parms, original| {
+            // SAFETY: the engine's own call, passed on unchanged first.
+            unsafe { original.call(this, function, parms) };
+            if function as *const UFunction as usize != calls.draw_hud {
+                return;
+            }
+            let this_addr = this as *const UObject as usize;
+            let drawn = modforge::seh::guard(|| {
+                // SAFETY: game thread, inside AHUD::DrawHUD on the live HUD.
+                unsafe { draw(calls, &*(this_addr as *const UObject)) }
+            });
+            if drawn.is_err() {
+                LINES.lock().clear();
+                crate::log!("overlay: drawing faulted; lines cleared");
+            }
+        })
+        .map_err(|e| format!("overlay hook on {class}: {e}"))?;
+    *hook = Some(Installed {
+        _hook: installed,
+        hud_vtable: vtable,
+    });
     crate::log!("overlay: drawing on {class} ({})", hud.name());
     Ok(hud.name())
 }
@@ -287,7 +291,10 @@ fn parse_line(v: &Value) -> Result<OverlayLine, String> {
         .ok_or("points must be an array")?
         .iter()
         .map(|p| {
-            let a = p.as_array().filter(|a| a.len() == 3).ok_or("a point is [x, y, z]")?;
+            let a = p
+                .as_array()
+                .filter(|a| a.len() == 3)
+                .ok_or("a point is [x, y, z]")?;
             let f = |i: usize| a[i].as_f64().ok_or("point values are numbers");
             Ok([f(0)?, f(1)?, f(2)?])
         })
@@ -295,12 +302,21 @@ fn parse_line(v: &Value) -> Result<OverlayLine, String> {
     let color = v["color"]
         .as_array()
         .map(|c| {
-            let f = |i: usize, d: f32| c.get(i).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(d);
+            let f = |i: usize, d: f32| {
+                c.get(i)
+                    .and_then(Value::as_f64)
+                    .map(|x| x as f32)
+                    .unwrap_or(d)
+            };
             [f(0, 0.0), f(1, 1.0), f(2, 1.0), f(3, 1.0)]
         })
         .unwrap_or([0.0, 1.0, 1.0, 1.0]);
     let thickness = v["thickness"].as_f64().unwrap_or(4.0) as f32;
-    Ok(OverlayLine { points, color, thickness })
+    Ok(OverlayLine {
+        points,
+        color,
+        thickness,
+    })
 }
 
 /// `overlay.lines` and `overlay.clear`, plus the unhook at shutdown.
@@ -351,8 +367,18 @@ mod tests {
 
     #[test]
     fn reals_by_size() {
-        let narrow = NativeProperty { name: "v".into(), offset: 0, element_size: 12, address: 0 };
-        let wide = NativeProperty { name: "v".into(), offset: 0, element_size: 24, address: 0 };
+        let narrow = NativeProperty {
+            name: "v".into(),
+            offset: 0,
+            element_size: 12,
+            address: 0,
+        };
+        let wide = NativeProperty {
+            name: "v".into(),
+            offset: 0,
+            element_size: 24,
+            address: 0,
+        };
         let mut b = vec![0u8; 24];
         write_reals(&mut b, &narrow, &[1.0, 2.0, 3.0]);
         assert_eq!(read_reals(&b, &narrow, 3), vec![1.0, 2.0, 3.0]);

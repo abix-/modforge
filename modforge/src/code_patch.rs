@@ -71,7 +71,12 @@ pub fn patch_bytes(name: &'static str, addr: usize, new_bytes: &[u8]) -> anyhow:
             let mut old_protect: PAGE_PROTECTION_FLAGS = 0;
             // SAFETY: addr was a valid in-process code page when applied.
             unsafe {
-                VirtualProtect(addr as *mut _, len, PAGE_EXECUTE_READWRITE, &mut old_protect);
+                VirtualProtect(
+                    addr as *mut _,
+                    len,
+                    PAGE_EXECUTE_READWRITE,
+                    &mut old_protect,
+                );
                 std::ptr::copy_nonoverlapping(original.as_ptr(), addr as *mut u8, len);
                 let mut tmp: PAGE_PROTECTION_FLAGS = 0;
                 VirtualProtect(addr as *mut _, len, old_protect, &mut tmp);

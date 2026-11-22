@@ -86,7 +86,11 @@ mod tests {
     #[test]
     fn a_storm_brought_now_warns_now() {
         for secs in [0.0, 50.0, 89.0] {
-            assert_eq!(DEF.phase(secs, DEF.now(secs)), StormPhase::Warning, "at {secs}");
+            assert_eq!(
+                DEF.phase(secs, DEF.now(secs)),
+                StormPhase::Warning,
+                "at {secs}"
+            );
             assert!(!DEF.passed(secs, DEF.now(secs)));
         }
     }
@@ -96,10 +100,25 @@ mod tests {
     #[test]
     fn the_storm_comes_when_the_episode_says() {
         assert_eq!(storm_at(0.0, (2.0, 2.0), 1200.0, 7), 2400.0);
-        assert_eq!(storm_at(100.0, (2.0, 2.0), 1200.0, 7), 2500.0, "from when the episode started");
-        let rolled: Vec<f32> = (0..50).map(|seed| storm_at(0.0, (1.0, 3.0), 1200.0, seed)).collect();
-        assert!(rolled.iter().all(|at| (1200.0..=3600.0).contains(at)), "{rolled:?}");
-        assert!(rolled.iter().any(|at| *at != rolled[0]), "the range is rolled, not one point");
-        assert_eq!(storm_at(0.0, (1.0, 3.0), 1200.0, 9), storm_at(0.0, (1.0, 3.0), 1200.0, 9));
+        assert_eq!(
+            storm_at(100.0, (2.0, 2.0), 1200.0, 7),
+            2500.0,
+            "from when the episode started"
+        );
+        let rolled: Vec<f32> = (0..50)
+            .map(|seed| storm_at(0.0, (1.0, 3.0), 1200.0, seed))
+            .collect();
+        assert!(
+            rolled.iter().all(|at| (1200.0..=3600.0).contains(at)),
+            "{rolled:?}"
+        );
+        assert!(
+            rolled.iter().any(|at| *at != rolled[0]),
+            "the range is rolled, not one point"
+        );
+        assert_eq!(
+            storm_at(0.0, (1.0, 3.0), 1200.0, 9),
+            storm_at(0.0, (1.0, 3.0), 1200.0, 9)
+        );
     }
 }

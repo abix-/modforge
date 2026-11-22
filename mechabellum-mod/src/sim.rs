@@ -38,6 +38,10 @@ struct Held {
     card_ids: Vec<i64>,
     /// Units on the field at the start (units per purchase, summed).
     units: i64,
+    /// Field cards the record does not hold yet (bought this round;
+    /// the record is the round's start), added to every copy. They
+    /// come after the record's cards in `cards`.
+    added: Vec<Buy>,
     seat: i64,
     round: i64,
 }
@@ -121,29 +125,40 @@ fn hold() -> Result<(Held, Vec<Piece>), String> {
 
     let recs = record_units(&base, seat, round)?;
     let live_cards = field(&pc, "unitManager")?.and_then(|um| field(&um, "units").ok().flatten()).ok_or("no unitManager.units")?;
-    if live_cards.list_len_or_zero()? != recs.len() as i64 {
-        return Err(format!("{} cards on the field, {} in the record", live_cards.list_len_or_zero()?, recs.len()));
+    let n = live_cards.list_len_or_zero()?;
+    if n < recs.len() as i64 {
+        return Err(format!("{n} cards on the field, {} in the record", recs.len()));
     }
     let mut pieces = Vec::new();
     let mut cards = Vec::new();
     let mut card_ids = Vec::new();
-    for (i, r) in recs.iter().enumerate() {
+    let mut added = Vec::new();
+    for i in 0..n as usize {
         let card = get(&live_cards, i as i64)?.ok_or("missing card")?;
         let id = field(&card, "unitData")?.map(|d| int(&d, "id")).transpose()?.unwrap_or(0);
-        if id != int(r, "id")? {
-            return Err(format!("card {i}: field has {id}, record has {}", int(r, "id")?));
-        }
         let b = field(&card, "mapElement")?
             .and_then(|me| me.read_field("bound").ok())
             .and_then(|v| v.as_str().and_then(bound))
             .ok_or("no mapElement.bound")?;
-        let pos = r.read_field("position")?;
-        pieces.push(Piece {
-            x: pos["x"].as_i64().unwrap_or(0) as i32,
-            y: pos["y"].as_i64().unwrap_or(0) as i32,
-            w: b[2] as i32,
-            h: b[3] as i32,
-        });
+        let (x, y) = match recs.get(i) {
+            Some(r) => {
+                if id != int(r, "id")? {
+                    return Err(format!("card {i}: field has {id}, record has {}", int(r, "id")?));
+                }
+                let pos = r.read_field("position")?;
+                (pos["x"].as_i64().unwrap_or(0) as i32, pos["y"].as_i64().unwrap_or(0) as i32)
+            }
+            // Bought this round: where it stands now (bound is from the
+            // corner), at the card's own level.
+            None => {
+                let level = card.invoke("GetLevel", &json!([]))?.as_i64().unwrap_or(0);
+                let price = card.invoke("GetSellSupply", &json!([]))?.as_i64().unwrap_or(0);
+                let count = crate::units::unit(id)?.count as i64;
+                added.push(Buy { slot: -1, card: id, level, record_level: level, price, count });
+                ((b[0] + b[2] / 2.0) as i32, (b[1] + b[3] / 2.0) as i32)
+            }
+        };
+        pieces.push(Piece { x, y, w: b[2] as i32, h: b[3] as i32 });
         card_ids.push(id);
         cards.push(card);
     }
@@ -158,6 +173,7 @@ fn hold() -> Result<(Held, Vec<Piece>), String> {
         territory: keep(territory),
         cards: cards.into_iter().map(keep).collect(),
         units: card_ids.iter().map(|&id| crate::units::unit(id).map(|u| u.count as i64)).sum::<Result<i64, _>>()?,
+        added,
         card_ids,
         seat,
         round,
@@ -198,17 +214,24 @@ fn allowed(h: &Held, i: usize, p: &Piece) -> Result<bool, String> {
 /// ReinforcementShopManager.reinforceItems, research_deploy
 /// reinforcement_shop): its slot, card, level and price.
 #[derive(Clone, Copy, Debug)]
-struct Buy {
-    slot: i64,
-    card: i64,
-    level: i64,
-    price: i64,
+pub(crate) struct Buy {
+    pub slot: i64,
+    pub card: i64,
+    /// The shop's level (1 is the first).
+    pub level: i64,
+    /// The level a battle record holds (0 is the first): the shop's
+    /// level less one (the lineup's Void Eye: shop 1, record 0), or a
+    /// bought card's own GetLevel.
+    pub record_level: i64,
+    pub price: i64,
     /// Units per purchase.
-    count: i64,
+    pub count: i64,
 }
 
-/// The shop's unit items and our supply. Main thread only.
-fn shop() -> Result<(Vec<Buy>, i64), String> {
+/// The shop's unit items not bought yet (a bought item stays in the
+/// list, ReinforcementShopManager.HasBuyItem, research_deploy
+/// shop_prices) and our supply. Main thread only.
+pub(crate) fn shop() -> Result<(Vec<Buy>, i64), String> {
     let m = current_match()?;
     let pc = field(&m, "localPlayerController")?.ok_or("no localPlayerController")?;
     let supply = field(&pc, "player")?.map(|p| int(&p, "supply")).transpose()?.ok_or("no player")?;
@@ -222,9 +245,13 @@ fn shop() -> Result<(Vec<Buy>, i64), String> {
         if int(&cfg, "handCardType")? != 2 {
             continue;
         }
+        if rs.invoke("HasBuyItem", &json!([{"$handle": it.handle().0}]))?.as_bool() == Some(true) {
+            continue;
+        }
         let card = int(&cfg, "relatedID")?;
         let count = crate::units::unit(card)?.count as i64;
-        out.push(Buy { slot: i, card, level: int(&cfg, "level")?, price: int(&it, "reinforcePrice")?, count });
+        let level = int(&cfg, "level")?;
+        out.push(Buy { slot: i, card, level, record_level: (level - 1).max(0), price: int(&it, "reinforcePrice")?, count });
     }
     Ok((out, supply))
 }
@@ -277,23 +304,24 @@ fn simulate_once(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, St
     for (u, p) in record_units(&rec, h.seat, h.round)?.iter().zip(pieces) {
         u.write_field("position", &json!({"x": p.x, "y": p.y}))?;
     }
-    if !buys.is_empty() {
-        // A bought unit is a new NewUnitData in the copy (research_simulation
-        // bought_unit_in_copy). The shop's level 1 is a record's level 0
-        // (the lineup's Void Eye: shop level 1, record level 0); not yet
-        // proven for level 2.
+    // Cards bought this round, then the plan's buys, each a new
+    // NewUnitData in the copy (research_simulation bought_unit_in_copy);
+    // their pieces follow the record's cards.
+    let new: Vec<Buy> = h.added.iter().chain(buys).copied().collect();
+    let first_new = h.cards.len() - h.added.len();
+    if !new.is_empty() {
         let prs = field(&rec, "playerRecords")?.ok_or("no playerRecords")?;
         let pr = get(&prs, h.seat)?.ok_or("no player record")?;
         let rr = object(pr.invoke("GetRoundRecord", &json!([h.round]))?).ok_or("no round record")?;
         let pd = field(&rr, "playerData")?.ok_or("no playerData")?;
         let units = field(&pd, "units")?.ok_or("no units")?;
         let mut index = int(&pd, "unitIndex")?;
-        for (b, p) in buys.iter().zip(&pieces[h.cards.len()..]) {
+        for (b, p) in new.iter().zip(&pieces[first_new..]) {
             let u = object(invoke_static("Unityforge.Shim.Il2CppBridge", "NewObject", &json!(["Il2CppGameRiver.NewUnitData", "[]"]))?)
                 .ok_or("new NewUnitData gave nothing")?;
             u.write_field("id", &json!(b.card))?;
             u.write_field("index", &json!(index))?;
-            u.write_field("level", &json!((b.level - 1).max(0)))?;
+            u.write_field("level", &json!(b.record_level))?;
             u.write_field("sellSupply", &json!(b.price))?;
             u.write_field("position", &json!({"x": p.x, "y": p.y}))?;
             units.invoke("Add", &json!([{"$handle": u.handle().0}]))?;
@@ -309,7 +337,11 @@ fn simulate_once(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, St
     let fr = object(sim.invoke("GetFightResult", &json!([]))?).ok_or("no FightResult")?;
     let reports = field(&fr, "reports")?.ok_or("no reports")?;
     let mut out = Outcome { ours_total: h.units + buys.iter().map(|b| b.count).sum::<i64>(), ..Default::default() };
-    for i in 0..reports.list_len_or_zero()? {
+    let n = reports.list_len_or_zero()?;
+    if n == 0 {
+        return Err(format!("the fight gave no reports: {}", fr.dump()?));
+    }
+    for i in 0..n {
         let Some(r) = get(&reports, i)? else { continue };
         let alive = int(&r, "_AliveMechCount_k__BackingField")?;
         let score = int(&r, "_Score_k__BackingField")?;
@@ -318,6 +350,10 @@ fn simulate_once(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, St
         } else {
             (out.enemy_alive, out.enemy_score) = (alive, score);
         }
+    }
+    if out.ours_alive == 0 && out.enemy_alive == 0 {
+        let rs: Vec<Json> = (0..n).filter_map(|i| get(&reports, i).ok().flatten()).filter_map(|r| r.dump().ok()).collect();
+        return Err(format!("no side alive: result {} reports {}", fr.dump()?, Json::Array(rs)));
     }
     Ok(out)
 }
@@ -376,7 +412,7 @@ fn units_json(ids: &[i64], ps: &[Piece]) -> Vec<Json> {
 
 /// The placement search on the field's units only. Nothing on the
 /// field moves.
-fn plan_placement(budget: usize, steps: Vec<i32>) -> Result<Json, String> {
+pub(crate) fn plan_placement(budget: usize, steps: Vec<i32>) -> Result<Json, String> {
     let t = Instant::now();
     let (held, start) = MAIN_QUEUE.run_result("sim hold", Duration::from_secs(10), hold)?;
     let held = Arc::new(held);
@@ -399,7 +435,7 @@ fn plan_placement(budget: usize, steps: Vec<i32>) -> Result<Json, String> {
 /// (modforge::buying, each shop slot once), each bought unit put at the
 /// free spot nearest our units, then a placement search per choice.
 /// Ranked best first. Nothing is bought and nothing on the field moves.
-fn plan_deploy(budget_each: usize, steps: Vec<i32>, most_baskets: usize) -> Result<Json, String> {
+pub(crate) fn plan_deploy(budget_each: usize, steps: Vec<i32>, most_baskets: usize) -> Result<Json, String> {
     let t = Instant::now();
     let (held, start) = MAIN_QUEUE.run_result("sim hold", Duration::from_secs(10), hold)?;
     let (items, supply) = MAIN_QUEUE.run_result("sim shop", Duration::from_secs(10), shop)?;
@@ -457,7 +493,7 @@ fn plan_deploy(budget_each: usize, steps: Vec<i32>, most_baskets: usize) -> Resu
     }))
 }
 
-fn steps_arg(args: &Json) -> Vec<i32> {
+pub(crate) fn steps_arg(args: &Json) -> Vec<i32> {
     args.get("steps")
         .and_then(Json::as_array)
         .map(|a| a.iter().filter_map(Json::as_i64).map(|s| s as i32).collect())

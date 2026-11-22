@@ -155,6 +155,35 @@ fn lineup_screen() {
     }
 }
 
+/// Take a lineup choice through the choose_lineup op: the choice in
+/// MECHABELLUM_CHOOSE, or "best" for the lineup op's first (most
+/// damage per second). CHANGES THE GAME, so it runs only with
+/// MECHABELLUM_CHOOSE set.
+#[test]
+fn choose_lineup_op() {
+    let Ok(want) = std::env::var("MECHABELLUM_CHOOSE") else {
+        println!("SKIP: set MECHABELLUM_CHOOSE=<choice> or best");
+        return;
+    };
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let n = match want.parse::<i64>() {
+        Ok(n) => n,
+        Err(_) => {
+            let r = api.op("lineup", json!({}));
+            let Some(n) = r.result.get(0).and_then(|c| c["choice"].as_i64()) else {
+                println!("lineup: {:?} {}", r.error, r.result);
+                return;
+            };
+            n
+        }
+    };
+    let r = api.op("choose_lineup", json!({"choice": n}));
+    println!("choose_lineup {n}: ok {} {:?} {}", r.ok, r.error, r.result);
+}
+
 /// The mod's lineup op: every choice on screen with its units and
 /// totals, most damage per second first.
 #[test]

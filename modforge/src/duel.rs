@@ -49,12 +49,20 @@ pub struct UnitStats {
 impl UnitStats {
     /// Damage per second of one unit.
     pub fn dps(&self) -> f64 {
-        if self.attack_interval > 0.0 { self.damage / self.attack_interval } else { 0.0 }
+        if self.attack_interval > 0.0 {
+            self.damage / self.attack_interval
+        } else {
+            0.0
+        }
     }
 
     /// Whether this unit can attack `other`.
     pub fn can_hit(&self, other: &UnitStats) -> bool {
-        if other.flies { self.hits_air } else { self.hits_ground }
+        if other.flies {
+            self.hits_air
+        } else {
+            self.hits_ground
+        }
     }
 }
 
@@ -90,7 +98,14 @@ pub struct Placed {
 
 /// `count` units of one kind in rows of `per_row`, `spacing` apart,
 /// centred on (x, y).
-pub fn formation(kind: usize, count: u32, x: f64, y: f64, per_row: u32, spacing: f64) -> Vec<Placed> {
+pub fn formation(
+    kind: usize,
+    count: u32,
+    x: f64,
+    y: f64,
+    per_row: u32,
+    spacing: f64,
+) -> Vec<Placed> {
     let per_row = per_row.max(1);
     let rows = count.div_ceil(per_row);
     (0..count)
@@ -149,7 +164,14 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
         .iter()
         .enumerate()
         .flat_map(|(s, side)| {
-            side.units.iter().map(move |p| Unit { side: s, kind: p.kind, x: p.x, y: p.y, life: side.kinds[p.kind].life, cooldown: 0.0 })
+            side.units.iter().map(move |p| Unit {
+                side: s,
+                kind: p.kind,
+                x: p.x,
+                y: p.y,
+                life: side.kinds[p.kind].life,
+                cooldown: 0.0,
+            })
         })
         .collect();
     let mut dealt = [vec![0.0; a.kinds.len()], vec![0.0; b.kinds.len()]];
@@ -176,7 +198,11 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
             if dist > me.range {
                 let step = (me.speed * STEP).min(dist - me.range);
                 let (ex, ey) = (units[j].x, units[j].y);
-                moves.push((i, u.x + (ex - u.x) / dist * step, u.y + (ey - u.y) / dist * step));
+                moves.push((
+                    i,
+                    u.x + (ex - u.x) / dist * step,
+                    u.y + (ey - u.y) / dist * step,
+                ));
                 continue;
             }
             if u.cooldown > 0.0 {
@@ -185,7 +211,8 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
             let tgt = &units[j];
             for (k, e) in units.iter().enumerate() {
                 let splashed = me.splash > 0.0 && (e.x - tgt.x).hypot(e.y - tgt.y) <= me.splash;
-                if e.side != u.side && e.life > 0.0 && me.can_hit(stats(e)) && (k == j || splashed) {
+                if e.side != u.side && e.life > 0.0 && me.can_hit(stats(e)) && (k == j || splashed)
+                {
                     hits[k] += me.damage;
                     dealt[u.side][u.kind] += me.damage.min(e.life);
                 }
@@ -208,7 +235,9 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
     let left = [0, 1].map(|s| {
         (0..sides[s].kinds.len())
             .map(|k| {
-                let mine = units.iter().filter(|u| u.side == s && u.kind == k && u.life > 0.0);
+                let mine = units
+                    .iter()
+                    .filter(|u| u.side == s && u.kind == k && u.life > 0.0);
                 Left {
                     kind: k,
                     alive: mine.clone().count() as u32,
@@ -223,7 +252,11 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
         (false, true) => Some(1),
         _ => None,
     };
-    FightResult { winner, seconds: t, left }
+    FightResult {
+        winner,
+        seconds: t,
+        left,
+    }
 }
 
 #[cfg(test)]
@@ -231,7 +264,16 @@ mod tests {
     use super::*;
 
     fn unit(count: u32, life: f64, damage: f64, interval: f64, range: f64) -> UnitStats {
-        UnitStats { count, life, damage, attack_interval: interval, range, speed: 10.0, hits_ground: true, ..Default::default() }
+        UnitStats {
+            count,
+            life,
+            damage,
+            attack_interval: interval,
+            range,
+            speed: 10.0,
+            hits_ground: true,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -270,7 +312,17 @@ mod tests {
         let big = [unit(1, 100.0, 10.0, 1.0, 5.0)];
         let small = [unit(1, 30.0, 10.0, 1.0, 5.0)];
         let (pa, pb) = (one(&big, 0.0), one(&small, 4.0));
-        let r = fight(&Side { kinds: &big, units: &pa }, &Side { kinds: &small, units: &pb }, 60.0);
+        let r = fight(
+            &Side {
+                kinds: &big,
+                units: &pa,
+            },
+            &Side {
+                kinds: &small,
+                units: &pb,
+            },
+            60.0,
+        );
         assert_eq!(r.winner, Some(0));
         assert_eq!(r.left[1][0].alive, 0);
         // Three hits kill the small one; it lands three too.
@@ -284,19 +336,43 @@ mod tests {
         let long = [unit(1, 100.0, 10.0, 1.0, 60.0)];
         let short = [unit(1, 100.0, 10.0, 1.0, 10.0)];
         let (pa, pb) = (one(&long, 0.0), one(&short, 60.0));
-        let r = fight(&Side { kinds: &long, units: &pa }, &Side { kinds: &short, units: &pb }, 60.0);
+        let r = fight(
+            &Side {
+                kinds: &long,
+                units: &pa,
+            },
+            &Side {
+                kinds: &short,
+                units: &pb,
+            },
+            60.0,
+        );
         assert_eq!(r.winner, Some(0));
     }
 
     #[test]
     fn splash_hits_a_packed_group_harder_than_a_spread_one() {
-        let splasher = [UnitStats { splash: 3.0, ..unit(1, 10_000.0, 10.0, 1.0, 50.0) }];
+        let splasher = [UnitStats {
+            splash: 3.0,
+            ..unit(1, 10_000.0, 10.0, 1.0, 50.0)
+        }];
         let swarm = [unit(9, 25.0, 0.0, 1.0, 1.0)];
         let me = one(&splasher, 0.0);
         let packed = formation(0, 9, 30.0, 0.0, 3, 1.0);
         let spread = formation(0, 9, 30.0, 0.0, 3, 10.0);
         let time = |p: &[Placed]| {
-            fight(&Side { kinds: &splasher, units: &me }, &Side { kinds: &swarm, units: p }, 120.0).seconds
+            fight(
+                &Side {
+                    kinds: &splasher,
+                    units: &me,
+                },
+                &Side {
+                    kinds: &swarm,
+                    units: p,
+                },
+                120.0,
+            )
+            .seconds
         };
         assert!(time(&packed) < time(&spread));
     }
@@ -304,9 +380,22 @@ mod tests {
     #[test]
     fn ground_only_units_cannot_hit_air() {
         let ground = [unit(1, 100.0, 10.0, 1.0, 50.0)];
-        let air = [UnitStats { flies: true, ..unit(1, 100.0, 0.0, 1.0, 1.0) }];
+        let air = [UnitStats {
+            flies: true,
+            ..unit(1, 100.0, 0.0, 1.0, 1.0)
+        }];
         let (pa, pb) = (one(&ground, 0.0), one(&air, 10.0));
-        let r = fight(&Side { kinds: &ground, units: &pa }, &Side { kinds: &air, units: &pb }, 10.0);
+        let r = fight(
+            &Side {
+                kinds: &ground,
+                units: &pa,
+            },
+            &Side {
+                kinds: &air,
+                units: &pb,
+            },
+            10.0,
+        );
         assert_eq!(r.winner, None);
         assert_eq!(r.left[1][0].life, 100.0);
     }
