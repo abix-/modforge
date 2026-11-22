@@ -910,64 +910,6 @@ pub unsafe fn bone(c: &UObject, name: &str, hidden: bool) -> Result<Value, Strin
     }
 }
 
-/// Each skinned mesh asset's bones as (name, parent), read once per
-/// asset: a dragon has 546 bones, two calls each.
-static BONE_TREES: parking_lot::Mutex<Vec<(usize, Vec<(String, String)>)>> =
-    parking_lot::Mutex::new(Vec::new());
-
-/// A skinned mesh's bones as (name, parent), cached by its mesh asset.
-///
-/// # Safety
-/// Game thread, `c` live.
-unsafe fn bone_tree(c: &UObject) -> Vec<(String, String)> {
-    if !is(c, "SkinnedMeshComponent") {
-        return Vec::new();
-    }
-    // SAFETY: the caller's, for every call below.
-    unsafe {
-        let asset = reflect::get_fields(c, &["SkinnedAsset".into()])
-            .ok()
-            .and_then(|v| v["SkinnedAsset"]["addr"].as_str().map(str::to_owned))
-            .and_then(|s| usize::from_str_radix(s.trim_start_matches("0x"), 16).ok())
-            .unwrap_or(0);
-        if asset == 0 {
-            return Vec::new();
-        }
-        if let Some((_, t)) = BONE_TREES.lock().iter().find(|(a, _)| *a == asset) {
-            return t.clone();
-        }
-        let n = call(c, "SkinnedMeshComponent", "GetNumBones", json!({}))
-            .ok()
-            .and_then(|v| v["ReturnValue"].as_i64())
-            .unwrap_or(0);
-        let mut tree = Vec::new();
-        for i in 0..n {
-            let Some(name) = call(
-                c,
-                "SkinnedMeshComponent",
-                "GetBoneName",
-                json!({"BoneIndex": i}),
-            )
-            .ok()
-            .and_then(|v| v["ReturnValue"].as_str().map(str::to_owned)) else {
-                continue;
-            };
-            let parent = call(
-                c,
-                "SkinnedMeshComponent",
-                "GetParentBone",
-                json!({"BoneName": name}),
-            )
-            .ok()
-            .and_then(|v| v["ReturnValue"].as_str().map(str::to_owned))
-            .unwrap_or_default();
-            tree.push((name, parent));
-        }
-        BONE_TREES.lock().push((asset, tree.clone()));
-        tree
-    }
-}
-
 /// The topmost bones whose names hold one of `words` and none of `not`
 /// (any case): the bones to hide for that body area, as hiding a bone
 /// hides every bone below it.
@@ -1087,17 +1029,17 @@ pub unsafe fn morphs_by_class(base_class: &str) -> std::collections::BTreeMap<St
     out
 }
 
-/// A look of `size` that hides, on every skinned mesh of the actor, the
-/// body areas in `hidden_areas`, each given as (words, not words) for
-/// [`topmost_matching`], and sets each of `morphs` (name, value) on
-/// every skeletal mesh that has a morph of that name.
+/// A look of `size` that turns off, on every skinned mesh of the actor,
+/// each material slot whose material name `hide_slot` answers true for
+/// (the slots the parts.slot op turns off), and sets each of `morphs`
+/// (name, value) on every skeletal mesh that has a morph of that name.
 ///
 /// # Safety
 /// Game thread, `a` live.
 pub unsafe fn area_look(
     a: &UObject,
     size: f64,
-    hidden_areas: &[(Vec<String>, Vec<String>)],
+    hide_slot: &dyn Fn(&str) -> bool,
     morphs: &[(String, f64)],
 ) -> Look {
     let mut look = Look {
@@ -1106,13 +1048,26 @@ pub unsafe fn area_look(
     };
     // SAFETY: the caller's.
     for (name, c) in unsafe { meshes(a) } {
-        if !hidden_areas.is_empty() {
-            // SAFETY: the actor's live component, on the game thread.
-            let tree = unsafe { bone_tree(c) };
-            for (words, not) in hidden_areas {
-                for b in topmost_matching(&tree, words, not) {
-                    look.bones_off.push((name.clone(), b));
-                }
+        // SAFETY: the actor's live component, on the game thread.
+        let n = unsafe { call(c, "PrimitiveComponent", "GetNumMaterials", json!({})) }
+            .ok()
+            .and_then(|v| v["ReturnValue"].as_i64())
+            .unwrap_or(0);
+        for i in 0..n {
+            // SAFETY: as above.
+            let material = unsafe {
+                call(
+                    c,
+                    "PrimitiveComponent",
+                    "GetMaterial",
+                    json!({"ElementIndex": i}),
+                )
+            }
+            .ok()
+            .and_then(|v| v["ReturnValue"]["name"].as_str().map(str::to_owned))
+            .unwrap_or_default();
+            if hide_slot(&material) {
+                look.slots_off.push((name.clone(), i));
             }
         }
         if morphs.is_empty() {
