@@ -337,6 +337,68 @@ static SIZES: parking_lot::Mutex<Vec<(usize, f64)>> = parking_lot::Mutex::new(Ve
 /// scales by the actor's size.
 static HOLD_CALLERS: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
 
+/// The bone [`hold_size_through`] keeps in place, by its chain's root.
+static HOLD_ANCHOR: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::new(None);
+/// Per skinned mesh, the tip of the anchor chain (None: no such bone).
+static ANCHOR_TIPS: parking_lot::Mutex<Vec<(usize, Option<String>)>> =
+    parking_lot::Mutex::new(Vec::new());
+
+/// The deepest bone under the anchor bone on `c`, looked up once per
+/// component.
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn anchor_tip(c: &UObject) -> Option<String> {
+    let root = HOLD_ANCHOR.lock().clone()?;
+    let key = c as *const UObject as usize;
+    if let Some((_, t)) = ANCHOR_TIPS.lock().iter().find(|(k, _)| *k == key) {
+        return t.clone();
+    }
+    // SAFETY: the caller's.
+    let list = unsafe { bones(c) }.ok()?;
+    // Bones come parents first: depth below the root, by name.
+    let mut depth: Vec<(String, usize)> = Vec::new();
+    let mut tip: Option<(String, usize)> = None;
+    for b in list["bones"].as_array().into_iter().flatten() {
+        let name = b[0].as_str().unwrap_or("").to_owned();
+        let parent = b[1].as_str().unwrap_or("");
+        let d = if name == root {
+            Some(0)
+        } else {
+            depth.iter().find(|(n, _)| n == parent).map(|(_, d)| d + 1)
+        };
+        if let Some(d) = d {
+            if tip.as_ref().is_none_or(|(_, td)| d > *td) {
+                tip = Some((name.clone(), d));
+            }
+            depth.push((name, d));
+        }
+    }
+    let tip = tip.map(|(n, _)| n);
+    crate::log!("parts: anchor tip on {}: {tip:?}", c.name());
+    ANCHOR_TIPS.lock().push((key, tip.clone()));
+    tip
+}
+
+/// A bone's world location (SceneComponent::GetSocketLocation; a
+/// skinned mesh's bones are sockets).
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn bone_location(c: &UObject, bone: &str) -> Option<(f64, f64, f64)> {
+    // SAFETY: the caller's.
+    let r = unsafe {
+        call(
+            c,
+            "SceneComponent",
+            "GetSocketLocation",
+            json!({"InSocketName": bone}),
+        )
+    }
+    .ok()?;
+    vector(&r["ReturnValue"])
+}
+
 fn remember_size(a: &UObject, factor: f64) {
     let key = a as *const UObject as usize;
     let mut s = SIZES.lock();
@@ -357,11 +419,17 @@ fn remember_size(a: &UObject, factor: f64) {
 /// 2026-11-21). Other world-transform calls are left alone: one built
 /// from the actor's current transform already has its size.
 ///
+/// With `anchor` (a bone name), the body is then moved so the tip of
+/// that bone's chain (its deepest bone) stays where the game put it at
+/// full size, so a shrunk body still meets the other one at that point.
+/// Bodies without that bone are only scaled.
+///
 /// Install once, after the runtime is up.
-pub fn hold_size_through(callers: &[&str]) -> Result<(), String> {
+pub fn hold_size_through(callers: &[&str], anchor: Option<&str>) -> Result<(), String> {
     HOLD_CALLERS
         .lock()
         .extend(callers.iter().map(|c| c.to_string()));
+    *HOLD_ANCHOR.lock() = anchor.map(str::to_owned);
     let h = crate::hook::native_function::NativeFunctionHook::install(
         "SceneComponent",
         "K2_SetWorldTransform",
@@ -391,11 +459,29 @@ pub fn hold_size_through(callers: &[&str]) -> Result<(), String> {
                 let Some((x, y, z)) = vector(&now["RelativeScale3D"]) else {
                     return;
                 };
+                let tip = anchor_tip(c);
+                let full = tip.as_deref().and_then(|t| bone_location(c, t));
                 let _ = call(
                     c,
                     "SceneComponent",
                     "SetRelativeScale3D",
                     json!({"NewScale3D": {"X": x * f, "Y": y * f, "Z": z * f}}),
+                );
+                let (Some(t), Some(full)) = (tip, full) else {
+                    return;
+                };
+                let Some(small) = bone_location(c, &t) else {
+                    return;
+                };
+                let _ = call(
+                    c,
+                    "SceneComponent",
+                    "K2_AddWorldOffset",
+                    json!({
+                        "DeltaLocation": {"X": full.0 - small.0, "Y": full.1 - small.1, "Z": full.2 - small.2},
+                        "bSweep": false,
+                        "bTeleport": true,
+                    }),
                 );
             }
         },
