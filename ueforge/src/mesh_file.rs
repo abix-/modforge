@@ -74,6 +74,14 @@ pub struct Socket {
     pub pos: [f64; 3],
 }
 
+/// A morph target on LOD 0: (vertex index, offset x, y, z in cm at
+/// weight 1) for each vertex it moves.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Morph {
+    pub name: String,
+    pub d: Vec<(u32, f32, f32, f32)>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Mesh {
     pub bones: Vec<Bone>,
@@ -81,6 +89,8 @@ pub struct Mesh {
     #[serde(default)]
     pub sockets: Vec<Socket>,
     pub verts: Vec<Vert>,
+    #[serde(default)]
+    pub morphs: Vec<Morph>,
 }
 
 enum State {
@@ -379,6 +389,64 @@ impl Mesh {
         Some((at, at + d * len))
     }
 
+    /// The drawn canal's width, closed and opened: along the line
+    /// [`Mesh::canal`] fits (`bones`, `from`, `to`), every cm from the
+    /// entrance, the nearest wall vertex to the line (the narrowest the
+    /// canal is there, cm), at rest and with morphs `morphs` all at
+    /// weight 1. Reference pose. Index k is k to k+1 cm in; a cm with no
+    /// wall vertex is None. Asked 2026-11-22: "the canal didnt open wide
+    /// enough. is are we not redoing the curve/morph properly??".
+    #[allow(clippy::type_complexity)]
+    pub fn canal_width(
+        &self,
+        bones: &[&str],
+        from: &str,
+        to: &str,
+        morphs: &[&str],
+    ) -> Option<Vec<Option<(f64, f64)>>> {
+        let (a, b) = self.canal(bones, from, to)?;
+        let d = (b - a).normalize_or_zero();
+        let idx: Vec<usize> = bones.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
+        let mut moved = vec![DVec3::ZERO; self.verts.len()];
+        for n in morphs {
+            let m = self.morphs.iter().find(|m| m.name == *n)?;
+            for &(k, x, y, z) in &m.d {
+                if let Some(v) = moved.get_mut(k as usize) {
+                    *v += DVec3::new(x as f64, y as f64, z as f64);
+                }
+            }
+        }
+        let mut out: Vec<Option<(f64, f64)>> = Vec::new();
+        for (v, off) in self.verts.iter().zip(&moved) {
+            let on: f64 =
+                v.w.iter()
+                    .filter(|(k, _)| idx.contains(&(*k as usize)))
+                    .map(|(_, w)| w)
+                    .sum();
+            if on < 0.5 {
+                continue;
+            }
+            let p = DVec3::from_array(v.p) - a;
+            let s = p.dot(d);
+            if s < 0.0 || s > 1000.0 {
+                continue;
+            }
+            let k = s.floor() as usize;
+            if out.len() <= k {
+                out.resize(k + 1, None);
+            }
+            let (r0, r1) = (
+                p.reject_from(d).length(),
+                (p + *off).reject_from(d).length(),
+            );
+            out[k] = Some(match out[k] {
+                Some((a0, a1)) => (a0.min(r0), a1.min(r1)),
+                None => (r0, r1),
+            });
+        }
+        Some(out)
+    }
+
     /// How far past bone `tip` the drawn mesh reaches along the chain
     /// line, cm: the thickness's length less the chain's.
     pub fn reach(&self, chain: &[&str], step: f64) -> Option<f64> {
@@ -437,6 +505,7 @@ mod tests {
                 },
             ],
             verts,
+            morphs: Vec::new(),
         }
     }
 
@@ -454,6 +523,44 @@ mod tests {
         assert!(a.distance(DVec3::ZERO) < 1e-6, "{a}");
         assert!((b - a).normalize().distance(DVec3::X) < 1e-6, "{b}");
         assert!(((b - a).length() - 18f64.sqrt()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn canal_width_opens_with_the_morph() {
+        let mut m = tube();
+        for v in &mut m.verts {
+            v.p[0] += 0.5;
+        }
+        // Every tube vertex 1 cm farther out.
+        let d = m
+            .verts
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.p[1].abs() < 10.0)
+            .map(|(k, v)| {
+                let r = (v.p[1] * v.p[1] + v.p[2] * v.p[2]).sqrt();
+                (k as u32, 0.0, (v.p[1] / r) as f32, (v.p[2] / r) as f32)
+            })
+            .collect();
+        m.morphs.push(Morph {
+            name: "open".into(),
+            d,
+        });
+        let w = m.canal_width(&["a", "b"], "in", "deep", &["open"]).unwrap();
+        let (r0, r1) = w[2].unwrap();
+        assert!(
+            (r0 - 2.0).abs() < 1e-6 && (r1 - 3.0).abs() < 1e-6,
+            "{r0} {r1}"
+        );
+        let (r0, r1) = w[8].unwrap();
+        assert!(
+            (r0 - 1.0).abs() < 1e-6 && (r1 - 2.0).abs() < 1e-6,
+            "{r0} {r1}"
+        );
+        assert!(
+            m.canal_width(&["a", "b"], "in", "deep", &["nope"])
+                .is_none()
+        );
     }
 
     #[test]

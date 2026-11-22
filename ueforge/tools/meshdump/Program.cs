@@ -71,7 +71,19 @@ var sockets = (dto.Sockets ?? [])
         rot = new[] { s.RelativeRotation.Pitch, s.RelativeRotation.Yaw, s.RelativeRotation.Roll },
         scale = new[] { s.RelativeScale.X, s.RelativeScale.Y, s.RelativeScale.Z },
     });
+// The morph targets on LOD 0: each moved vertex's index and offset (cm,
+// at weight 1), offsets under 0.001 cm left out.
+var morphs = (mesh.MorphTargets ?? [])
+    .Select(m => m.Load<CUE4Parse.UE4.Assets.Exports.Animation.UMorphTarget>())
+    .Where(m => m is not null && m.MorphLODModels.Length > 0 && m.MorphLODModels[0].Vertices is not null)
+    .Select(m => new
+    {
+        name = m!.Name,
+        d = m.MorphLODModels[0].Vertices
+            .Where(v => v.PositionDelta.Size() > 1e-3f)
+            .Select(v => new object[] { v.SourceIdx, MathF.Round(v.PositionDelta.X, 3), MathF.Round(v.PositionDelta.Y, 3), MathF.Round(v.PositionDelta.Z, 3) }),
+    });
 await using var f = File.Create(outPath);
-await JsonSerializer.SerializeAsync(f, new { mesh = path, bones, sockets, verts });
+await JsonSerializer.SerializeAsync(f, new { mesh = path, bones, sockets, verts, morphs });
 Console.WriteLine($"{path}: {dto.Bones.Length} bones, {lod.Vertices.Length} vertices -> {outPath}");
 return 0;

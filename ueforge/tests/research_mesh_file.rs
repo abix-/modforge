@@ -25,6 +25,41 @@ fn research_mesh_thickness() {
     println!("radius every 0.5 cm: {}", line.join(" "));
 }
 
+/// How far each opening morph opens the drawn canal: MESH_JSON,
+/// MESH_CANAL=from,to,walls... , MESH_MORPHS=a|b|c (each alone). Every cm
+/// in: the narrowest wall point closed, and opened by the morph at 1.
+#[test]
+#[ignore]
+fn research_mesh_canal_width() {
+    let path = std::env::var("MESH_JSON").expect("MESH_JSON");
+    let canal = std::env::var("MESH_CANAL").expect("MESH_CANAL");
+    let morphs = std::env::var("MESH_MORPHS").expect("MESH_MORPHS");
+    let c: Vec<&str> = canal.split(',').collect();
+    let m: ueforge::mesh_file::Mesh =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    println!(
+        "{} morphs, {} offsets",
+        m.morphs.len(),
+        m.morphs.iter().map(|x| x.d.len()).sum::<usize>()
+    );
+    for n in morphs.split('|') {
+        let w = m.canal_width(&c[2..], c[0], c[1], &[n]);
+        let Some(w) = w else {
+            println!("{n}: none");
+            continue;
+        };
+        let line: Vec<String> = w
+            .iter()
+            .enumerate()
+            .map(|(k, r)| match r {
+                Some((a, b)) => format!("{k}:{a:.2}->{b:.2}"),
+                None => format!("{k}:-"),
+            })
+            .collect();
+        println!("{n}: {}", line.join(" "));
+    }
+}
+
 /// The drawn canal against its two points: MESH_JSON, MESH_CANAL=
 /// bone,from,to (the canal's bone, then two bones or sockets). Each 1 cm
 /// along the from-to line: the vertices weighted at least half to the
