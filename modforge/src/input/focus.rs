@@ -14,12 +14,13 @@ use parking_lot::Mutex;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, EVENT_SYSTEM_FOREGROUND, GetClassNameW, GetForegroundWindow, GetMessageW,
-    GetWindowThreadProcessId, MSG, PostThreadMessageW, WINEVENT_OUTOFCONTEXT, WM_QUIT,
+    DispatchMessageW, EVENT_SYSTEM_FOREGROUND, GA_ROOTOWNER, GetAncestor, GetClassNameW,
+    GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId, MSG,
+    PostThreadMessageW, WINEVENT_OUTOFCONTEXT, WM_QUIT,
 };
 
 /// The window class and the handler of the one watcher.
-static WATCH: Mutex<Option<(&'static str, fn(bool))>> = Mutex::new(None);
+static WATCH: Mutex<Option<(&'static str, fn(bool, &str))>> = Mutex::new(None);
 /// 0 not focused, 1 focused, 2 not told yet.
 static LAST: AtomicU8 = AtomicU8::new(2);
 /// The watcher thread's id, for WM_QUIT.
@@ -33,24 +34,50 @@ fn class_of(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
 
-fn is_game_window(hwnd: HWND, class: &str) -> bool {
-    if hwnd.is_null() {
-        return false;
-    }
+fn title_of(hwnd: HWND) -> String {
+    let mut buf = [0u16; 64];
+    // SAFETY: Windows writes at most buf.len() UTF-16 units into the live buffer.
+    let n = unsafe { GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    String::from_utf16_lossy(&buf[..n.max(0) as usize])
+}
+
+fn pid_of(hwnd: HWND) -> u32 {
     let mut pid = 0;
     // SAFETY: any HWND value is accepted; writes only to the live local.
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
-    pid == std::process::id() && class_of(hwnd) == class
+    pid
 }
 
-/// Tell the handler when the state changed.
+/// The window, or the window that owns it (a game's popup or menu
+/// window), is this process's window of `class`.
+fn is_game_window(hwnd: HWND, class: &str) -> bool {
+    if hwnd.is_null() || pid_of(hwnd) != std::process::id() {
+        return false;
+    }
+    // SAFETY: any HWND value is accepted.
+    let root = unsafe { GetAncestor(hwnd, GA_ROOTOWNER) };
+    class_of(hwnd) == class || (!root.is_null() && class_of(root) == class)
+}
+
+/// Tell the handler when the state changed, with the foreground
+/// window's class, title and process.
 fn report(hwnd: HWND) {
     let Some((class, f)) = *WATCH.lock() else {
         return;
     };
     let now = is_game_window(hwnd, class) as u8;
     if LAST.swap(now, Ordering::AcqRel) != now {
-        let _ = std::panic::catch_unwind(|| f(now == 1));
+        let window = if hwnd.is_null() {
+            "no window".to_string()
+        } else {
+            format!(
+                "{} '{}' pid {}",
+                class_of(hwnd),
+                title_of(hwnd),
+                pid_of(hwnd)
+            )
+        };
+        let _ = std::panic::catch_unwind(|| f(now == 1, &window));
     }
 }
 
@@ -70,7 +97,7 @@ unsafe extern "system" fn on_foreground(
 /// in this process is the foreground window: once now, then on each
 /// change. One watcher per process; a second call replaces nothing and
 /// returns an error.
-pub fn watch(window_class: &'static str, on_change: fn(bool)) -> Result<(), String> {
+pub fn watch(window_class: &'static str, on_change: fn(bool, &str)) -> Result<(), String> {
     let mut handle = HANDLE.lock();
     if handle.is_some() {
         return Err("focus watcher already running".into());
