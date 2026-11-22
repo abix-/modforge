@@ -58,7 +58,20 @@ var verts = lod.Vertices.Select(v => new
     p = new[] { v.Position.X, v.Position.Y, v.Position.Z },
     w = v.Influences.Where(i => i.Weight > 0).Select(i => new object[] { i.Bone, i.Weight }),
 });
+// The mesh's sockets and its skeleton's, mesh first (the game looks a
+// socket up on the mesh before the skeleton).
+var sockets = (dto.Sockets ?? [])
+    .Select(s => s.Load<USkeletalMeshSocket>())
+    .Where(s => s is not null)
+    .Select(s => new
+    {
+        name = s!.SocketName.Text,
+        bone = s.BoneName.Text,
+        pos = new[] { s.RelativeLocation.X, s.RelativeLocation.Y, s.RelativeLocation.Z },
+        rot = new[] { s.RelativeRotation.Pitch, s.RelativeRotation.Yaw, s.RelativeRotation.Roll },
+        scale = new[] { s.RelativeScale.X, s.RelativeScale.Y, s.RelativeScale.Z },
+    });
 await using var f = File.Create(outPath);
-await JsonSerializer.SerializeAsync(f, new { mesh = path, bones, verts });
+await JsonSerializer.SerializeAsync(f, new { mesh = path, bones, sockets, verts });
 Console.WriteLine($"{path}: {dto.Bones.Length} bones, {lod.Vertices.Length} vertices -> {outPath}");
 return 0;

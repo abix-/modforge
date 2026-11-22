@@ -65,9 +65,21 @@ pub struct Vert {
     pub w: Vec<(u16, f64)>,
 }
 
+/// A socket on the mesh or its skeleton.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Socket {
+    pub name: String,
+    pub bone: String,
+    /// Relative to the bone, cm.
+    pub pos: [f64; 3],
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Mesh {
     pub bones: Vec<Bone>,
+    /// Mesh sockets first, then the skeleton's.
+    #[serde(default)]
+    pub sockets: Vec<Socket>,
     pub verts: Vec<Vert>,
 }
 
@@ -184,6 +196,18 @@ impl Mesh {
         self.bones.iter().position(|b| b.name == n)
     }
 
+    /// Bone or socket `n`'s position, component space, reference pose.
+    pub fn point(&self, pose: &[Xform], n: &str) -> Option<DVec3> {
+        if let Some(i) = self.bone(n) {
+            return Some(pose.get(i)?.pos);
+        }
+        let s = self.sockets.iter().find(|s| s.name == n)?;
+        Some(
+            pose.get(self.bone(&s.bone)?)?
+                .point(DVec3::from_array(s.pos)),
+        )
+    }
+
     /// Each bone's transform in component space, reference pose.
     pub fn ref_pose(&self) -> Vec<Xform> {
         let mut out: Vec<Xform> = Vec::with_capacity(self.bones.len());
@@ -281,6 +305,80 @@ impl Mesh {
         Some(bins)
     }
 
+    /// The drawn canal through bones `bones` (its walls: the vertices
+    /// weighted at least half to them), entered at bone or socket
+    /// `from` and heading first toward `to`: its entrance (on the canal's
+    /// line, nearest `from`) and the point `to`'s distance down the line
+    /// from it. Component space, reference pose. The line goes through
+    /// the walls' centre every cm from 1 cm in (the surface around the
+    /// entrance, in the first cm, left out), fitted again, each time
+    /// measured along the last fit, until it moves less than 0.001 cm
+    /// (at most 20 fits). Asked 2026-11-22: "canal
+    /// alignment is still off". None with fewer than two cm of walls.
+    pub fn canal(&self, bones: &[&str], from: &str, to: &str) -> Option<(DVec3, DVec3)> {
+        let pose = self.ref_pose();
+        let (a, b) = (self.point(&pose, from)?, self.point(&pose, to)?);
+        let len = (b - a).length();
+        let idx: Vec<usize> = bones.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
+        let walls: Vec<DVec3> = self
+            .verts
+            .iter()
+            .filter(|v| {
+                v.w.iter()
+                    .filter(|(k, _)| idx.contains(&(*k as usize)))
+                    .map(|(_, w)| w)
+                    .sum::<f64>()
+                    >= 0.5
+            })
+            .map(|v| DVec3::from_array(v.p))
+            .collect();
+        let (mut at, mut d) = (a, (b - a).normalize_or_zero());
+        if d == DVec3::ZERO {
+            return None;
+        }
+        for _ in 0..20 {
+            let (was_at, was_d) = (at, d);
+            let mut bins: HashMap<i64, (DVec3, f64)> = HashMap::new();
+            for p in &walls {
+                let s = (*p - at).dot(d).floor() as i64;
+                if s >= 1 {
+                    let e = bins.entry(s).or_insert((DVec3::ZERO, 0.0));
+                    e.0 += *p;
+                    e.1 += 1.0;
+                }
+            }
+            if bins.len() < 2 {
+                return None;
+            }
+            let centres: Vec<(DVec3, f64)> = bins.values().map(|(s, n)| (*s / *n, *n)).collect();
+            let total: f64 = centres.iter().map(|(_, n)| n).sum();
+            let mid = centres.iter().map(|(c, n)| *c * *n).sum::<DVec3>() / total;
+            // The centres' main direction: power iteration on their
+            // spread, from the last direction.
+            let mut dir = d;
+            for _ in 0..50 {
+                let next = centres
+                    .iter()
+                    .map(|(c, n)| (*c - mid) * ((*c - mid).dot(dir) * *n))
+                    .sum::<DVec3>()
+                    .normalize_or_zero();
+                if next == DVec3::ZERO {
+                    break;
+                }
+                dir = next;
+            }
+            if dir.dot(d) < 0.0 {
+                dir = -dir;
+            }
+            d = dir;
+            at = mid + d * (a - mid).dot(d);
+            if at.distance(was_at) < 1e-3 && (d - was_d).length() * len < 1e-3 {
+                break;
+            }
+        }
+        Some((at, at + d * len))
+    }
+
     /// How far past bone `tip` the drawn mesh reaches along the chain
     /// line, cm: the thickness's length less the chain's.
     pub fn reach(&self, chain: &[&str], step: f64) -> Option<f64> {
@@ -325,8 +423,37 @@ mod tests {
         });
         Mesh {
             bones: vec![bone("a", -1, 0.0), bone("b", 0, 5.0), bone("c", 1, 5.0)],
+            sockets: vec![
+                // 1 cm off the tube's axis and aimed 45 degrees off it.
+                Socket {
+                    name: "in".into(),
+                    bone: "a".into(),
+                    pos: [0.0, 1.0, 0.0],
+                },
+                Socket {
+                    name: "deep".into(),
+                    bone: "a".into(),
+                    pos: [3.0, 4.0, 0.0],
+                },
+            ],
             verts,
         }
+    }
+
+    #[test]
+    fn canal_follows_the_walls_not_the_points() {
+        let mut m = tube();
+        // Rings between the 1 cm steps, as a drawn mesh's are, not on
+        // them (a ring split over two steps leans each centre).
+        for v in &mut m.verts {
+            v.p[0] += 0.5;
+        }
+        let (a, b) = m.canal(&["a", "b"], "in", "deep").unwrap();
+        // On the tube's axis, nearest "in", heading along X, as long as
+        // in to deep.
+        assert!(a.distance(DVec3::ZERO) < 1e-6, "{a}");
+        assert!((b - a).normalize().distance(DVec3::X) < 1e-6, "{b}");
+        assert!(((b - a).length() - 18f64.sqrt()).abs() < 1e-9);
     }
 
     #[test]
