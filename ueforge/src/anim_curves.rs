@@ -85,6 +85,35 @@ pub struct Curves {
     len: usize,
     /// The curve stream TArray in the sequence.
     pub(crate) array_at: usize,
+    /// The curve name TArray in the sequence.
+    pub(crate) names_at: usize,
+    /// How many curves the stream holds (`names` can be longer once
+    /// curves are added for a rewrite).
+    pub(crate) stored: usize,
+}
+
+/// A curve name table for `names`, as FCompressedAnimSequence keeps
+/// it: entry k is curve k's FName and an int32, and the int32s list the
+/// curves in FName::FastLess order (comparison index, then number), as
+/// RebuildCurveIndexTable writes them (UE 5.8 AnimCompressionTypes.cpp)
+/// and the codecs' DecompressCurves read them. New names are added to
+/// the game's name table. Game thread.
+pub(crate) fn name_table(names: &[String]) -> Result<Vec<u8>, String> {
+    let ids: Vec<crate::ue::fname::FName> = names
+        .iter()
+        .map(|n| {
+            crate::ue::fname::from_str(n, crate::ue::fname::FindName::Add)
+                .ok_or_else(|| format!("no FName for {n}"))
+        })
+        .collect::<Result<_, _>>()?;
+    let mut order: Vec<usize> = (0..ids.len()).collect();
+    order.sort_by_key(|&k| (ids[k].comparison_index as u32, ids[k].number));
+    let mut out = Vec::with_capacity(ids.len() * 12);
+    for (k, id) in ids.iter().enumerate() {
+        out.extend_from_slice(&id.as_u64().to_le_bytes());
+        out.extend_from_slice(&(order[k] as i32).to_le_bytes());
+    }
+    Ok(out)
 }
 
 /// The curves of `seq`, when its curve codec is ACL or the compressed
@@ -115,20 +144,24 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
         }
     };
     let array_at = base + at + STREAM;
+    let names_at = base + at + NAMES;
     let buffer: usize = read(array_at).ok_or("no curve stream")?;
     let len: i32 = read(array_at + 8).ok_or("no curve stream")?;
-    let names_data: usize = read(base + at + NAMES).ok_or("no curve names")?;
-    let n_names: i32 = read(base + at + NAMES + 8).ok_or("no curve names")?;
+    let names_data: usize = read(names_at).ok_or("no curve names")?;
+    let n_names: i32 = read(names_at + 8).ok_or("no curve names")?;
     if n_names <= 0 || len <= 0 || buffer < 0x1_0000 || !readable(buffer, len as usize) {
+        // No curves: the clip's samples, so curves can be added.
         return Ok(Curves {
             names: Vec::new(),
-            samples: 0,
+            samples: clip.samples,
             rate: clip.rate,
             duration: clip.duration,
             codec,
             buffer: 0,
             len: 0,
             array_at,
+            names_at,
+            stored: 0,
         });
     }
     if codec == Codec::RichCurve {
@@ -148,6 +181,8 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
             buffer,
             len: len as usize,
             array_at,
+            names_at,
+            stored: n,
         });
     }
     let (mut n, mut samples, mut rate, mut duration) = (0u32, 0u32, 0f32, 0f32);
@@ -187,6 +222,8 @@ pub fn curves(seq: &UObject) -> Result<Curves, String> {
         buffer,
         len: len as usize,
         array_at,
+        names_at,
+        stored: n as usize,
     })
 }
 
@@ -227,8 +264,10 @@ impl Curves {
     }
 
     fn at_time(&self, time: f32, step: i32) -> Result<Vec<f32>, String> {
-        let mut out = vec![0f32; self.names.len()];
-        if self.names.is_empty() {
+        // Curves added for a rewrite (past `stored`) read 0.
+        let mut out = vec![0f32; self.stored];
+        if self.stored == 0 {
+            out.resize(self.names.len(), 0.0);
             return Ok(out);
         }
         if self.codec == Codec::RichCurve {
@@ -237,6 +276,7 @@ impl Curves {
             for (k, v) in out.iter_mut().enumerate() {
                 *v = crate::rich_curve::eval(b, k, t)?;
             }
+            out.resize(self.names.len(), 0.0);
             return Ok(out);
         }
         // SAFETY: the buffer was checked as ACL curves with this count.
@@ -252,14 +292,23 @@ impl Curves {
         if r != 0 {
             return Err(format!("curve sample failed ({r})"));
         }
+        out.resize(self.names.len(), 0.0);
         Ok(out)
     }
 
-    /// The buffer's current place.
+    /// The stream TArray's pointer and count now.
     pub(crate) fn stream(&self) -> (usize, i32) {
         (
-            self.buffer,
+            read::<usize>(self.array_at).unwrap_or_default(),
             read::<i32>(self.array_at + 8).unwrap_or_default(),
+        )
+    }
+
+    /// The name TArray's pointer and count now.
+    pub(crate) fn name_slot(&self) -> (usize, i32) {
+        (
+            read::<usize>(self.names_at).unwrap_or_default(),
+            read::<i32>(self.names_at + 8).unwrap_or_default(),
         )
     }
 }
@@ -269,9 +318,16 @@ impl Curves {
 /// extrapolation.
 pub(crate) fn encode(c: &Curves, values: &[Vec<f32>]) -> Result<Vec<u8>, String> {
     if c.codec == Codec::RichCurve {
-        let b = bytes(c.buffer, c.len)?;
+        // A curve the stream had keeps its extrapolation; an added one
+        // holds its end values (constant).
         let extrap = (0..c.names.len())
-            .map(|k| crate::rich_curve::desc(b, k).map(|d| (d.pre, d.post)))
+            .map(|k| {
+                if k < c.stored {
+                    crate::rich_curve::desc(bytes(c.buffer, c.len)?, k).map(|d| (d.pre, d.post))
+                } else {
+                    Ok(crate::rich_curve::CONSTANT_ENDS)
+                }
+            })
             .collect::<Result<Vec<_>, _>>()?;
         return crate::rich_curve::encode(values, c.rate, &extrap);
     }

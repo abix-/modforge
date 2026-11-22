@@ -518,15 +518,33 @@ fn restore_where(seq: usize, curves: bool) -> bool {
 /// buffer in the sequence's curve stream. The engine's buffer is kept
 /// and put back by [`restore`]. A bone rewrite of the same sequence is
 /// left as it is. Game thread.
+///
+/// `add` names curves the sequence lacks: they are added after its own
+/// (0 at every sample until `edit` sets them), with a new curve name
+/// table (anim_curves::name_table). A curve moves a morph only when the
+/// skeleton's curve metadata marks it a morph target (UE 5.8
+/// BoneContainer.cpp), so add names other animations of that skeleton
+/// use. Asked 2026-11-22: "as we rewrite these animations we need to
+/// add i whatever curvs/morphs we need".
 pub fn rewrite_curves(
     seq: &UObject,
+    add: &[&str],
     edit: &mut dyn FnMut(&crate::anim_curves::Curves, &mut [Vec<f32>]) -> Result<(), String>,
 ) -> Result<Value, String> {
     let base = seq.as_ptr() as usize;
     let was_edited = restore_where(base, true);
-    let c = crate::anim_curves::curves(seq)?;
+    let mut c = crate::anim_curves::curves(seq)?;
+    let added: Vec<String> = add
+        .iter()
+        .filter(|a| !c.names.iter().any(|n| n == *a))
+        .map(|a| a.to_string())
+        .collect();
+    c.names.extend(added.iter().cloned());
     if c.names.is_empty() {
         return Err(format!("{}: no curves", seq.name()));
+    }
+    if c.samples == 0 {
+        return Err(format!("{}: no samples", seq.name()));
     }
     let mut values: Vec<Vec<f32>> = (0..c.samples)
         .map(|i| c.sample(i))
@@ -554,16 +572,39 @@ pub fn rewrite_curves(
         was: c.stream(),
         now: (now, bytes.len() as i32),
     };
-    // SAFETY: the sequence's curve stream TArray, found and read above
-    // on this game-thread call.
-    unsafe { write_slot(slot.at, slot.now) };
+    let was_bytes = slot.was.1;
+    // With curves added, the name table grows too. The order keeps every
+    // read in bounds while the other half is still the old one: the ACL
+    // codec writes one value per track into a table as long as the names,
+    // so names first; the rich curve codec reads one descriptor per name
+    // from the stream, so the stream first. restore undoes them in reverse.
+    let mut slots = vec![slot];
+    if !added.is_empty() {
+        let table = crate::anim_curves::name_table(&c.names)?;
+        let names = Slot {
+            at: c.names_at,
+            was: c.name_slot(),
+            now: (keep(&table), c.names.len() as i32),
+        };
+        match c.codec {
+            crate::anim_curves::Codec::Acl => slots.insert(0, names),
+            crate::anim_curves::Codec::RichCurve => slots.push(names),
+        }
+    }
+    for s in &slots {
+        // SAFETY: the sequence's curve TArrays, found and read above on
+        // this game-thread call.
+        unsafe { write_slot(s.at, s.now) };
+    }
     crate::log!(
-        "anim_edit: {} curves rewritten ({} curves, {} samples, {} to {} bytes)",
+        "anim_edit: {} curves rewritten ({} curves, {} added {:?}, {} samples, {} to {} bytes)",
         seq.name(),
         c.names.len(),
+        added.len(),
+        added,
         c.samples,
-        slot.was.1,
-        slot.now.1
+        was_bytes,
+        bytes.len()
     );
     let summary = json!({
         "sequence": seq.full_name(),
@@ -571,14 +612,14 @@ pub fn rewrite_curves(
         "curves": c.names,
         "samples": c.samples,
         "again": was_edited,
-        "was": [format!("0x{:X}", slot.was.0), slot.was.1],
-        "now": [format!("0x{:X}", slot.now.0), slot.now.1],
+        "added": added,
+        "bytes": [was_bytes, bytes.len()],
     });
     EDITS.lock().push(Edit {
         sequence: base,
         name: seq.name(),
         format: CURVES,
-        slots: vec![slot],
+        slots,
     });
     Ok(summary)
 }

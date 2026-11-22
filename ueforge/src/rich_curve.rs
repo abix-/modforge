@@ -42,6 +42,8 @@ const CYCLE_WITH_OFFSET: u8 = 1;
 const OSCILLATE: u8 = 2;
 const EXTRAP_LINEAR: u8 = 3;
 const EXTRAP_CONSTANT: u8 = 4;
+/// Pre and post extrapolation that hold a curve's end values.
+pub(crate) const CONSTANT_ENDS: (u8, u8) = (EXTRAP_CONSTANT, EXTRAP_CONSTANT);
 
 /// One curve's descriptor.
 #[derive(Clone, Copy, Debug)]
