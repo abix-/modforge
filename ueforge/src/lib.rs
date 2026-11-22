@@ -101,6 +101,7 @@ pub mod loops;
 // log!() macro re-export through this single `pub use`.
 pub use modforge::log;
 pub mod derived_class;
+pub mod mesh_file;
 pub mod mesh_parts;
 pub mod mod_main;
 pub mod nav;
