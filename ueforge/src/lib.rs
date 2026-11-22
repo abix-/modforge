@@ -71,6 +71,7 @@
 
 pub mod anim_codec;
 pub mod anim_data;
+pub mod anim_edit;
 pub mod anim_play;
 pub mod args;
 pub mod assets;

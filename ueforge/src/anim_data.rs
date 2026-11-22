@@ -71,6 +71,26 @@ const ACL_TAG: u32 = 0xac11_ac11;
 /// ACL's track type for bone transforms (rotation, translation, scale).
 const QVVF: u32 = 12;
 
+/// The header of an ACL buffer: (tracks, samples, rate, duration, track
+/// type, default scale), None when ACL does not take it.
+pub(crate) fn acl_header(buffer: usize) -> Option<(u32, u32, f32, f32, u32, i32)> {
+    let (mut tracks, mut samples, mut rate, mut duration, mut kind, mut scale) =
+        (0u32, 0u32, 0f32, 0f32, 0u32, 0i32);
+    // SAFETY: the caller hands a readable buffer; ACL checks its header.
+    let r = unsafe {
+        ueforge_acl_info(
+            buffer as *const u8,
+            &mut tracks,
+            &mut samples,
+            &mut rate,
+            &mut duration,
+            &mut kind,
+            &mut scale,
+        )
+    };
+    (r == 0).then_some((tracks, samples, rate, duration, kind, scale))
+}
+
 /// One bone transform: rotation, translation, scale.
 #[derive(Clone, Copy, Debug)]
 pub struct Xform {
@@ -508,6 +528,30 @@ impl Clip {
     /// seconds (clamped to the clip). Bones with no track keep the
     /// reference pose. Game thread.
     pub fn local_pose(&self, time: f32) -> Result<Vec<Xform>, String> {
+        self.local_pose_at(time, i32::from(self.step))
+    }
+
+    /// Every skeleton bone's transform relative to its parent at sample
+    /// `i` of the clip, as stored (no blend between samples). Game
+    /// thread.
+    pub fn local_sample(&self, i: u32) -> Result<Vec<Xform>, String> {
+        if self.rate <= 0.0 {
+            return Err("the clip has no sample rate".into());
+        }
+        self.local_pose_at(i as f32 / self.rate, 2)
+    }
+
+    /// The ACL buffer the clip was read from (the AnimSequence's own
+    /// data, never one anim_edit put in), None for UE's own codecs.
+    pub fn acl_buffer(&self) -> Option<usize> {
+        match self.data {
+            Data::Acl { buffer } => Some(buffer),
+            Data::Ue { .. } => None,
+        }
+    }
+
+    /// `step`: 0 blend, 1 floor, 2 nearest sample (ueforge_acl_sample).
+    fn local_pose_at(&self, time: f32, step: i32) -> Result<Vec<Xform>, String> {
         let time = time.clamp(0.0, self.duration);
         let buffer = match &self.data {
             Data::Acl { buffer } => *buffer,
@@ -519,7 +563,7 @@ impl Clip {
                 };
                 let mut pose = self.skeleton.reference.clone();
                 for (t, &b) in self.track_bone.iter().enumerate() {
-                    let (rot, pos, scale) = tracks[t].sample(rel, self.samples, self.step);
+                    let (rot, pos, scale) = tracks[t].sample(rel, self.samples, step != 0);
                     pose[b as usize] = Xform { rot, pos, scale };
                 }
                 return Ok(pose);
@@ -549,7 +593,7 @@ impl Clip {
             ueforge_acl_sample(
                 buffer as *const u8,
                 time,
-                i32::from(self.step),
+                step,
                 reference.as_ptr(),
                 out.as_mut_ptr(),
                 self.tracks,
