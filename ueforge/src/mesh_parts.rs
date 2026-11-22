@@ -878,7 +878,9 @@ pub fn hold_size_through(
                 // Scaling by f moved every point toward the component's
                 // origin O; moving the body by (1 - f)(E - O) makes it
                 // toward the entrance E instead.
-                if let Some(e) = nearest_entrance(full) {
+                let anchor = *SCALE_ANCHOR.lock();
+                let fixed = anchor.and_then(|a| a(c)).map(|p| (p.x, p.y, p.z));
+                if let Some(e) = fixed.or_else(|| nearest_entrance(full)) {
                     let Some(o) = call(c, "SceneComponent", "K2_GetComponentLocation", json!({}))
                         .ok()
                         .and_then(|v| vector(&v["ReturnValue"]))
@@ -926,6 +928,29 @@ static ON_HELD_COMPONENT: parking_lot::Mutex<Option<fn(&UObject)>> = parking_lot
 /// Set the [`ON_HELD_COMPONENT`] callback.
 pub fn on_held_component(f: fn(&UObject)) {
     *ON_HELD_COMPONENT.lock() = Some(f);
+}
+
+/// Asked for the world point a sized component is scaled around each
+/// time a held caller places it; None falls back to the partner's
+/// entrance nearest the full-size tip at that moment.
+static SCALE_ANCHOR: parking_lot::Mutex<Option<fn(&UObject) -> Option<glam::DVec3>>> =
+    parking_lot::Mutex::new(None);
+
+/// Set the [`SCALE_ANCHOR`] callback: a fixed point keeps the sized
+/// body's transform the same at every placement, so where a point of the
+/// other body lands in its space follows from the animations alone.
+pub fn scale_anchor(f: fn(&UObject) -> Option<glam::DVec3>) {
+    *SCALE_ANCHOR.lock() = Some(f);
+}
+
+/// The size set on actor `actor` (its address) through the parts ops,
+/// None when it has none.
+pub fn size_of(actor: usize) -> Option<f64> {
+    SIZES
+        .lock()
+        .iter()
+        .find(|(k, _)| *k == actor)
+        .map(|(_, f)| *f)
 }
 
 /// The deepest bone below `root` on skinned mesh `c` (`root` itself when

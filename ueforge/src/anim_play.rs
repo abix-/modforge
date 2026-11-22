@@ -59,33 +59,84 @@ pub fn playing(mesh: &UObject) -> Option<Playing> {
     })
 }
 
+/// One segment of a montage's first slot track.
+pub struct Segment {
+    pub sequence: &'static UObject,
+    /// Where it starts in the montage, seconds.
+    pub start: f32,
+    /// The part of the sequence it plays, seconds.
+    pub anim_start: f32,
+    pub anim_end: f32,
+    /// Signed play rate.
+    pub rate: f32,
+    pub loops: u32,
+}
+
+impl Segment {
+    fn len(&self) -> f32 {
+        (self.anim_end - self.anim_start) / self.rate.abs().max(1e-6) * self.loops as f32
+    }
+}
+
+/// The segments of `montage`'s first slot track. Game thread.
+pub fn segments(montage: &UObject) -> Option<Vec<Segment>> {
+    // SAFETY: game thread, montage live.
+    let f = unsafe { crate::reflect::get_fields(montage, &["SlotAnimTracks".to_owned()]) }.ok()?;
+    let list = f["SlotAnimTracks"][0]["AnimTrack"]["AnimSegments"].as_array()?;
+    let num = |s: &Value, k: &str| s[k].as_f64().unwrap_or(0.0) as f32;
+    Some(
+        list.iter()
+            .filter_map(|s| {
+                Some(Segment {
+                    sequence: object(&s["AnimReference"])?,
+                    start: num(s, "StartPos"),
+                    anim_start: num(s, "AnimStartTime"),
+                    anim_end: num(s, "AnimEndTime"),
+                    rate: num(s, "AnimPlayRate"),
+                    loops: s["LoopingCount"].as_i64().unwrap_or(1).max(1) as u32,
+                })
+            })
+            .filter(|s| s.anim_end > s.anim_start)
+            .collect(),
+    )
+}
+
 /// The AnimSequence and its time at `position` seconds into `montage`,
 /// from the first slot track's segments. Game thread.
 pub fn sequence_at(montage: &UObject, position: f32) -> Option<(&'static UObject, f32)> {
-    // SAFETY: game thread, montage live.
-    let f = unsafe { crate::reflect::get_fields(montage, &["SlotAnimTracks".to_owned()]) }.ok()?;
-    let segments = f["SlotAnimTracks"][0]["AnimTrack"]["AnimSegments"].as_array()?;
-    let num = |s: &Value, k: &str| s[k].as_f64().unwrap_or(0.0) as f32;
-    for s in segments {
-        let start = num(s, "StartPos");
-        let (a, b) = (num(s, "AnimStartTime"), num(s, "AnimEndTime"));
-        let rate = num(s, "AnimPlayRate").abs().max(1e-6);
-        let loops = s["LoopingCount"].as_i64().unwrap_or(1).max(1) as f32;
-        let span = b - a;
-        if span <= 0.0 {
+    for s in segments(montage)? {
+        if position < s.start || position >= s.start + s.len() {
             continue;
         }
-        let len = span / rate * loops;
-        if position < start || position >= start + len {
-            continue;
-        }
-        let local = ((position - start) * rate) % span;
-        let time = if num(s, "AnimPlayRate") >= 0.0 {
-            a + local
+        let span = s.anim_end - s.anim_start;
+        let local = ((position - s.start) * s.rate.abs().max(1e-6)) % span;
+        let time = if s.rate >= 0.0 {
+            s.anim_start + local
         } else {
-            b - local
+            s.anim_end - local
         };
-        return Some((object(&s["AnimReference"])?, time));
+        return Some((s.sequence, time));
     }
     None
+}
+
+/// Where in `montage` the sequence `seq` is at `time` seconds into it:
+/// the montage position, when one segment plays that time of it once
+/// (None when no segment or several, or a looping one, do: each would be
+/// a different montage time). Game thread.
+pub fn position_of(montage: &UObject, seq: &UObject, time: f32) -> Option<f32> {
+    let all: Vec<Segment> = segments(montage)?
+        .into_iter()
+        .filter(|s| std::ptr::eq(s.sequence, seq) && time >= s.anim_start && time <= s.anim_end)
+        .collect();
+    let [s] = all.as_slice() else { return None };
+    if s.loops != 1 {
+        return None;
+    }
+    let rate = s.rate.abs().max(1e-6);
+    Some(if s.rate >= 0.0 {
+        s.start + (time - s.anim_start) / rate
+    } else {
+        s.start + (s.anim_end - time) / rate
+    })
 }
