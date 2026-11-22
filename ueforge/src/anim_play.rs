@@ -32,12 +32,46 @@ fn object(v: &Value) -> Option<&'static UObject> {
     crate::selector::resolve(&format!("addr:{}", v["addr"].as_str()?)).ok()
 }
 
+fn anim_instance(mesh: &UObject) -> Option<&'static UObject> {
+    object(&call(mesh, "SkeletalMeshComponent", "GetAnimInstance", json!({})).ok()?["ReturnValue"])
+}
+
+fn addr(o: &UObject) -> String {
+    format!("0x{:X}", o as *const UObject as usize)
+}
+
+/// The play rate of the montage `mesh` plays (AnimInstance
+/// Montage_GetPlayRate). Game thread.
+pub fn play_rate(mesh: &UObject, montage: &UObject) -> Option<f32> {
+    let anim = anim_instance(mesh)?;
+    call(
+        anim,
+        "AnimInstance",
+        "Montage_GetPlayRate",
+        json!({"Montage": addr(montage)}),
+    )
+    .ok()?["ReturnValue"]
+        .as_f64()
+        .map(|r| r as f32)
+}
+
+/// Set the play rate of the montage `mesh` plays (AnimInstance
+/// Montage_SetPlayRate). Game thread.
+pub fn set_play_rate(mesh: &UObject, montage: &UObject, rate: f32) -> Result<(), String> {
+    let anim = anim_instance(mesh).ok_or("no anim instance")?;
+    call(
+        anim,
+        "AnimInstance",
+        "Montage_SetPlayRate",
+        json!({"Montage": addr(montage), "NewPlayRate": rate}),
+    )
+    .map(|_| ())
+}
+
 /// The montage skeletal mesh `mesh` plays now and its position. Game
 /// thread.
 pub fn playing(mesh: &UObject) -> Option<Playing> {
-    let anim = object(
-        &call(mesh, "SkeletalMeshComponent", "GetAnimInstance", json!({})).ok()?["ReturnValue"],
-    )?;
+    let anim = anim_instance(mesh)?;
     let montage = object(
         &call(anim, "AnimInstance", "GetCurrentActiveMontage", json!({})).ok()?["ReturnValue"],
     )?;
