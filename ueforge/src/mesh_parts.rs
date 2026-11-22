@@ -339,6 +339,70 @@ static HOLD_CALLERS: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(V
 
 /// The bone [`hold_size_through`] keeps in place, by its chain's root.
 static HOLD_ANCHOR: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::new(None);
+/// Bones on the other body a sized body is scaled around.
+static HOLD_ENTRANCES: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
+/// The last component a held caller placed on an actor with no size: the
+/// other body in the scene.
+static PARTNER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Per partner component, which of [`HOLD_ENTRANCES`] it has.
+static PARTNER_ENTRANCES: parking_lot::Mutex<Vec<(usize, Vec<String>)>> =
+    parking_lot::Mutex::new(Vec::new());
+
+/// The entrance bones `c` has (SceneComponent::DoesSocketExist; a
+/// skinned mesh's bones are sockets), looked up once per component.
+///
+/// # Safety
+/// Game thread, `c` live.
+unsafe fn entrances_on(c: &UObject) -> Vec<String> {
+    let key = c as *const UObject as usize;
+    if let Some((_, e)) = PARTNER_ENTRANCES.lock().iter().find(|(k, _)| *k == key) {
+        return e.clone();
+    }
+    let wanted = HOLD_ENTRANCES.lock().clone();
+    let found: Vec<String> = wanted
+        .into_iter()
+        .filter(|b| {
+            // SAFETY: the caller's.
+            unsafe {
+                call(
+                    c,
+                    "SceneComponent",
+                    "DoesSocketExist",
+                    json!({"InSocketName": b}),
+                )
+            }
+            .is_ok_and(|v| v["ReturnValue"] == json!(true))
+        })
+        .collect();
+    crate::log!("parts: entrances on {}: {found:?}", c.name());
+    PARTNER_ENTRANCES.lock().push((key, found.clone()));
+    found
+}
+
+/// Of the partner's entrance bones, the one nearest `to`, in world
+/// space.
+///
+/// # Safety
+/// Game thread.
+unsafe fn nearest_entrance(to: (f64, f64, f64)) -> Option<(f64, f64, f64)> {
+    let p = PARTNER.load(std::sync::atomic::Ordering::Acquire);
+    if !crate::ue::uobject::is_live(p) {
+        return None;
+    }
+    // SAFETY: p is the live object GObjects holds at its index.
+    let partner = unsafe { &*(p as *const UObject) };
+    let d2 =
+        |a: (f64, f64, f64)| (a.0 - to.0).powi(2) + (a.1 - to.1).powi(2) + (a.2 - to.2).powi(2);
+    // SAFETY: the caller's; partner is live.
+    unsafe { entrances_on(partner) }
+        .iter()
+        .filter_map(|b| unsafe { bone_location(partner, b) })
+        .min_by(|a, b| {
+            d2(*a)
+                .partial_cmp(&d2(*b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
 /// Per skinned mesh, the tip of the anchor chain (None: no such bone).
 static ANCHOR_TIPS: parking_lot::Mutex<Vec<(usize, Option<String>)>> =
     parking_lot::Mutex::new(Vec::new());
@@ -651,12 +715,27 @@ pub unsafe fn undo_look(u: &Undo) {
 /// full size, so a shrunk body still meets the other one at that point.
 /// Bodies without that bone are only scaled.
 ///
+/// With `entrances` (bone names on the other body), the body is instead
+/// scaled around the entrance bone nearest the full-size tip, on the
+/// other body the same caller places (one with no size). Every point of
+/// the body moves toward that bone by the size, so the stroke shrinks
+/// with the body: where the game had the full-size tip at the entrance,
+/// the shrunk tip is there too, and where it had the full-size base
+/// there, the shrunk base is. Asked 2026-11-21: "it should be full
+/// withdrawl. full insertion. with it working correctly after resize".
+/// Without an entrance found, the tip is kept as above.
+///
 /// Install once, after the runtime is up.
-pub fn hold_size_through(callers: &[&str], anchor: Option<&str>) -> Result<(), String> {
+pub fn hold_size_through(
+    callers: &[&str],
+    anchor: Option<&str>,
+    entrances: &[&str],
+) -> Result<(), String> {
     HOLD_CALLERS
         .lock()
         .extend(callers.iter().map(|c| c.to_string()));
     *HOLD_ANCHOR.lock() = anchor.map(str::to_owned);
+    *HOLD_ENTRANCES.lock() = entrances.iter().map(|e| e.to_string()).collect();
     let h = crate::hook::native_function::NativeFunctionHook::install(
         "SceneComponent",
         "K2_SetWorldTransform",
@@ -680,6 +759,10 @@ pub fn hold_size_through(callers: &[&str], anchor: Option<&str>) -> Result<(), S
                 .find(|(k, _)| *k == key)
                 .map(|(_, f)| *f)
             else {
+                PARTNER.store(
+                    c as *const UObject as usize,
+                    std::sync::atomic::Ordering::Release,
+                );
                 return;
             };
             // SAFETY: the game thread (the script VM's call); c is live.
@@ -701,6 +784,29 @@ pub fn hold_size_through(callers: &[&str], anchor: Option<&str>) -> Result<(), S
                 let (Some(t), Some(full)) = (tip, full) else {
                     return;
                 };
+                // Scaling by f moved every point toward the component's
+                // origin O; moving the body by (1 - f)(E - O) makes it
+                // toward the entrance E instead.
+                if let Some(e) = nearest_entrance(full) {
+                    let Some(o) = call(c, "SceneComponent", "K2_GetComponentLocation", json!({}))
+                        .ok()
+                        .and_then(|v| vector(&v["ReturnValue"]))
+                    else {
+                        return;
+                    };
+                    let k = 1.0 - f;
+                    let _ = call(
+                        c,
+                        "SceneComponent",
+                        "K2_AddWorldOffset",
+                        json!({
+                            "DeltaLocation": {"X": k * (e.0 - o.0), "Y": k * (e.1 - o.1), "Z": k * (e.2 - o.2)},
+                            "bSweep": false,
+                            "bTeleport": true,
+                        }),
+                    );
+                    return;
+                }
                 let Some(small) = bone_location(c, &t) else {
                     return;
                 };
