@@ -243,7 +243,24 @@ pub mod ufunction {
     /// block to be. Undersizing it lets the callee write past
     /// the buffer.
     pub const PARMS_SIZE: usize = 0xB6;
+    /// `FNativeFuncPtr Func`, the last field: the native thunk the
+    /// script VM calls for a native function (UE 5.6, Wicked Island:
+    /// K2_SetWorldTransform's thunk found at UFunction + 0xD8 by a
+    /// memory scan, wickedisland-mod tests/research_parts.rs
+    /// native_owner, 2026-11-21).
+    pub const FUNC: usize = 0xD8;
     pub const SIZE: usize = 0xE0;
+}
+
+/// `FFrame`, the script VM's stack frame a native thunk gets as its
+/// second argument. After the FOutputDevice base (vtable + two bools):
+/// Node, the script function running, and Object, what it runs on
+/// (UE 5.6, Wicked Island: both named live from an exec watch on a
+/// thunk, wickedisland-mod tests/research_parts.rs native_callers,
+/// 2026-11-21).
+pub mod fframe {
+    pub const NODE: usize = 0x10;
+    pub const OBJECT: usize = 0x18;
 }
 
 /// `FFixedUObjectArray`. Used by `GObjectsLayout::FlatFixed`.

@@ -22,6 +22,8 @@
 //! - parts.morph {component, name, value}: one morph target of a
 //!   skeletal mesh, SkeletalMeshComponent::SetMorphTarget.
 //! - parts.size {actor, scale}: the whole actor, Actor::SetActorScale3D.
+//!   With hold_size_through, a script that puts a component back at a
+//!   stored world transform keeps the size.
 //! - parts.bones {component}: a skinned mesh's bones with parent and
 //!   hidden.
 //! - parts.bone {component, bone, hidden}: HideBoneByName or
@@ -323,9 +325,83 @@ pub unsafe fn actor_scale(a: &UObject, factor: f64) -> Result<Value, String> {
             "SetActorScale3D",
             json!({"NewScale3D": {"X": factor, "Y": factor, "Z": factor}}),
         )?;
+        remember_size(a, factor);
         let now = call(a, "Actor", "GetActorScale3D", json!({}))?;
         Ok(json!({"actor": hex(a), "set": factor, "reads": now["ReturnValue"]["X"]}))
     }
+}
+
+/// Sizes set through [`actor_scale`], by actor address; 1.0 removes one.
+static SIZES: parking_lot::Mutex<Vec<(usize, f64)>> = parking_lot::Mutex::new(Vec::new());
+/// Script functions whose world-transform calls [`hold_size_through`]
+/// scales by the actor's size.
+static HOLD_CALLERS: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
+
+fn remember_size(a: &UObject, factor: f64) {
+    let key = a as *const UObject as usize;
+    let mut s = SIZES.lock();
+    s.retain(|(k, _)| *k != key);
+    if (factor - 1.0).abs() > 1e-6 {
+        s.push((key, factor));
+    }
+}
+
+/// Keep an actor's size from [`actor_scale`] when a script function
+/// named in `callers` puts one of its components at a stored world
+/// transform (SceneComponent.K2_SetWorldTransform), which carries the
+/// unscaled size. Right after the engine's call, that component's
+/// relative size is multiplied by the actor's size, so its world size
+/// is the stored one times the actor's. Wicked Island's sex scene
+/// (AC_Sex_C "Update Actor Lock") does this to both bodies every frame
+/// (wickedisland-mod tests/research_parts.rs native_callers,
+/// 2026-11-21). Other world-transform calls are left alone: one built
+/// from the actor's current transform already has its size.
+///
+/// Install once, after the runtime is up.
+pub fn hold_size_through(callers: &[&str]) -> Result<(), String> {
+    HOLD_CALLERS
+        .lock()
+        .extend(callers.iter().map(|c| c.to_string()));
+    let h = crate::hook::native_function::NativeFunctionHook::install(
+        "SceneComponent",
+        "K2_SetWorldTransform",
+        |c, frame, result, original| {
+            // SAFETY: the engine's own call, unchanged.
+            unsafe { original.call(c, frame, result) };
+            let Some(owner) = c.outer() else { return };
+            let key = owner as *const UObject as usize;
+            let Some(f) = SIZES
+                .lock()
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, f)| *f)
+            else {
+                return;
+            };
+            let Some(node) = frame.node() else { return };
+            let caller = node.as_object().name();
+            if !HOLD_CALLERS.lock().iter().any(|n| *n == caller) {
+                return;
+            }
+            // SAFETY: the game thread (the script VM's call); c is live.
+            unsafe {
+                let Ok(now) = reflect::get_fields(c, &["RelativeScale3D".to_string()]) else {
+                    return;
+                };
+                let Some((x, y, z)) = vector(&now["RelativeScale3D"]) else {
+                    return;
+                };
+                let _ = call(
+                    c,
+                    "SceneComponent",
+                    "SetRelativeScale3D",
+                    json!({"NewScale3D": {"X": x * f, "Y": y * f, "Z": z * f}}),
+                );
+            }
+        },
+    )?;
+    crate::hook::native_function::register(h);
+    Ok(())
 }
 
 /// A skinned mesh's bones, in index order, each as [name, parent,

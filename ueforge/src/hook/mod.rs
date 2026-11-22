@@ -7,6 +7,7 @@ pub mod engine_tick;
 pub mod function_table;
 pub mod install;
 pub mod lazy_function;
+pub mod native_function;
 pub mod process_event;
 pub mod registry;
 pub mod vtable;
