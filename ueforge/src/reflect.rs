@@ -281,6 +281,33 @@ pub unsafe fn write_value(
 /// # Safety
 /// As [`write_value`].
 pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str) -> Value {
+    let mut budget = READ_BUDGET;
+    // SAFETY: the caller's.
+    unsafe { read_within(base, property, kind, &mut budget) }
+}
+
+/// Values one [`read_value`] decodes at most, nested ones included (mine,
+/// 2026-11-22). Each array stops at 256 elements, but arrays of structs
+/// holding arrays multiply, each element costing VirtualQuery calls on
+/// the game thread: very likely what froze Wicked Island on reading
+/// AC_Sex_C "Runtime Scene" in a running scene (2026-11-21).
+const READ_BUDGET: usize = 4096;
+
+/// [`read_value`] with the values left to decode; past it a value reads
+/// as `{"truncated": true}`.
+///
+/// # Safety
+/// As [`read_value`].
+unsafe fn read_within(
+    base: *const u8,
+    property: &NativeProperty,
+    kind: &str,
+    budget: &mut usize,
+) -> Value {
+    if *budget == 0 {
+        return json!({"truncated": true});
+    }
+    *budget -= 1;
     let at = unsafe { base.add(property.offset as usize) };
     // SAFETY: the field's own bytes, sized by its type.
     unsafe {
@@ -311,7 +338,7 @@ pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str)
                 Some(layout) => {
                     let mut map = serde_json::Map::new();
                     for (sub, kind) in fields_in_chain(Some(layout)) {
-                        map.insert(sub.name.clone(), read_value(at, &sub, &kind));
+                        map.insert(sub.name.clone(), read_within(at, &sub, &kind, budget));
                     }
                     Value::Object(map)
                 }
@@ -330,7 +357,9 @@ pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str)
                         let stride = inner.element_size as usize;
                         json!(
                             (0..count.min(256))
-                                .map(|i| read_value(data.add(i * stride), &inner, &inner_kind))
+                                .map(|i| {
+                                    read_within(data.add(i * stride), &inner, &inner_kind, budget)
+                                })
                                 .collect::<Vec<_>>()
                         )
                     }
@@ -365,6 +394,21 @@ mod tests {
             let value = unsafe { read_value(header.as_ptr().cast(), &property, "ArrayProperty") };
             assert_eq!(value, json!([]));
         }
+    }
+
+    #[test]
+    fn a_read_past_its_budget_comes_back_truncated_without_touching_memory() {
+        let property = NativeProperty {
+            name: "Runtime Scene".into(),
+            offset: 0,
+            element_size: 16,
+            address: 0,
+        };
+        let mut budget = 0;
+        // SAFETY: the budget is spent, so no memory is read.
+        let value =
+            unsafe { read_within(std::ptr::null(), &property, "StructProperty", &mut budget) };
+        assert_eq!(value, json!({"truncated": true}));
     }
 }
 

@@ -199,11 +199,21 @@ fn resolve_first_class(class_name: &str) -> Result<&'static UObject, String> {
     if !view.is_valid() {
         return Err("gobjects view invalid".to_string());
     }
+    // is_a walks the object's class chain with a VirtualQuery per link,
+    // and this walk runs on the game thread over every object: once per
+    // object it froze Wicked Island (2026-11-21). Objects share a few
+    // thousand classes, so each class is walked once.
+    let mut seen: std::collections::HashMap<usize, bool> = std::collections::HashMap::new();
     for obj in view.iter() {
         if obj.is_default_object() {
             continue;
         }
-        if obj.is_a(class) {
+        let Some(c) = obj.class() else {
+            continue;
+        };
+        let key = c as *const ue::UClass as usize;
+        let is = *seen.entry(key).or_insert_with(|| obj.is_a(class));
+        if is {
             // SAFETY: while caller holds the resulting reference, GObjects
             // is stable as long as we're on the game thread (or quiescent
             // off-thread). Lifetime extension matches the rest of the SDK.

@@ -19,13 +19,66 @@ one documented exception: handlers are user closures, so
 than declared as a compile-time `const`. The naming + surface
 shape match every other subsystem.
 
-ueforge's hook surface is exclusively ProcessEvent vtable
-patching. We do not patch native functions (no detours, no
-trampolines into game code). The reason: ProcessEvent is the
-single funnel through which every Blueprint event, every
-NetMulticast RPC, every BP-callable UFunction routes. Hooking it
-catches everything that matters; hooking native functions
-catches a tiny fraction with much higher risk.
+ueforge has three kinds of hook. Reach for them in this order:
+
+| Hook | Sees | Module |
+|---|---|---|
+| ProcessEventHook | every call that goes through ProcessEvent: Blueprint events, NetMulticast RPCs, calls from C++ | `hook/process_event.rs` (below) |
+| native function hook | every call the script VM makes to one native UFunction, wherever it comes from | `hook/native_function.rs` |
+| script function hook | every run of one Blueprint function, including a Blueprint calling it directly | `hook/script_function.rs` |
+
+ProcessEvent is still the first choice: one vtable patch, and it
+catches most of what matters. The other two exist because it
+misses calls made inside the script VM, found in Wicked Island on
+2026-11-21.
+
+## Native function hook
+
+A Blueprint calling a native function (EX_FinalFunction and
+friends) does not go through ProcessEvent: the VM calls the
+UFunction's `Func` thunk directly. `NativeFunctionHook::install(class,
+function, handler)` swaps that thunk for one of 16 fixed
+trampolines (the thunk's arguments carry no UFunction, so each
+trampoline knows its own slot), as UE4SS's RegisterHook does for a
+/Script/ function.
+
+- **When it fires:** every call of that function from the script
+  VM, with the object it runs on, the caller's `Frame`, the result
+  pointer and the engine's thunk. The handler decides when to run
+  the engine's code by calling `original.call` (before, after, or
+  not at all).
+- **What it misses:** Blueprint functions. `install` refuses a
+  function without FUNC_Native, because a Blueprint calling a
+  Blueprint function never calls that function's `Func`. Use the
+  script function hook for those.
+- **Lifetime:** dropping the handle puts the engine's thunk back
+  (only if ours is still there) and waits up to 500 ms for calls
+  already inside. `register` keeps a hook for the session;
+  `shutdown_all` (shutdown registry) removes them before unload.
+- **Example:** Wicked Island's AC_Sex_C "Update Actor Lock" calls
+  SceneComponent.K2_SetWorldTransform every frame with the stored
+  unscaled transform; `mesh_parts::hold_size_through` hooks it to
+  keep an enemy's size.
+
+## Script function hook
+
+Every Blueprint function runs through ProcessLocalScriptFunction,
+either directly (a Blueprint calling another) or through
+ProcessInternal (an event from ProcessEvent). `script_function::install(class,
+function)` detours ProcessLocalScriptFunction once per process,
+found without a per-game address: ProcessInternal is the `Func` of
+the named Blueprint function, and ProcessLocalScriptFunction is the
+call in it whose body tests a script byte against EX_Return (0x04).
+UE4SS hooks the same two (RE-UE4SS UE4SS/src/Signatures.cpp).
+
+- **When it fires:** `script_function::on(class, function, When::Before
+  | When::After, handler)` runs the handler with the object and frame
+  each time that Blueprint function runs, however it was called.
+- **What it misses:** native functions (use the native function hook).
+- **Lifetime:** handlers are kept for the session;
+  `shutdown_all` (shutdown registry) restores the detoured prologue.
+- **Example:** wickedisland-mod `src/scenes.rs` runs on AC_Sex_C
+  "Start Runtime Scene", "Stop Runtime Scene" and "End Sex Scene".
 
 ## ProcessEventHook
 
