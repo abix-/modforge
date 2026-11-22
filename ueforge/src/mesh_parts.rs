@@ -487,26 +487,7 @@ unsafe fn anchor_tip(c: &UObject) -> Option<String> {
         return t.clone();
     }
     // SAFETY: the caller's.
-    let list = unsafe { bones(c) }.ok()?;
-    // Bones come parents first: depth below the root, by name.
-    let mut depth: Vec<(String, usize)> = Vec::new();
-    let mut tip: Option<(String, usize)> = None;
-    for b in list["bones"].as_array().into_iter().flatten() {
-        let name = b[0].as_str().unwrap_or("").to_owned();
-        let parent = b[1].as_str().unwrap_or("");
-        let d = if name == root {
-            Some(0)
-        } else {
-            depth.iter().find(|(n, _)| n == parent).map(|(_, d)| d + 1)
-        };
-        if let Some(d) = d {
-            if tip.as_ref().is_none_or(|(_, td)| d > *td) {
-                tip = Some((name.clone(), d));
-            }
-            depth.push((name, d));
-        }
-    }
-    let tip = tip.map(|(n, _)| n);
+    let tip = unsafe { chain_tip(c, &root) };
     crate::log!("parts: anchor tip on {}: {tip:?}", c.name());
     ANCHOR_TIPS.lock().push((key, tip.clone()));
     tip
@@ -856,6 +837,10 @@ pub fn hold_size_through(
             if let Some(cb) = placed {
                 let _ = std::panic::catch_unwind(|| cb(owner));
             }
+            let placed = *ON_HELD_COMPONENT.lock();
+            if let Some(cb) = placed {
+                let _ = std::panic::catch_unwind(|| cb(c));
+            }
             let Some(f) = SIZES
                 .lock()
                 .iter()
@@ -931,6 +916,45 @@ pub fn hold_size_through(
     )?;
     crate::hook::native_function::register(h);
     Ok(())
+}
+
+/// Called on the game thread with the component each time a caller
+/// named in [`hold_size_through`] places it, right after the game set
+/// its world transform and before any resize, at any size.
+static ON_HELD_COMPONENT: parking_lot::Mutex<Option<fn(&UObject)>> = parking_lot::Mutex::new(None);
+
+/// Set the [`ON_HELD_COMPONENT`] callback.
+pub fn on_held_component(f: fn(&UObject)) {
+    *ON_HELD_COMPONENT.lock() = Some(f);
+}
+
+/// The deepest bone below `root` on skinned mesh `c` (`root` itself when
+/// nothing is below it), None when `c` has no such bone.
+///
+/// # Safety
+/// Game thread, `c` live.
+pub unsafe fn chain_tip(c: &UObject, root: &str) -> Option<String> {
+    // SAFETY: the caller's.
+    let list = unsafe { bones(c) }.ok()?;
+    // Bones come parents first: depth below the root, by name.
+    let mut depth: Vec<(String, usize)> = Vec::new();
+    let mut tip: Option<(String, usize)> = None;
+    for b in list["bones"].as_array().into_iter().flatten() {
+        let name = b[0].as_str().unwrap_or("").to_owned();
+        let parent = b[1].as_str().unwrap_or("");
+        let d = if name == root {
+            Some(0)
+        } else {
+            depth.iter().find(|(n, _)| n == parent).map(|(_, d)| d + 1)
+        };
+        if let Some(d) = d {
+            if tip.as_ref().is_none_or(|(_, td)| d > *td) {
+                tip = Some((name.clone(), d));
+            }
+            depth.push((name, d));
+        }
+    }
+    tip.map(|(n, _)| n)
 }
 
 /// A skinned mesh's bones, in index order, each as [name, parent,

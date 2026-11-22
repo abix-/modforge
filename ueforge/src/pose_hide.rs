@@ -37,6 +37,14 @@
 //! frame evaluated), put back when they are shown. Skin weighted partly
 //! to a hidden bone is pulled toward the shown one.
 //!
+//! Other changes to the pose after the animation use the same hook:
+//! [`edit`] runs a function on a component's pose each frame (the
+//! stroke's depth, stroke.rs). It changes the buffer the frame is
+//! written to (CurrentEditableComponentTransforms, the int after
+//! PreviousComponentSpaceTransformsArray in engine
+//! SkinnedMeshComponent.h), so a change that is not the same each time
+//! is made once per frame.
+//!
 //! Ops: parts.hide_alone {component, bones: [str]} (an empty list shows
 //! them all again), parts.hidden_alone {}.
 
@@ -62,6 +70,79 @@ struct Hide {
 }
 
 static HIDES: Mutex<Vec<Hide>> = Mutex::new(Vec::new());
+
+/// A change to a component's pose, run each frame after its animation.
+pub type PoseEdit = fn(component: &UObject, pose: &mut Pose);
+
+struct Edit {
+    component: usize,
+    anim: usize,
+    id: &'static str,
+    f: PoseEdit,
+    uro_was: Option<bool>,
+}
+
+static EDITS: Mutex<Vec<Edit>> = Mutex::new(Vec::new());
+
+/// The component space pose being written this frame: one transform per
+/// bone, by the mesh's bone index.
+pub struct Pose {
+    data: usize,
+    pub bones: usize,
+}
+
+impl Pose {
+    /// Bone `i`'s component space transform.
+    pub fn get(&self, i: usize) -> Option<crate::anim_data::Xform> {
+        if i >= self.bones {
+            return None;
+        }
+        let at = self.data + i * TRANSFORM;
+        let d = |o: usize| read::<f64>(at + o);
+        Some(crate::anim_data::Xform {
+            rot: glam::DQuat::from_xyzw(d(0)?, d(8)?, d(16)?, d(24)?),
+            pos: glam::DVec3::new(d(32)?, d(40)?, d(48)?),
+            scale: glam::DVec3::new(d(SCALE)?, d(SCALE + 8)?, d(SCALE + 16)?),
+        })
+    }
+
+    /// Move every bone by `by`, in component space.
+    pub fn shift(&mut self, by: glam::DVec3) {
+        for i in 0..self.bones {
+            let at = self.data + i * TRANSFORM + 32;
+            for (k, v) in [by.x, by.y, by.z].into_iter().enumerate() {
+                let p = at + k * 8;
+                let Some(old) = read::<f64>(p) else { continue };
+                // SAFETY: inside the component's live transform array,
+                // checked readable by read(); the engine writes it on
+                // this thread.
+                unsafe { (p as *mut f64).write(old + v) };
+            }
+        }
+    }
+}
+
+/// Offset of CurrentEditableComponentTransforms from the first buffer:
+/// the two buffers, PreviousBoneVisibilityStates and
+/// PreviousComponentSpaceTransformsArray (16 bytes each) come before it.
+const EDITABLE: usize = 64;
+
+/// The buffer this frame is written to, as a [`Pose`].
+fn editable(component: usize) -> Option<Pose> {
+    let off = BUFFERS.load(Ordering::Acquire);
+    if off == 0 {
+        return None;
+    }
+    // 0 or 1; anything else means the layout is not the one measured,
+    // and the first buffer is used.
+    let i = read::<i32>(component + off + EDITABLE)
+        .filter(|i| (0..2).contains(i))
+        .unwrap_or(0);
+    let arr = component + off + i as usize * 16;
+    let data = read::<usize>(arr)?;
+    let n = read::<i32>(arr + 8)?.max(0) as usize;
+    readable(data, n * TRANSFORM).then_some(Pose { data, bones: n })
+}
 /// Function tables already hooked.
 static HOOKED: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 /// Offset of ComponentSpaceTransformsArray[0] in a skinned mesh
@@ -165,13 +246,31 @@ fn hook(anim: &UObject) -> Result<(), String> {
                 return;
             }
             let key = this as *const UObject as usize;
-            let hides = HIDES.lock();
-            for h in hides.iter().filter(|h| h.anim == key) {
-                // The anim instance's outer is its component; a freed
-                // address reused by another anim instance is skipped.
-                if this.outer().map(|o| o as *const UObject as usize) == Some(h.component) {
-                    zero(h);
+            // The anim instance's outer is its component; a freed
+            // address reused by another anim instance is skipped.
+            let Some(outer) = this.outer() else { return };
+            let component = outer as *const UObject as usize;
+            let edits: Vec<PoseEdit> = EDITS
+                .lock()
+                .iter()
+                .filter(|e| e.anim == key && e.component == component)
+                .map(|e| e.f)
+                .collect();
+            if !edits.is_empty()
+                && let Some(mut pose) = editable(component)
+            {
+                for f in edits {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        f(outer, &mut pose)
+                    }));
                 }
+            }
+            let hides = HIDES.lock();
+            for h in hides
+                .iter()
+                .filter(|h| h.anim == key && h.component == component)
+            {
+                zero(h);
             }
         })
         .map_err(|e| format!("hook {}: {e}", anim.name()))?;
@@ -192,19 +291,16 @@ fn call(o: &UObject, class: &str, function: &str, params: Value) -> Result<Value
 /// Game thread.
 pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
     let key = c as *const UObject as usize;
-    let old = {
-        let mut hides = HIDES.lock();
-        let i = hides.iter().position(|h| h.component == key);
-        i.map(|i| hides.remove(i))
-    };
-    // The update rate setting as it was before any hiding.
-    let uro_was = match &old {
-        Some(h) => h.uro_was,
-        None => uro(c),
-    };
+    // The update rate setting as it was before any hiding or edit.
+    let was = uro_before(key);
+    HIDES.lock().retain(|h| h.component != key);
+    let uro_was = was.unwrap_or_else(|| uro(c));
     if bones.is_empty() {
-        if let Some(was) = old.and_then(|h| h.uro_was) {
-            set_uro(c, was);
+        // Put back only when no edit still needs every frame.
+        if uro_before(key).is_none()
+            && let Some(Some(v)) = was
+        {
+            set_uro(c, v);
         }
         return Ok(json!({"component": format!("0x{key:X}"), "hidden": []}));
     }
@@ -229,15 +325,7 @@ pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
         }
         found.push((b.clone(), i as usize));
     }
-    buffers(c, count)?;
-    let anim = call(c, "SkeletalMeshComponent", "GetAnimInstance", json!({}))?;
-    let anim = anim["ReturnValue"]["addr"]
-        .as_str()
-        .ok_or_else(|| format!("{}: no anim instance", c.name()))?;
-    let anim = crate::selector::resolve(&format!("addr:{anim}"))?;
-    hook(anim)?;
-    // Every frame evaluated, so every frame runs PostEvaluateAnimation.
-    set_uro(c, false);
+    let anim = prepare(c, count)?;
     let out = json!({
         "component": format!("0x{key:X}"),
         "anim": anim.name(),
@@ -250,6 +338,65 @@ pub fn set(c: &UObject, bones: &[String]) -> Result<Value, String> {
         uro_was,
     });
     Ok(out)
+}
+
+/// Find `c`'s bone buffers, hook its anim instance and have every frame
+/// evaluated (so every frame runs PostEvaluateAnimation). Game thread.
+fn prepare(c: &UObject, bones: usize) -> Result<&'static UObject, String> {
+    buffers(c, bones)?;
+    let anim = call(c, "SkeletalMeshComponent", "GetAnimInstance", json!({}))?;
+    let anim = anim["ReturnValue"]["addr"]
+        .as_str()
+        .ok_or_else(|| format!("{}: no anim instance", c.name()))?;
+    let anim = crate::selector::resolve(&format!("addr:{anim}"))?;
+    hook(anim)?;
+    set_uro(c, false);
+    Ok(anim)
+}
+
+/// The update rate setting of `c` before any hide or edit changed it.
+fn uro_before(key: usize) -> Option<Option<bool>> {
+    if let Some(h) = HIDES.lock().iter().find(|h| h.component == key) {
+        return Some(h.uro_was);
+    }
+    EDITS
+        .lock()
+        .iter()
+        .find(|e| e.component == key)
+        .map(|e| e.uro_was)
+}
+
+/// Run `f` on skeletal mesh `c`'s pose every frame after its animation,
+/// under `id` (one edit per id per component); None takes it off. Game
+/// thread.
+pub fn edit(c: &UObject, id: &'static str, f: Option<PoseEdit>) -> Result<(), String> {
+    let key = c as *const UObject as usize;
+    let was = uro_before(key);
+    EDITS.lock().retain(|e| !(e.component == key && e.id == id));
+    let Some(f) = f else {
+        if uro_before(key).is_none()
+            && let Some(Some(v)) = was
+        {
+            set_uro(c, v);
+        }
+        return Ok(());
+    };
+    if !find_class_fast("SkeletalMeshComponent").is_some_and(|k| c.is_a(k)) {
+        return Err(format!("{} is not a skeletal mesh", c.name()));
+    }
+    let count = call(c, "SkinnedMeshComponent", "GetNumBones", json!({}))?["ReturnValue"]
+        .as_i64()
+        .unwrap_or(0) as usize;
+    let uro_was = was.unwrap_or_else(|| uro(c));
+    let anim = prepare(c, count)?;
+    EDITS.lock().push(Edit {
+        component: key,
+        anim: anim as *const UObject as usize,
+        id,
+        f,
+        uro_was,
+    });
+    Ok(())
 }
 
 const URO: &str = "bEnableUpdateRateOptimizations";
@@ -285,6 +432,7 @@ pub fn posable(c: &UObject) -> bool {
 /// Drop the entry of a component that is gone.
 pub fn forget(component: usize) {
     HIDES.lock().retain(|h| h.component != component);
+    EDITS.lock().retain(|e| e.component != component);
 }
 
 /// The bones hidden alone on the component at `component` now.

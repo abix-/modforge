@@ -71,12 +71,13 @@
 
 pub mod anim_codec;
 pub mod anim_data;
+pub mod anim_play;
 pub mod args;
 pub mod assets;
 pub mod behavior_tree;
 pub mod build;
-pub mod climb;
 pub mod client;
+pub mod climb;
 pub mod counters;
 pub mod damage;
 pub mod data_table;

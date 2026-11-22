@@ -90,6 +90,30 @@ impl Xform {
         }
     }
 
+    /// A point in this transform's space, put in its parent's space.
+    pub fn point(&self, p: DVec3) -> DVec3 {
+        self.rot * (self.scale * p) + self.pos
+    }
+
+    /// A point in the parent's space, put in this transform's space.
+    pub fn inverse_point(&self, p: DVec3) -> DVec3 {
+        (self.rot.inverse() * (p - self.pos)) / self.scale
+    }
+
+    /// An FTransform as reflect reads it: {Rotation, Translation,
+    /// Scale3D}.
+    pub fn from_json(v: &Value) -> Option<Xform> {
+        let f = |o: &Value, k: &str| o[k].as_f64();
+        let r = &v["Rotation"];
+        let t = &v["Translation"];
+        let s = &v["Scale3D"];
+        Some(Xform {
+            rot: DQuat::from_xyzw(f(r, "X")?, f(r, "Y")?, f(r, "Z")?, f(r, "W")?).normalize(),
+            pos: DVec3::new(f(t, "X")?, f(t, "Y")?, f(t, "Z")?),
+            scale: DVec3::new(f(s, "X")?, f(s, "Y")?, f(s, "Z")?),
+        })
+    }
+
     fn json(&self) -> Value {
         json!({
             "rotation": {"X": self.rot.x, "Y": self.rot.y, "Z": self.rot.z, "W": self.rot.w},
