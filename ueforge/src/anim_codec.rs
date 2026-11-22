@@ -520,8 +520,117 @@ impl Track {
     }
 }
 
+/// One track to write: each part's keys, None for a part the clip has no
+/// data for (the decoder then uses its default).
+pub struct TrackKeys {
+    pub pos: Option<Vec<DVec3>>,
+    pub rot: Option<Vec<DQuat>>,
+    pub scale: Option<Vec<DVec3>>,
+}
+
+/// UE per-track data as FUECompressedAnimData holds it: two offsets per
+/// track (translation, rotation), one scale offset per track, and the
+/// byte stream.
+pub struct Written {
+    pub offsets: Vec<i32>,
+    pub scale_offsets: Vec<i32>,
+    pub stream: Vec<u8>,
+}
+
+/// Write `tracks` in UE's per track key format (the reverse of
+/// per_track_vec and per_track_quat): every part as full floats
+/// (Float96: rotations x y z with w made positive, vectors x y z), one
+/// key per frame, no frame table. `scale` false leaves the scale offsets
+/// empty, for a clip with no scale data.
+pub fn encode_per_track(tracks: &[TrackKeys], scale: bool) -> Written {
+    let mut stream: Vec<u8> = Vec::new();
+    let mut offsets = Vec::with_capacity(tracks.len() * 2);
+    let mut scale_offsets = Vec::new();
+    let f = |s: &mut Vec<u8>, x: f64| s.extend_from_slice(&(x as f32).to_le_bytes());
+    let header = |s: &mut Vec<u8>, n: usize| {
+        s.extend_from_slice(&((FLOAT96 << 28) | (n as u32 & 0xFF_FFFF)).to_le_bytes());
+    };
+    let vecs = |s: &mut Vec<u8>, keys: &Option<Vec<DVec3>>| -> i32 {
+        let Some(keys) = keys else { return -1 };
+        let at = s.len() as i32;
+        header(s, keys.len());
+        for k in keys {
+            f(s, k.x);
+            f(s, k.y);
+            f(s, k.z);
+        }
+        at
+    };
+    for t in tracks {
+        offsets.push(vecs(&mut stream, &t.pos));
+        offsets.push(match &t.rot {
+            None => -1,
+            Some(keys) => {
+                let at = stream.len() as i32;
+                header(&mut stream, keys.len());
+                for q in keys {
+                    let q = if q.w < 0.0 { -*q } else { *q }.normalize();
+                    f(&mut stream, q.x);
+                    f(&mut stream, q.y);
+                    f(&mut stream, q.z);
+                }
+                at
+            }
+        });
+        if scale {
+            scale_offsets.push(vecs(&mut stream, &t.scale));
+        }
+    }
+    Written {
+        offsets,
+        scale_offsets,
+        stream,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    /// What encode_per_track writes decodes back to the same keys.
+    #[test]
+    fn per_track_round_trip() {
+        let q = DQuat::from_rotation_y(0.7) * DQuat::from_rotation_x(-0.3);
+        let tracks = [
+            TrackKeys {
+                pos: Some(vec![
+                    DVec3::new(1.0, 2.0, 3.0),
+                    DVec3::new(-4.0, 5.5, 60.25),
+                ]),
+                rot: Some(vec![DQuat::IDENTITY, -q]),
+                scale: Some(vec![DVec3::ONE, DVec3::splat(0.5)]),
+            },
+            TrackKeys {
+                pos: None,
+                rot: Some(vec![q, q]),
+                scale: None,
+            },
+        ];
+        let w = encode_per_track(&tracks, true);
+        let d = UeData {
+            key_format: PER_TRACK,
+            translation_format: 0,
+            rotation_format: 0,
+            scale_format: 0,
+            num_frames: 2,
+            track_offsets: &w.offsets,
+            scale_offsets: &w.scale_offsets,
+            stream: &w.stream,
+        };
+        let t = decode(&d, 2, 1.0).unwrap();
+        let (r, p, s) = t[0].sample(1.0, 2, false);
+        assert!((p - DVec3::new(-4.0, 5.5, 60.25)).length() < 1e-4);
+        assert!(r.dot(q).abs() > 0.99999);
+        assert!((s - DVec3::splat(0.5)).length() < 1e-6);
+        let (r, p, s) = t[1].sample(0.0, 2, false);
+        assert_eq!(p, DVec3::ZERO);
+        assert!(r.dot(q).abs() > 0.99999);
+        assert_eq!(s, DVec3::ONE);
+    }
+
     use super::*;
 
     fn f(v: &mut Vec<u8>, x: f32) {

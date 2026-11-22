@@ -173,9 +173,11 @@ pub struct Clip {
 enum Data {
     /// ACL compressed tracks, decoded on each sample.
     Acl { buffer: usize },
-    /// UE's own codecs, decoded to keys once (anim_codec.rs).
+    /// UE's own codecs, decoded to keys once (anim_codec.rs); `at` is
+    /// the FUECompressedAnimData they were read from.
     Ue {
         tracks: Vec<crate::anim_codec::Track>,
+        at: usize,
     },
 }
 
@@ -354,7 +356,7 @@ fn track_table(base: usize, size: usize, tracks: usize, bones: usize) -> Option<
 }
 
 /// A TArrayView (data, int32 count) at `addr` copied out, when readable.
-fn view<T: Copy>(addr: usize, max: usize) -> Option<Vec<T>> {
+pub(crate) fn view<T: Copy>(addr: usize, max: usize) -> Option<Vec<T>> {
     let data: usize = read(addr)?;
     let n: i32 = read(addr + 8)?;
     if n == 0 {
@@ -437,7 +439,10 @@ fn ue_clip(
         let keys = codec::decode(&data, tracks, if additive { 0.0 } else { 1.0 })
             .map_err(|e| format!("{}: {e}", seq.name()))?;
         return Ok(Clip {
-            data: Data::Ue { tracks: keys },
+            data: Data::Ue {
+                tracks: keys,
+                at: p,
+            },
             format: match codes[0] {
                 codec::CONSTANT_KEY_LERP => "constant key lerp",
                 codec::VARIABLE_KEY_LERP => "variable key lerp",
@@ -535,6 +540,15 @@ impl Clip {
     /// `i` of the clip, as stored (no blend between samples). Game
     /// thread.
     pub fn local_sample(&self, i: u32) -> Result<Vec<Xform>, String> {
+        if let Data::Ue { tracks, .. } = &self.data {
+            // Exactly at the frame: keys spread over frames 0..n-1.
+            let rel = if self.samples > 1 {
+                f64::from(i) / f64::from(self.samples - 1)
+            } else {
+                0.0
+            };
+            return Ok(self.ue_pose(tracks, rel, false));
+        }
         if self.rate <= 0.0 {
             return Err("the clip has no sample rate".into());
         }
@@ -550,23 +564,35 @@ impl Clip {
         }
     }
 
+    /// The FUECompressedAnimData the clip was read from, None for ACL.
+    pub fn ue_data(&self) -> Option<usize> {
+        match self.data {
+            Data::Ue { at, .. } => Some(at),
+            Data::Acl { .. } => None,
+        }
+    }
+
+    fn ue_pose(&self, tracks: &[crate::anim_codec::Track], rel: f64, step: bool) -> Vec<Xform> {
+        let mut pose = self.skeleton.reference.clone();
+        for (t, &b) in self.track_bone.iter().enumerate() {
+            let (rot, pos, scale) = tracks[t].sample(rel, self.samples, step);
+            pose[b as usize] = Xform { rot, pos, scale };
+        }
+        pose
+    }
+
     /// `step`: 0 blend, 1 floor, 2 nearest sample (ueforge_acl_sample).
     fn local_pose_at(&self, time: f32, step: i32) -> Result<Vec<Xform>, String> {
         let time = time.clamp(0.0, self.duration);
         let buffer = match &self.data {
             Data::Acl { buffer } => *buffer,
-            Data::Ue { tracks } => {
+            Data::Ue { tracks, .. } => {
                 let rel = if self.duration > 0.0 {
                     f64::from(time / self.duration)
                 } else {
                     0.0
                 };
-                let mut pose = self.skeleton.reference.clone();
-                for (t, &b) in self.track_bone.iter().enumerate() {
-                    let (rot, pos, scale) = tracks[t].sample(rel, self.samples, step != 0);
-                    pose[b as usize] = Xform { rot, pos, scale };
-                }
-                return Ok(pose);
+                return Ok(self.ue_pose(tracks, rel, step != 0));
             }
         };
         let n = self.tracks as usize;
