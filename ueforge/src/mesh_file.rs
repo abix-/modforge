@@ -326,6 +326,55 @@ impl Mesh {
         self.thickness_least(chain, step, OWN)
     }
 
+    /// Vertices `which` where the game draws them: each moved by morphs
+    /// `morphs` (name, strength) first, then put on bones posed `pose`
+    /// (per mesh bone, any one space: component or world) by its bone
+    /// weights, linear blend as the engine skins a mesh (each weight's
+    /// share of the vertex taken from the bone's reference pose to its
+    /// pose). The answer is in `pose`'s space. A bone missing from `pose`
+    /// counts at its reference pose. Read only. Asked 2026-11-23: "all of
+    /// this data should come from actual observation of doing the
+    /// things, not from guessing, but from actually how it's drawn".
+    pub fn drawn(
+        &self,
+        pose: &[Option<Xform>],
+        morphs: &[(&str, f64)],
+        which: &[usize],
+    ) -> Vec<DVec3> {
+        let rest = self.ref_pose();
+        let mut moved: HashMap<usize, DVec3> = HashMap::new();
+        for (name, k) in morphs {
+            let Some(m) = self.morphs.iter().find(|m| m.name == *name) else {
+                continue;
+            };
+            for (i, x, y, z) in &m.d {
+                *moved.entry(*i as usize).or_insert(DVec3::ZERO) +=
+                    DVec3::new(*x as f64, *y as f64, *z as f64) * *k;
+            }
+        }
+        which
+            .iter()
+            .filter_map(|&i| {
+                let v = self.verts.get(i)?;
+                let p = DVec3::from_array(v.p) + moved.get(&i).copied().unwrap_or(DVec3::ZERO);
+                let total: f64 = v.w.iter().map(|(_, w)| w).sum();
+                if total <= 0.0 {
+                    return Some(p);
+                }
+                Some(
+                    v.w.iter()
+                        .map(|&(b, w)| {
+                            let b = b as usize;
+                            let r = rest[b];
+                            let at = pose.get(b).copied().flatten().unwrap_or(r);
+                            at.point(r.inverse_point(p)) * (w / total)
+                        })
+                        .sum(),
+                )
+            })
+            .collect()
+    }
+
     /// [`Mesh::thickness`] counting each vertex weighted at least `least`
     /// to the chain.
     pub fn thickness_least(&self, chain: &[&str], step: f64, least: f64) -> Option<Vec<f64>> {
