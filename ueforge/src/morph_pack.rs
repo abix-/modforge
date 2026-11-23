@@ -413,6 +413,94 @@ pub fn replace(file: &[u8], new: &[Buffers]) -> (Vec<u8>, Vec<(usize, i64)>) {
     (out, changes)
 }
 
+fn i64_at(b: &[u8], o: usize) -> Option<i64> {
+    Some(i64::from_le_bytes(b.get(o..o + 8)?.try_into().ok()?))
+}
+
+/// Where an export row keeps its serial size; its serial offset follows
+/// (FObjectExport: four package indices, the object name, the flags).
+const ROW_SIZE_AT: usize = 28;
+
+/// The export table of a legacy package header: (first row, row stride,
+/// rows), found as the (count, offset) pair whose rows' serial ranges
+/// tile the export data from the end of the header to the end of the
+/// .uexp, one after another.
+fn export_table(uasset: &[u8], uexp_len: usize) -> Option<(usize, usize, usize)> {
+    let h = uasset.len() as i64;
+    let total = h + uexp_len as i64;
+    for p in 0..uasset.len().min(4096).saturating_sub(8) {
+        let count = u32_at(uasset, p)? as usize;
+        let first = u32_at(uasset, p + 4)? as usize;
+        if count == 0 || count > 1 << 20 || first >= uasset.len() {
+            continue;
+        }
+        for stride in (64..=160).step_by(4) {
+            let mut end = h;
+            let tiles = (0..count).all(|i| {
+                let row = first + i * stride + ROW_SIZE_AT;
+                match (i64_at(uasset, row), i64_at(uasset, row + 8)) {
+                    (Some(size), Some(off)) if off == end && size >= 0 => {
+                        end += size;
+                        true
+                    }
+                    _ => false,
+                }
+            });
+            if tiles && end == total {
+                return Some((first, stride, count));
+            }
+        }
+    }
+    None
+}
+
+/// The legacy package header fixed for a .uexp of `uexp_len` bytes that
+/// grew by `changes` (byte offset in the .uexp, bytes added), as
+/// [`replace`] reports them: the export holding each change grows, every
+/// export after it moves, and the header's one field holding the old end
+/// of the package (the bulk data start) moves with it.
+pub fn fix_package(
+    uasset: &[u8],
+    uexp_len: usize,
+    changes: &[(usize, i64)],
+) -> Result<Vec<u8>, String> {
+    let (first, stride, count) =
+        export_table(uasset, uexp_len).ok_or("no export table tiles the .uexp")?;
+    let h = uasset.len() as i64;
+    let total = h + uexp_len as i64;
+    let ends: Vec<usize> = (0..first.saturating_sub(8))
+        .filter(|&p| i64_at(uasset, p) == Some(total))
+        .collect();
+    let [end_at] = ends[..] else {
+        return Err(format!("{} header fields hold the package end", ends.len()));
+    };
+    let mut out = uasset.to_vec();
+    let put = |out: &mut Vec<u8>, at: usize, v: i64| {
+        out[at..at + 8].copy_from_slice(&v.to_le_bytes());
+    };
+    let mut grown = 0;
+    // Last change first, so each change's old offset still names the
+    // same export.
+    let mut changes = changes.to_vec();
+    changes.sort_by_key(|c| std::cmp::Reverse(c.0));
+    for (at, d) in changes {
+        let at = h + at as i64;
+        for i in 0..count {
+            let row = first + i * stride + ROW_SIZE_AT;
+            let size = i64_at(&out, row).unwrap();
+            let off = i64_at(&out, row + 8).unwrap();
+            if off > at {
+                put(&mut out, row + 8, off + d);
+            } else if at < off + size {
+                put(&mut out, row, size + d);
+            }
+        }
+        grown += d;
+    }
+    put(&mut out, end_at, total + grown);
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
