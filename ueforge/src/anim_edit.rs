@@ -353,6 +353,12 @@ fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec
             .zip(poses)
             .any(|(a, q)| (a[b].scale - q[b].scale).length() > 1e-5)
     };
+    if !has_scale && let Some(&b) = clip.track_bone.iter().find(|&&b| sized(b as usize)) {
+        return Err(format!(
+            "{} was resized, but this clip keeps no scale data",
+            clip.skeleton.bones[b as usize]
+        ));
+    }
     let keys: Vec<codec::TrackKeys> = clip
         .track_bone
         .iter()

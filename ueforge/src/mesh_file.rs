@@ -185,6 +185,56 @@ fn read(s: &Setup, package: &str) -> Result<Mesh, String> {
     serde_json::from_str(&text).map_err(|e| format!("{}: {e}", out.display()))
 }
 
+/// The opening morphs' value and the canal bone's widening that fit
+/// something round in a canal, from [`Mesh::canal_width`]: `need[j]` the
+/// radius the canal must open to j to j+1 cm in (0: nothing there), each
+/// ring (j, closed, opened at 1) the canal's narrowest wall there; a
+/// morph opens a wall in proportion to its value, and widening the
+/// canal's bone by k puts each wall k times as far out. With `widen`:
+/// of the values 0 to `most` (every 0.01), the one with the least gap
+/// between the walls and `need`, each given the least widening (1 or
+/// more) that leaves no cm narrower than needed. Without: no widening
+/// and the value that fits the tightest cm. Returns (value, widening).
+/// Asked 2026-11-22: "we need to fix the morp so the opening AND the
+/// inside is accurate for the changed size".
+pub fn fit_opening(
+    need: &[f64],
+    rings: &[(usize, f64, f64)],
+    widen: bool,
+    most: f64,
+) -> (f64, f64) {
+    let at = |j: usize| need.get(j).copied().unwrap_or(0.0);
+    let wall = |w: f64, r0: f64, r1: f64| r0 + w * (r1 - r0);
+    if rings.iter().all(|&(j, _, _)| at(j) <= 0.0) {
+        return (0.0, 1.0);
+    }
+    if !widen {
+        let w = rings
+            .iter()
+            .filter(|&&(_, r0, r1)| r1 > r0)
+            .map(|&(j, r0, r1)| (at(j) - r0) / (r1 - r0))
+            .fold(0.0, f64::max);
+        return (w, 1.0);
+    }
+    let mut best = (f64::MAX, 0.0, 1.0);
+    for n in 0..=(most.max(0.0) * 100.0) as usize {
+        let w = n as f64 / 100.0;
+        let k = rings
+            .iter()
+            .map(|&(j, r0, r1)| at(j) / wall(w, r0, r1).max(1e-6))
+            .fold(1.0, f64::max);
+        let gap: f64 = rings
+            .iter()
+            .filter(|&&(j, _, _)| at(j) > 0.0)
+            .map(|&(j, r0, r1)| k * wall(w, r0, r1) - at(j))
+            .sum();
+        if gap < best.0 {
+            best = (gap, w, k);
+        }
+    }
+    (best.1, best.2)
+}
+
 /// The package of skinned mesh component `c`'s mesh ("/Game/...").
 ///
 /// # Safety
@@ -246,10 +296,32 @@ impl Mesh {
     /// in it. Reference pose. None with fewer than two bones or none of
     /// them found, or no vertex on them.
     pub fn thickness(&self, chain: &[&str], step: f64) -> Option<Vec<f64>> {
-        if chain.len() < 2 || step <= 0.0 {
+        if step <= 0.0 {
             return None;
         }
-        self.thickness_old(chain, step)
+        let mut bins: Vec<f64> = Vec::new();
+        for (_, s, off) in self.on_chain(chain)? {
+            let k = (s / step).floor() as usize;
+            if k > 100_000 {
+                return None;
+            }
+            if bins.len() <= k {
+                bins.resize(k + 1, -1.0);
+            }
+            bins[k] = bins[k].max(off.length());
+        }
+        if bins.is_empty() {
+            return None;
+        }
+        // A sample no vertex fell in takes its nearer neighbour's.
+        for k in 0..bins.len() {
+            if bins[k] < 0.0 {
+                let before = bins[..k].iter().rev().find(|&&r| r >= 0.0).copied();
+                let after = bins[k + 1..].iter().find(|&&r| r >= 0.0).copied();
+                bins[k] = before.or(after).unwrap_or(0.0);
+            }
+        }
+        Some(bins)
     }
 
     /// Each vertex weighted at least half to bone chain `chain`: (its
@@ -300,73 +372,6 @@ impl Mesh {
             out.push((n, best.0, best.1));
         }
         Some(out)
-    }
-
-    fn thickness_old(&self, chain: &[&str], step: f64) -> Option<Vec<f64>> {
-        let pose = self.ref_pose();
-        let idx: Vec<usize> = chain.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
-        let pts: Vec<DVec3> = idx.iter().map(|&i| pose[i].pos).collect();
-        let mut starts = vec![0.0];
-        for w in pts.windows(2) {
-            starts.push(starts.last().copied().unwrap_or(0.0) + (w[1] - w[0]).length());
-        }
-        let last = pts.len() - 2;
-        // A point's (distance along, distance from) the chain line; the
-        // last segment goes on past the last bone.
-        let place = |p: DVec3| -> (f64, f64) {
-            let mut best = (0.0, f64::MAX);
-            for j in 0..=last {
-                let (a, b) = (pts[j], pts[j + 1]);
-                let l = (b - a).length();
-                if l < 1e-9 {
-                    continue;
-                }
-                let d = (b - a) / l;
-                let u = (p - a).dot(d);
-                let u = if j == last {
-                    u.max(0.0)
-                } else {
-                    u.clamp(0.0, l)
-                };
-                let r = (p - (a + d * u)).length();
-                if r < best.1 {
-                    best = (starts[j] + u, r);
-                }
-            }
-            best
-        };
-        let mut bins: Vec<f64> = Vec::new();
-        for v in &self.verts {
-            let on: f64 =
-                v.w.iter()
-                    .filter(|(b, _)| idx.contains(&(*b as usize)))
-                    .map(|(_, w)| w)
-                    .sum();
-            if on < 0.5 {
-                continue;
-            }
-            let (s, r) = place(DVec3::from_array(v.p));
-            let k = (s / step).floor() as usize;
-            if k > 100_000 {
-                return None;
-            }
-            if bins.len() <= k {
-                bins.resize(k + 1, -1.0);
-            }
-            bins[k] = bins[k].max(r);
-        }
-        if bins.is_empty() {
-            return None;
-        }
-        // A sample no vertex fell in takes its nearer neighbour's.
-        for k in 0..bins.len() {
-            if bins[k] < 0.0 {
-                let before = bins[..k].iter().rev().find(|&&r| r >= 0.0).copied();
-                let after = bins[k + 1..].iter().find(|&&r| r >= 0.0).copied();
-                bins[k] = before.or(after).unwrap_or(0.0);
-            }
-        }
-        Some(bins)
     }
 
     /// The drawn canal through bones `bones` (its walls: the vertices
@@ -577,6 +582,33 @@ mod tests {
         assert!(a.distance(DVec3::ZERO) < 1e-6, "{a}");
         assert!((b - a).normalize().distance(DVec3::X) < 1e-6, "{b}");
         assert!(((b - a).length() - 18f64.sqrt()).abs() < 1e-9);
+    }
+
+    /// The player's vagina as measured (research_mesh_canal_width): the
+    /// entrance closed 0.02, opened 2.09 at 1; inside 1.15, opened 2.10.
+    const RINGS: &[(usize, f64, f64)] = &[(0, 0.02, 2.09), (3, 1.15, 2.10)];
+
+    #[test]
+    fn opening_fits_entrance_and_inside_with_widening() {
+        let need = [3.3, 3.3, 3.3, 3.3];
+        let (w, k) = fit_opening(&need, RINGS, true, 5.0);
+        for &(j, r0, r1) in RINGS {
+            let r = k * (r0 + w * (r1 - r0));
+            assert!(r >= need[j] - 1e-6, "cm {j}: {r} < {}", need[j]);
+            assert!(r - need[j] < 0.1, "cm {j}: gap {}", r - need[j]);
+        }
+    }
+
+    #[test]
+    fn opening_without_widening_fits_the_tightest_cm() {
+        let (w, k) = fit_opening(&[3.3, 0.0, 0.0, 3.3], RINGS, false, 5.0);
+        assert_eq!(k, 1.0);
+        assert!((w - (3.3 - 1.15) / 0.95).abs() < 1e-9);
+    }
+
+    #[test]
+    fn opening_closed_when_nothing_is_in() {
+        assert_eq!(fit_opening(&[0.0; 4], RINGS, true, 5.0), (0.0, 1.0));
     }
 
     #[test]
