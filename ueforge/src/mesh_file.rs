@@ -249,6 +249,60 @@ impl Mesh {
         if chain.len() < 2 || step <= 0.0 {
             return None;
         }
+        self.thickness_old(chain, step)
+    }
+
+    /// Each vertex weighted at least half to bone chain `chain`: (its
+    /// index, distance along the chain, its offset from the chain line
+    /// there), as [`Mesh::thickness`] places them. Reference pose.
+    pub fn on_chain(&self, chain: &[&str]) -> Option<Vec<(usize, f64, DVec3)>> {
+        if chain.len() < 2 {
+            return None;
+        }
+        let pose = self.ref_pose();
+        let idx: Vec<usize> = chain.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
+        let pts: Vec<DVec3> = idx.iter().map(|&i| pose[i].pos).collect();
+        let mut starts = vec![0.0];
+        for w in pts.windows(2) {
+            starts.push(starts.last().copied().unwrap_or(0.0) + (w[1] - w[0]).length());
+        }
+        let last = pts.len() - 2;
+        let mut out = Vec::new();
+        for (n, v) in self.verts.iter().enumerate() {
+            let on: f64 =
+                v.w.iter()
+                    .filter(|(b, _)| idx.contains(&(*b as usize)))
+                    .map(|(_, w)| w)
+                    .sum();
+            if on < 0.5 {
+                continue;
+            }
+            let p = DVec3::from_array(v.p);
+            let mut best = (0.0, DVec3::ZERO, f64::MAX);
+            for j in 0..=last {
+                let (a, b) = (pts[j], pts[j + 1]);
+                let l = (b - a).length();
+                if l < 1e-9 {
+                    continue;
+                }
+                let d = (b - a) / l;
+                let u = (p - a).dot(d);
+                let u = if j == last {
+                    u.max(0.0)
+                } else {
+                    u.clamp(0.0, l)
+                };
+                let off = p - (a + d * u);
+                if off.length() < best.2 {
+                    best = (starts[j] + u, off, off.length());
+                }
+            }
+            out.push((n, best.0, best.1));
+        }
+        Some(out)
+    }
+
+    fn thickness_old(&self, chain: &[&str], step: f64) -> Option<Vec<f64>> {
         let pose = self.ref_pose();
         let idx: Vec<usize> = chain.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
         let pts: Vec<DVec3> = idx.iter().map(|&i| pose[i].pos).collect();

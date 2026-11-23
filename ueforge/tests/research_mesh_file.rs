@@ -25,6 +25,117 @@ fn research_mesh_thickness() {
     println!("radius every 0.5 cm: {}", line.join(" "));
 }
 
+/// The penis's cross-section every cm along MESH_CHAIN: how far its
+/// centre is off the bone line, its widest distance from the line (what
+/// thickness reports) and its widest and mean distance from its centre.
+#[test]
+#[ignore]
+fn research_mesh_section() {
+    use glam::DVec3;
+    let path = std::env::var("MESH_JSON").expect("MESH_JSON");
+    let chain = std::env::var("MESH_CHAIN").expect("MESH_CHAIN");
+    let chain: Vec<&str> = chain.split(',').collect();
+    let m: ueforge::mesh_file::Mesh =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let mut bins: std::collections::BTreeMap<i64, Vec<DVec3>> = Default::default();
+    for (_, s, off) in m.on_chain(&chain).unwrap() {
+        bins.entry(s.floor() as i64).or_default().push(off);
+    }
+    for (s, offs) in &bins {
+        let c = offs.iter().sum::<DVec3>() / offs.len() as f64;
+        let from_line = offs.iter().map(|o| o.length()).fold(0.0, f64::max);
+        let about: Vec<f64> = offs.iter().map(|o| (*o - c).length()).collect();
+        let max = about.iter().cloned().fold(0.0, f64::max);
+        let mean = about.iter().sum::<f64>() / about.len() as f64;
+        println!(
+            "{s:>3} cm: {:>4} verts, centre off line {:.2}, widest from line {from_line:.2}, from centre widest {max:.2} mean {mean:.2}",
+            offs.len(),
+            c.length()
+        );
+    }
+}
+
+/// What widening bone MESH_BONE across its Z axis by MESH_K does to the
+/// canal (MESH_CANAL=from,to,walls...): the bone's children, then every
+/// cm along the canal (from 5 cm outside) for the vertices with any
+/// weight on the bone: how many, how many of them are walls (weight at
+/// least half), their mean weight, and the narrowest wall point from the
+/// canal line closed and widened. Asked 2026-11-22: "we need to fix the
+/// morp so the opening AND the inside is accurate for the changed size".
+#[test]
+#[ignore]
+fn research_mesh_bone_width() {
+    use glam::DVec3;
+    let path = std::env::var("MESH_JSON").expect("MESH_JSON");
+    let bone = std::env::var("MESH_BONE").expect("MESH_BONE");
+    let k: f64 = std::env::var("MESH_K").expect("MESH_K").parse().unwrap();
+    let canal = std::env::var("MESH_CANAL").expect("MESH_CANAL");
+    let c: Vec<&str> = canal.split(',').collect();
+    let m: ueforge::mesh_file::Mesh =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let pose = m.ref_pose();
+    let bi = m.bone(&bone).unwrap();
+    let kids: Vec<&str> = m
+        .bones
+        .iter()
+        .filter(|b| b.parent == bi as i32)
+        .map(|b| b.name.as_str())
+        .collect();
+    println!("{bone} children: {kids:?}");
+    let (a, b) = m.canal(&c[2..], c[0], c[1]).unwrap();
+    let d = (b - a).normalize();
+    println!(
+        "canal line in {bone} space: {:.2?} along {:.2?}",
+        pose[bi].inverse_point(a),
+        (pose[bi].inverse_point(b) - pose[bi].inverse_point(a)).normalize()
+    );
+    // (count, walls, weight sum, narrowest wall closed, widened)
+    let mut bins: std::collections::BTreeMap<i64, (usize, usize, f64, f64, f64)> =
+        Default::default();
+    for v in &m.verts {
+        let w: f64 =
+            v.w.iter()
+                .filter(|(x, _)| *x as usize == bi)
+                .map(|(_, w)| w)
+                .sum();
+        if w <= 0.0 {
+            continue;
+        }
+        let p = DVec3::from_array(v.p);
+        let l = pose[bi].inverse_point(p);
+        let wide = pose[bi].point(DVec3::new(l.x * k, l.y * k, l.z));
+        let q = p + (wide - p) * w;
+        let s = (p - a).dot(d).floor() as i64;
+        if !(-5..=12).contains(&s) {
+            continue;
+        }
+        let e = bins.entry(s).or_insert((0, 0, 0.0, f64::MAX, f64::MAX));
+        e.0 += 1;
+        e.2 += w;
+        if w >= 0.5 {
+            e.1 += 1;
+            e.3 = e.3.min((p - a).reject_from(d).length());
+            e.4 = e.4.min((q - a).reject_from(d).length());
+        }
+    }
+    for (s, (n, walls, ws, r0, r1)) in &bins {
+        println!(
+            "{s:>3} cm: {n:>5} verts, {walls:>5} walls, mean weight {:.2}, narrowest wall {} -> {}",
+            ws / *n as f64,
+            if *walls > 0 {
+                format!("{r0:.2}")
+            } else {
+                "-".into()
+            },
+            if *walls > 0 {
+                format!("{r1:.2}")
+            } else {
+                "-".into()
+            },
+        );
+    }
+}
+
 /// How far each opening morph opens the drawn canal: MESH_JSON,
 /// MESH_CANAL=from,to,walls... , MESH_MORPHS=a|b|c (each alone). Every cm
 /// in: the narrowest wall point closed, and opened by the morph at 1.
