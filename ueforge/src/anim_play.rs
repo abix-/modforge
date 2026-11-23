@@ -93,6 +93,71 @@ pub fn curves_now(mesh: &UObject) -> Result<Vec<(String, f32)>, String> {
     Ok(out)
 }
 
+/// One animation an anim instance plays outside a montage: an asset
+/// player node of its graph (a sequence or blend space player), or the
+/// single node instance's asset.
+pub struct Player {
+    /// The node's field on the anim instance (CurrentAsset: the single
+    /// node instance).
+    pub node: String,
+    pub asset: String,
+    /// Seconds into the asset (InternalTimeAccumulator); None for the
+    /// single node instance, which does not reflect it.
+    pub time: Option<f64>,
+    /// The node's weight in the graph (BlendWeight), as last updated: a
+    /// node the graph no longer reaches keeps its last weight, so a time
+    /// that does not move between two reads marks one not playing.
+    pub weight: Option<f64>,
+    pub rate: Option<f64>,
+}
+
+/// What `mesh`'s anim instance plays besides montages, from its
+/// reflected fields: every field that is an asset player node (it has
+/// InternalTimeAccumulator) with a weight above 0, with the asset it
+/// plays (its Sequence or BlendSpace), and the single node instance's
+/// CurrentAsset. Game thread. Asked 2026-11-22: "can you read the
+/// animation with the ops??" (a Werebear scene with no montage on either
+/// body).
+pub fn players(mesh: &UObject) -> Result<(String, Vec<Player>), String> {
+    let anim = anim_instance(mesh).ok_or("no anim instance")?;
+    // SAFETY: game thread; anim is the mesh's live anim instance.
+    let f = unsafe { crate::reflect::get_fields(anim, &[]) }?;
+    let mut out = Vec::new();
+    for (node, v) in f.as_object().into_iter().flatten() {
+        if node == "CurrentAsset" {
+            if let Some(a) = v["name"].as_str() {
+                out.push(Player {
+                    node: node.clone(),
+                    asset: a.to_string(),
+                    time: None,
+                    weight: None,
+                    rate: None,
+                });
+            }
+            continue;
+        }
+        let Some(time) = v["InternalTimeAccumulator"].as_f64() else {
+            continue;
+        };
+        let weight = v["BlendWeight"].as_f64();
+        if weight.is_some_and(|w| w <= 0.0) {
+            continue;
+        }
+        out.push(Player {
+            node: node.clone(),
+            asset: ["Sequence", "BlendSpace"]
+                .iter()
+                .find_map(|k| v[*k]["name"].as_str())
+                .unwrap_or("")
+                .to_string(),
+            time: Some(time),
+            weight,
+            rate: v["PlayRate"].as_f64(),
+        });
+    }
+    Ok((anim.full_name(), out))
+}
+
 /// The montage skeletal mesh `mesh` plays now and its position. Game
 /// thread.
 pub fn playing(mesh: &UObject) -> Option<Playing> {
