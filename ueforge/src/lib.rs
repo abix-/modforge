@@ -102,6 +102,7 @@ pub mod loops;
 pub use modforge::log;
 pub mod derived_class;
 pub mod mesh_file;
+pub mod morph_pack;
 pub mod mesh_parts;
 pub mod mod_main;
 pub mod nav;

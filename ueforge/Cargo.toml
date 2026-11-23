@@ -27,6 +27,10 @@ path = "src/bin/dump_strings.rs"
 name = "read-property"
 path = "src/bin/read_property.rs"
 
+[[bin]]
+name = "morph-pack"
+path = "src/bin/morph_pack.rs"
+
 # `ueforge-deploy` lifted to `modforge-deploy` during Phase 0b
 # row 18. The bin now lives at
 # `modforge/src/bin/modforge_deploy.rs`; the `cargo deploy ...`
