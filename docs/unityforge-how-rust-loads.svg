@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="780" viewBox="0 0 1100 780" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="aBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="aOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/>
+    </marker>
+    <marker id="aGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+
+  <rect width="1100" height="780" fill="#ffffff"/>
+
+  <!-- title -->
+  <text x="550" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#0f172a">How a Rust mod runs inside a Unity (C#) game</text>
+
+  <!-- game process -->
+  <rect x="15" y="60" width="1070" height="600" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 5"/>
+  <text x="30" y="82" font-size="13" font-weight="bold" fill="#475569">One game process (the game .exe)</text>
+
+  <!-- Unity game box -->
+  <rect x="30" y="100" width="220" height="530" rx="8" fill="#e2e8f0" stroke="#475569" stroke-width="2"/>
+  <text x="140" y="130" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">Unity game</text>
+  <text x="140" y="152" text-anchor="middle" font-size="12" fill="#334155">engine + the game's C# code</text>
+  <text x="140" y="170" text-anchor="middle" font-size="12" fill="#334155">(Mono or IL2CPP)</text>
+  <rect x="50" y="200" width="180" height="120" rx="6" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="140" y="224" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">the game's objects</text>
+  <text x="140" y="246" text-anchor="middle" font-size="12" fill="#334155">singletons, managers,</text>
+  <text x="140" y="264" text-anchor="middle" font-size="12" fill="#334155">players, items</text>
+  <text x="140" y="286" text-anchor="middle" font-size="12" fill="#334155">their fields and methods</text>
+  <text x="140" y="304" text-anchor="middle" font-size="12" fill="#334155">(all managed C#)</text>
+
+  <!-- mod loader box -->
+  <rect x="400" y="100" width="240" height="70" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="520" y="128" text-anchor="middle" font-size="15" font-weight="bold" fill="#0f172a">Mod loader</text>
+  <text x="520" y="150" text-anchor="middle" font-size="12" fill="#334155">BepInEx, MelonLoader, or the game's own</text>
+
+  <!-- shim box -->
+  <rect x="400" y="220" width="240" height="410" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="520" y="248" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">C# shim</text>
+  <text x="520" y="268" text-anchor="middle" font-size="11" fill="#334155">cs-shim-mono / il2cpp / melonloader</text>
+  <text x="520" y="284" text-anchor="middle" font-size="11" fill="#334155">/ survivalist / sevendaystodie</text>
+  <text x="520" y="350" text-anchor="middle" font-size="12" fill="#0f172a">holds the real C# objects;</text>
+  <text x="520" y="368" text-anchor="middle" font-size="12" fill="#0f172a">Rust only gets numbered handles</text>
+  <text x="520" y="430" text-anchor="middle" font-size="12" fill="#0f172a">turns its C# methods into raw</text>
+  <text x="520" y="448" text-anchor="middle" font-size="12" fill="#0f172a">function pointers: the bridge table</text>
+  <text x="520" y="500" text-anchor="middle" font-size="12" fill="#0f172a">does the real work with .NET</text>
+  <text x="520" y="518" text-anchor="middle" font-size="12" fill="#0f172a">reflection and HarmonyLib</text>
+  <text x="520" y="574" text-anchor="middle" font-size="12" fill="#0f172a">watches for a new DLL build</text>
+  <text x="520" y="592" text-anchor="middle" font-size="12" fill="#0f172a">(hot reload)</text>
+
+  <!-- Rust DLL box -->
+  <rect x="820" y="100" width="250" height="530" rx="8" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+  <text x="945" y="128" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">Rust mod DLL</text>
+  <text x="945" y="148" text-anchor="middle" font-size="12" fill="#334155">*.unityforge.dll (native cdylib)</text>
+  <rect x="840" y="170" width="210" height="50" rx="6" fill="#ffffff" stroke="#fdba74"/>
+  <text x="945" y="191" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f172a">the game mod</text>
+  <text x="945" y="209" text-anchor="middle" font-size="11" fill="#334155">e.g. schedule1-mod (one ModDef)</text>
+  <rect x="840" y="235" width="210" height="50" rx="6" fill="#ffffff" stroke="#fdba74"/>
+  <text x="945" y="256" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f172a">unityforge</text>
+  <text x="945" y="274" text-anchor="middle" font-size="11" fill="#334155">Unity calls, hooks, selectors, ops</text>
+  <rect x="840" y="300" width="210" height="50" rx="6" fill="#ffffff" stroke="#fdba74"/>
+  <text x="945" y="321" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f172a">modforge</text>
+  <text x="945" y="339" text-anchor="middle" font-size="11" fill="#334155">ops, poller, timing, game systems</text>
+  <rect x="840" y="365" width="210" height="50" rx="6" fill="#ffffff" stroke="#fdba74"/>
+  <text x="945" y="386" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f172a">main-thread queue</text>
+  <text x="945" y="404" text-anchor="middle" font-size="11" fill="#334155">drained in every tick</text>
+  <rect x="840" y="560" width="210" height="50" rx="6" fill="#ffffff" stroke="#fdba74"/>
+  <text x="945" y="581" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f172a">HTTP control plane</text>
+  <text x="945" y="599" text-anchor="middle" font-size="11" fill="#334155">on the mod's port</text>
+
+  <!-- 1: game starts loader -->
+  <line x1="250" y1="135" x2="398" y2="135" stroke="#475569" stroke-width="2" marker-end="url(#aGray)"/>
+  <text x="325" y="128" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">1. game starts</text>
+  <text x="325" y="152" text-anchor="middle" font-size="11" fill="#475569">runs the mod loader</text>
+
+  <!-- 2: loader loads shim -->
+  <line x1="520" y1="170" x2="520" y2="218" stroke="#475569" stroke-width="2" marker-end="url(#aGray)"/>
+  <text x="530" y="200" font-size="12" font-weight="bold" fill="#0f172a">2. loads the shim</text>
+
+  <!-- 3: LoadLibrary -->
+  <line x1="640" y1="260" x2="818" y2="260" stroke="#2563eb" stroke-width="2" marker-end="url(#aBlue)"/>
+  <text x="730" y="253" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">3. LoadLibrary</text>
+  <text x="730" y="276" text-anchor="middle" font-size="11" fill="#475569">finds *.unityforge.dll</text>
+
+  <!-- 4: init -->
+  <line x1="640" y1="330" x2="818" y2="330" stroke="#2563eb" stroke-width="2" marker-end="url(#aBlue)"/>
+  <text x="730" y="323" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">4. unityforge_init</text>
+  <text x="730" y="346" text-anchor="middle" font-size="11" fill="#475569">once, hands over the table</text>
+
+  <!-- 5: Update and tick -->
+  <line x1="250" y1="400" x2="398" y2="400" stroke="#475569" stroke-width="2" marker-end="url(#aGray)"/>
+  <text x="325" y="393" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">5. Update()</text>
+  <text x="325" y="416" text-anchor="middle" font-size="11" fill="#475569">every frame</text>
+  <line x1="640" y1="400" x2="818" y2="400" stroke="#2563eb" stroke-width="2" marker-end="url(#aBlue)"/>
+  <text x="730" y="393" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">unityforge_tick</text>
+  <text x="730" y="416" text-anchor="middle" font-size="11" fill="#475569">every frame</text>
+
+  <!-- 6: Rust calls through table, shim acts on game -->
+  <line x1="820" y1="470" x2="642" y2="470" stroke="#ea580c" stroke-width="2" marker-end="url(#aOrange)"/>
+  <text x="730" y="463" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">6. call through table</text>
+  <text x="730" y="486" text-anchor="middle" font-size="11" fill="#475569">read/write field, call, patch</text>
+  <line x1="400" y1="470" x2="252" y2="470" stroke="#ea580c" stroke-width="2" marker-end="url(#aOrange)"/>
+  <text x="325" y="463" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">reflection, Harmony</text>
+  <text x="325" y="486" text-anchor="middle" font-size="11" fill="#475569">acts on the real object</text>
+
+  <!-- 7: patched method runs -> Rust callback -->
+  <line x1="250" y1="540" x2="398" y2="540" stroke="#475569" stroke-width="2" marker-end="url(#aGray)"/>
+  <text x="325" y="533" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">7. patched method runs</text>
+  <text x="325" y="556" text-anchor="middle" font-size="11" fill="#475569">prefix / postfix fires</text>
+  <line x1="640" y1="540" x2="818" y2="540" stroke="#2563eb" stroke-width="2" marker-end="url(#aBlue)"/>
+  <text x="730" y="533" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">Rust callback</text>
+  <text x="730" y="556" text-anchor="middle" font-size="11" fill="#475569">by function pointer</text>
+
+  <!-- 8: shutdown -->
+  <line x1="640" y1="605" x2="818" y2="605" stroke="#2563eb" stroke-width="2" marker-end="url(#aBlue)"/>
+  <text x="730" y="598" text-anchor="middle" font-size="12" font-weight="bold" fill="#0f172a">8. unityforge_shutdown</text>
+  <text x="730" y="621" text-anchor="middle" font-size="11" fill="#475569">on exit or hot reload</text>
+
+  <!-- outside: tests over HTTP -->
+  <rect x="820" y="690" width="250" height="56" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="945" y="713" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f172a">tests and tools</text>
+  <text x="945" y="732" text-anchor="middle" font-size="11" fill="#334155">research_*.rs, clients (outside the game)</text>
+  <line x1="945" y1="688" x2="945" y2="612" stroke="#16a34a" stroke-width="2" marker-start="url(#aGray)" marker-end="url(#aGray)"/>
+  <text x="955" y="678" font-size="11" fill="#166534">HTTP</text>
+
+  <!-- legend -->
+  <text x="30" y="696" font-size="13" font-weight="bold" fill="#0f172a">Arrows</text>
+  <line x1="30" y1="716" x2="80" y2="716" stroke="#2563eb" stroke-width="2" marker-end="url(#aBlue)"/>
+  <text x="90" y="720" font-size="12" fill="#334155">C# calls into Rust (exported DLL functions or a callback)</text>
+  <line x1="30" y1="738" x2="80" y2="738" stroke="#ea580c" stroke-width="2" marker-end="url(#aOrange)"/>
+  <text x="90" y="742" font-size="12" fill="#334155">Rust asks C# to do something to the game (through the bridge table)</text>
+  <line x1="30" y1="760" x2="80" y2="760" stroke="#475569" stroke-width="2" marker-end="url(#aGray)"/>
+  <text x="90" y="764" font-size="12" fill="#334155">the game or Unity calls the C# side</text>
+</svg>
