@@ -136,6 +136,67 @@ fn research_mesh_bone_width() {
     }
 }
 
+/// The penis's width every 2 cm along MESH_CHAIN as seen: its points
+/// within 0.5 cm of the slice (weighted at least half to the chain),
+/// laid on the plane across the chain there, and their extent side to
+/// side and top to bottom (top: component Z across the chain), cm.
+/// Asked 2026-11-22: "Doesn't seem right ... Are you sure that's correct
+/// for the mesh?".
+#[test]
+#[ignore]
+fn research_mesh_width() {
+    use glam::DVec3;
+    let path = std::env::var("MESH_JSON").expect("MESH_JSON");
+    let chain = std::env::var("MESH_CHAIN").expect("MESH_CHAIN");
+    let chain: Vec<&str> = chain.split(',').collect();
+    let m: ueforge::mesh_file::Mesh =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let pose = m.ref_pose();
+    let pts: Vec<DVec3> = chain.iter().map(|n| pose[m.bone(n).unwrap()].pos).collect();
+    let mut starts = vec![0.0];
+    for w in pts.windows(2) {
+        starts.push(starts.last().unwrap() + (w[1] - w[0]).length());
+    }
+    // The chain's direction at distance s along it.
+    let dir_at = |s: f64| -> DVec3 {
+        let j = (0..pts.len() - 1)
+            .rfind(|&j| starts[j] <= s)
+            .unwrap_or(0)
+            .min(pts.len() - 2);
+        (pts[j + 1] - pts[j]).normalize()
+    };
+    let on = m.on_chain(&chain).unwrap();
+    let end = on.iter().map(|(_, s, _)| *s).fold(0.0, f64::max);
+    let mut s = 0.0;
+    while s <= end + 0.01 {
+        let d = dir_at(s);
+        let up = DVec3::Z.reject_from(d).normalize();
+        let side = d.cross(up);
+        let (mut a, mut b) = ((f64::MAX, f64::MIN), (f64::MAX, f64::MIN));
+        let mut n = 0;
+        for (k, at, _) in &on {
+            if (at - s).abs() > 0.5 {
+                continue;
+            }
+            let p = DVec3::from_array(m.verts[*k].p);
+            let (x, y) = (p.dot(side), p.dot(up));
+            a = (a.0.min(x), a.1.max(x));
+            b = (b.0.min(y), b.1.max(y));
+            n += 1;
+        }
+        if n > 0 {
+            println!(
+                "{s:>4.0} cm: {n:>4} points, side to side {:.1}, top to bottom {:.1}",
+                a.1 - a.0,
+                b.1 - b.0
+            );
+        } else {
+            println!("{s:>4.0} cm: no points");
+        }
+        s += 2.0;
+    }
+}
+
 /// How far each opening morph opens the drawn canal: MESH_JSON,
 /// MESH_CANAL=from,to,walls... , MESH_MORPHS=a|b|c (each alone). Every cm
 /// in: the narrowest wall point closed, and opened by the morph at 1.

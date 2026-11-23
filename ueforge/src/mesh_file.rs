@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use glam::{DQuat, DVec3};
+use glam::{DQuat, DVec2, DVec3};
 use parking_lot::Mutex;
 use serde::Deserialize;
 
@@ -251,6 +251,74 @@ pub unsafe fn package_of(c: &UObject) -> Option<String> {
     Some(top.name())
 }
 
+/// Directions around the chain line a thickness sample's outline is
+/// taken in. Dynamic Penetration for Games takes 64 from a drawn map; a
+/// half cm sample of the Ogre's penis holds 10 to 100 vertices, so
+/// fewer directions, each still holding one.
+const AROUND: usize = 16;
+
+/// How long a slice along the chain each thickness sample is measured
+/// from, cm, at least its step. The Ogre's drawn rings are about 1 cm
+/// apart, so a shorter slice can fall between them.
+const SLICE_CM: f64 = 1.0;
+
+/// The chain line's direction `s` cm along it (points `pts`, their
+/// distances `starts`): the segment `s` falls in, past the end the
+/// last; zero length segments skipped.
+fn dir_at(pts: &[DVec3], starts: &[f64], s: f64) -> DVec3 {
+    let segs = (0..pts.len() - 1).filter(|&j| (pts[j + 1] - pts[j]).length() > 1e-9);
+    let j = segs
+        .clone()
+        .rfind(|&j| starts[j] <= s)
+        .or_else(|| segs.clone().next())
+        .unwrap_or(0);
+    (pts[j + 1] - pts[j]).normalize_or(DVec3::X)
+}
+
+/// Points `pts`' outline around `mid`: the farthest from it in each of
+/// [`AROUND`] directions.
+fn outline(pts: &[DVec2], mid: DVec2) -> [Option<DVec2>; AROUND] {
+    let mut cells = [None; AROUND];
+    for &p in pts {
+        let q = p - mid;
+        let a = (q.y.atan2(q.x) / std::f64::consts::TAU).rem_euclid(1.0);
+        let c: &mut Option<DVec2> = &mut cells[(a * AROUND as f64) as usize % AROUND];
+        if c.is_none_or(|o| q.length() > (o - mid).length()) {
+            *c = Some(p);
+        }
+    }
+    cells
+}
+
+/// A sample's radius from its vertices `pts` (on the plane across the
+/// chain line, the line at the origin): the outline's mean distance
+/// from its middle. The middle, as GirthFrame.cs: the midpoints of lines
+/// through the centre taken lie on the circle through it and the
+/// middle, around halfway between, so twice their mean from it; then
+/// (mine) the outline taken again around that middle, 10 times, since
+/// fixed directions from far off centre leave it off. None with no
+/// vertex.
+fn girth(pts: &[DVec2]) -> Option<f64> {
+    if pts.is_empty() {
+        return None;
+    }
+    let mut mid = DVec2::ZERO;
+    for _ in 0..10 {
+        let cells = outline(pts, mid);
+        let pairs: Vec<DVec2> = (0..AROUND / 2)
+            .filter_map(|i| Some((cells[i]? + cells[i + AROUND / 2]?) / 2.0))
+            .collect();
+        mid = if pairs.is_empty() {
+            let out: Vec<DVec2> = cells.iter().flatten().copied().collect();
+            out.iter().sum::<DVec2>() / out.len() as f64
+        } else {
+            mid + (pairs.iter().sum::<DVec2>() / pairs.len() as f64 - mid) * 2.0
+        };
+    }
+    let out: Vec<DVec2> = outline(pts, mid).iter().flatten().copied().collect();
+    Some(out.iter().map(|p| p.distance(mid)).sum::<f64>() / out.len() as f64)
+}
+
 impl Mesh {
     pub fn bone(&self, n: &str) -> Option<usize> {
         self.bones.iter().position(|b| b.name == n)
@@ -291,28 +359,44 @@ impl Mesh {
     /// radius (cm) every `step` cm from the first bone, along the bones
     /// and on past the last bone in its direction, to the farthest
     /// vertex (the drawn tip). Each vertex weighted at least half to the
-    /// chain counts at the nearest point of the chain line, its distance
-    /// from the line the radius there; each sample is the widest vertex
-    /// in it. Reference pose. None with fewer than two bones or none of
-    /// them found, or no vertex on them.
+    /// chain counts at the nearest point of the chain line. As Dynamic
+    /// Penetration for Games measures girth (naelstrof, GirthFrame.cs):
+    /// each sample's radius is [`girth`]'s, from its vertices laid on
+    /// the plane across the line: the outline's mean distance from the
+    /// shaft's own middle (the line need not run down it). Vertices
+    /// inside the outline never count. Reference pose. None with fewer
+    /// than two bones or none of them found, or no vertex on them.
     pub fn thickness(&self, chain: &[&str], step: f64) -> Option<Vec<f64>> {
         if step <= 0.0 {
             return None;
         }
-        let mut bins: Vec<f64> = Vec::new();
-        for (_, s, off) in self.on_chain(chain)? {
-            let k = (s / step).floor() as usize;
-            if k > 100_000 {
-                return None;
-            }
-            if bins.len() <= k {
-                bins.resize(k + 1, -1.0);
-            }
-            bins[k] = bins[k].max(off.length());
-        }
-        if bins.is_empty() {
+        let (pts, starts) = self.line(chain)?;
+        let on: Vec<(f64, DVec2)> = self
+            .on_chain(chain)?
+            .into_iter()
+            .map(|(_, s, off)| {
+                let d = dir_at(&pts, &starts, s);
+                let up = if d.z.abs() < 0.9 { DVec3::Z } else { DVec3::X }
+                    .reject_from(d)
+                    .normalize();
+                (s, DVec2::new(off.dot(d.cross(up)), off.dot(up)))
+            })
+            .collect();
+        let end = on.iter().map(|(s, _)| *s).fold(-1.0, f64::max);
+        if end < 0.0 || end / step > 100_000.0 {
             return None;
         }
+        let half = (step.max(SLICE_CM)) / 2.0;
+        let slices: Vec<Vec<DVec2>> = (0..=(end / step).floor() as usize)
+            .map(|k| {
+                let mid = (k as f64 + 0.5) * step;
+                on.iter()
+                    .filter(|(s, _)| (s - mid).abs() <= half)
+                    .map(|(_, q)| *q)
+                    .collect()
+            })
+            .collect();
+        let mut bins: Vec<f64> = slices.iter().map(|p| girth(p).unwrap_or(-1.0)).collect();
         // A sample no vertex fell in takes its nearer neighbour's.
         for k in 0..bins.len() {
             if bins[k] < 0.0 {
@@ -324,20 +408,31 @@ impl Mesh {
         Some(bins)
     }
 
-    /// Each vertex weighted at least half to bone chain `chain`: (its
-    /// index, distance along the chain, its offset from the chain line
-    /// there), as [`Mesh::thickness`] places them. Reference pose.
-    pub fn on_chain(&self, chain: &[&str]) -> Option<Vec<(usize, f64, DVec3)>> {
+    /// Bone chain `chain`'s points (reference pose) and each one's
+    /// distance along the chain. None with fewer than two bones or one
+    /// not found.
+    fn line(&self, chain: &[&str]) -> Option<(Vec<DVec3>, Vec<f64>)> {
         if chain.len() < 2 {
             return None;
         }
         let pose = self.ref_pose();
-        let idx: Vec<usize> = chain.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
-        let pts: Vec<DVec3> = idx.iter().map(|&i| pose[i].pos).collect();
+        let pts: Vec<DVec3> = chain
+            .iter()
+            .map(|n| Some(pose[self.bone(n)?].pos))
+            .collect::<Option<_>>()?;
         let mut starts = vec![0.0];
         for w in pts.windows(2) {
             starts.push(starts.last().copied().unwrap_or(0.0) + (w[1] - w[0]).length());
         }
+        Some((pts, starts))
+    }
+
+    /// Each vertex weighted at least half to bone chain `chain`: (its
+    /// index, distance along the chain, its offset from the chain line
+    /// there), as [`Mesh::thickness`] places them. Reference pose.
+    pub fn on_chain(&self, chain: &[&str]) -> Option<Vec<(usize, f64, DVec3)>> {
+        let idx: Vec<usize> = chain.iter().map(|n| self.bone(n)).collect::<Option<_>>()?;
+        let (pts, starts) = self.line(chain)?;
         let last = pts.len() - 2;
         let mut out = Vec::new();
         for (n, v) in self.verts.iter().enumerate() {
@@ -658,6 +753,31 @@ mod tests {
         assert!((t[5] - 2.0).abs() < 1e-9);
         assert!((t[12] - 1.0).abs() < 1e-9);
         assert!((m.reach(&["a", "b", "c"], 1.0).unwrap() - 3.0).abs() < 1e-9);
+    }
+
+    /// A 2 cm round shaft 1.5 cm off the chain line, with a vertex inside
+    /// it: radius 2, not the 3.5 its far side is from the line.
+    #[test]
+    fn thickness_measures_around_the_shafts_own_middle() {
+        let mut m = tube();
+        m.verts.clear();
+        for i in 0..=4 {
+            for a in 0..64 {
+                let t = a as f64 * std::f64::consts::TAU / 64.0;
+                m.verts.push(Vert {
+                    p: [i as f64 + 0.5, 1.5 + 2.0 * t.cos(), 2.0 * t.sin()],
+                    w: vec![(0, 1.0)],
+                });
+            }
+            m.verts.push(Vert {
+                p: [i as f64 + 0.5, 1.5, 0.0],
+                w: vec![(0, 1.0)],
+            });
+        }
+        let t = m.thickness(&["a", "b"], 1.0).unwrap();
+        for r in &t {
+            assert!((r - 2.0).abs() < 0.1, "{t:?}");
+        }
     }
 
     #[test]
