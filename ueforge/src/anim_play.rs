@@ -68,6 +68,31 @@ pub fn set_play_rate(mesh: &UObject, montage: &UObject, rate: f32) -> Result<(),
     .map(|_| ())
 }
 
+/// Every curve `mesh`'s anim instance holds now and its value
+/// (AnimInstance GetAllCurveNames, GetCurveValue): what the animations
+/// set this frame. Game thread. Asked 2026-11-22: "we need to be able to
+/// do all all of the information about a scene so we can analyze it all
+/// with simple, straightforward ops".
+pub fn curves_now(mesh: &UObject) -> Result<Vec<(String, f32)>, String> {
+    let anim = anim_instance(mesh).ok_or("no anim instance")?;
+    let names = call(anim, "AnimInstance", "GetAllCurveNames", json!({}))?;
+    let mut out = Vec::new();
+    for n in names["OutNames"].as_array().into_iter().flatten() {
+        let Some(n) = n.as_str() else { continue };
+        let v = call(
+            anim,
+            "AnimInstance",
+            "GetCurveValue",
+            json!({"CurveName": n}),
+        )?;
+        out.push((
+            n.to_string(),
+            v["ReturnValue"].as_f64().unwrap_or(0.0) as f32,
+        ));
+    }
+    Ok(out)
+}
+
 /// The montage skeletal mesh `mesh` plays now and its position. Game
 /// thread.
 pub fn playing(mesh: &UObject) -> Option<Playing> {

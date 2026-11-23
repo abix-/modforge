@@ -434,6 +434,42 @@ impl Mesh {
         Some(out)
     }
 
+    /// Per cm along bone chain `chain` (as [`Mesh::on_chain`] places the
+    /// vertices weighted at least `least` to it): how many vertices, and
+    /// each bone's summed weight on them, most first. What a cm of a
+    /// thickness is drawn from.
+    #[allow(clippy::type_complexity)]
+    pub fn bones_along(
+        &self,
+        chain: &[&str],
+        least: f64,
+    ) -> Option<Vec<(usize, Vec<(String, f64)>)>> {
+        let on = self.on_chain(chain, least)?;
+        let mut out: Vec<(usize, std::collections::BTreeMap<String, f64>)> = Vec::new();
+        for (k, s, _) in &on {
+            let cm = s.max(0.0).floor() as usize;
+            if out.len() <= cm {
+                out.resize_with(cm + 1, Default::default);
+            }
+            out[cm].0 += 1;
+            for (b, w) in &self.verts[*k].w {
+                *out[cm]
+                    .1
+                    .entry(self.bones[*b as usize].name.clone())
+                    .or_default() += *w;
+            }
+        }
+        Some(
+            out.into_iter()
+                .map(|(n, by)| {
+                    let mut by: Vec<(String, f64)> = by.into_iter().collect();
+                    by.sort_by(|a, b| b.1.total_cmp(&a.1));
+                    (n, by)
+                })
+                .collect(),
+        )
+    }
+
     /// How far past bone `tip` the drawn mesh reaches along the chain
     /// line, cm: the thickness's length less the chain's.
     pub fn reach(&self, chain: &[&str], step: f64) -> Option<f64> {
