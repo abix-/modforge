@@ -510,6 +510,28 @@ pub fn load_asset(package_fname: u64, asset_fname: u64) -> Result<u64, String> {
     ))
 }
 
+/// Pull an asset into memory by its object path, "/Game/Pkg/Name.Name"
+/// (a soft reference's path, as reflect reads it), and give the object.
+///
+/// Blocking, and game thread only.
+pub fn load_path(path: &str) -> Result<&'static UObject, String> {
+    let (package, asset) = path
+        .split_once('.')
+        .ok_or_else(|| format!("'{path}' is not Package.Asset"))?;
+    let name = |text: &str| -> Result<u64, String> {
+        Ok(ue::fname::from_str(text, ue::fname::FindName::Add)
+            .ok_or_else(|| format!("FName for '{text}' unavailable"))?
+            .as_u64())
+    };
+    let address = load_asset(name(package)?, name(asset)?)?;
+    if address == 0 || !ue::uobject::is_live(address as usize) {
+        return Err(format!("could not load {path}"));
+    }
+    // SAFETY: is_live found it in GObjects; the caller is on the game
+    // thread.
+    Ok(unsafe { &*(address as *const UObject) })
+}
+
 /// Register the standard asset inventory and loading operations.
 /// Both operations enter Unreal through the canonical game-thread
 /// runner because the HTTP server handles requests on worker threads.
