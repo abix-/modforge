@@ -334,6 +334,23 @@ unsafe fn read_within(
                 }
             }
             "StrProperty" => json!((&*(at as *const crate::ue::FString)).as_string()),
+            // FSoftObjectPtr: the weak pointer (8 bytes), then the
+            // FSoftObjectPath (UE5: FTopLevelAssetPath's package and asset
+            // FNames, then the sub path FString). Seen 2026-11-22 on a
+            // scene asset's montage pool (40 bytes, FNames at 8 and 16).
+            // Null when it names nothing.
+            "SoftObjectProperty" | "SoftClassProperty" => {
+                let package = crate::ue::fname::read_at(at, 8).unwrap_or_default();
+                let asset = crate::ue::fname::read_at(at, 16).unwrap_or_default();
+                if package.is_empty() || package == "None" {
+                    Value::Null
+                } else {
+                    json!({
+                        "path": format!("{package}.{asset}"),
+                        "sub_path": (&*(at.add(24) as *const crate::ue::FString)).as_string(),
+                    })
+                }
+            }
             "StructProperty" => match struct_of(property) {
                 Some(layout) => {
                     let mut map = serde_json::Map::new();
