@@ -588,8 +588,338 @@ pub fn encode_per_track(tracks: &[TrackKeys], scale: bool) -> Written {
     }
 }
 
+/// UE key lerp data as FUECompressedAnimData holds it: four offsets per
+/// track (translation offset and key count, rotation offset and key
+/// count), two scale offsets per track, the byte stream, and the most a
+/// written value can be off by its packing (cm or scale, and quaternion
+/// component), for the read-back check.
+pub struct WrittenLerp {
+    pub offsets: Vec<i32>,
+    pub scale_offsets: Vec<i32>,
+    pub stream: Vec<u8>,
+    pub vec_step: f64,
+    pub rot_step: f64,
+}
+
+/// The clip's own formats a key lerp clip is written in: the engine
+/// picked its decoders from them when the clip loaded (three codec
+/// pointers next to them), so they cannot change.
+#[derive(Clone, Copy, Debug)]
+pub struct LerpFormats {
+    /// CONSTANT_KEY_LERP or VARIABLE_KEY_LERP.
+    pub key_format: u32,
+    pub translation: u32,
+    pub rotation: u32,
+    pub scale: u32,
+}
+
+fn put_f32(s: &mut Vec<u8>, x: f64) {
+    s.extend_from_slice(&(x as f32).to_le_bytes());
+}
+
+fn put_u16(s: &mut Vec<u8>, x: i64) {
+    s.extend_from_slice(&(x.clamp(0, 0xFFFF) as u16).to_le_bytes());
+}
+
+fn pad4(s: &mut Vec<u8>) {
+    while !s.len().is_multiple_of(4) {
+        s.push(0);
+    }
+}
+
+/// A value in -1..1 packed to `bits` bits as the decoders read it
+/// ((p - off) / div, div = off = 2^(bits-1) - 1).
+fn quantize(v: f64, bits: u32) -> u32 {
+    let off = (1i64 << (bits - 1)) - 1;
+    ((v.clamp(-1.0, 1.0) * off as f64).round() as i64 + off).clamp(0, (1 << bits) - 1) as u32
+}
+
+/// The 11 or 10 bit float quat_float32 reads: sign, 3 bits of exponent
+/// over 2^-4, the mantissa's top bits.
+fn float_bits(v: f64, mantissa: u32) -> u32 {
+    let b = (v as f32).to_bits();
+    let sign = b >> 31;
+    let e = ((b >> 23) & 0xFF) as i32 - 123;
+    let (e, m) = if e < 0 {
+        (0, 0)
+    } else if e > 7 {
+        (7, (1 << mantissa) - 1)
+    } else {
+        (e as u32, (b >> (23 - mantissa)) & ((1 << mantissa) - 1))
+    };
+    (sign << (mantissa + 3)) | (e << mantissa) | m
+}
+
+/// Mins and ranges that put every key's components in -1..1 (the
+/// decoders read value * range + min).
+fn interval(keys: &[DVec3]) -> (DVec3, DVec3) {
+    let lo = keys.iter().fold(DVec3::splat(f64::MAX), |a, k| a.min(*k));
+    let hi = keys.iter().fold(DVec3::splat(f64::MIN), |a, k| a.max(*k));
+    ((lo + hi) / 2.0, (hi - lo) / 2.0)
+}
+
+fn unit(v: f64, min: f64, range: f64) -> f64 {
+    if range > 0.0 { (v - min) / range } else { 0.0 }
+}
+
+/// Write `tracks` in UE's constant or variable key lerp format (the
+/// reverse of lerp_vec and lerp_quat), packed in the clip's own
+/// `formats`: a part whose keys are all the same as one key (stored
+/// unpacked, as UE does), else one key per frame of `num_frames`, with a
+/// frame table of every frame for variable key lerp. `scale` false
+/// leaves the scale offsets empty. Asked 2026-11-22: "we need the
+/// framework to support doing all the rewwites necessary".
+pub fn encode_key_lerp(
+    tracks: &[TrackKeys],
+    formats: LerpFormats,
+    num_frames: u32,
+    scale: bool,
+) -> Result<WrittenLerp, String> {
+    let timed = formats.key_format == VARIABLE_KEY_LERP;
+    let mut s: Vec<u8> = Vec::new();
+    let (mut vec_step, mut rot_step) = (0f64, 0f64);
+    let table = |s: &mut Vec<u8>, n: usize| {
+        if timed && n > 1 {
+            for f in 0..n {
+                if num_frames < 256 {
+                    s.push(f as u8);
+                } else {
+                    s.extend_from_slice(&(f as u16).to_le_bytes());
+                }
+            }
+            pad4(s);
+        }
+    };
+    let mut vecs = |s: &mut Vec<u8>, keys: &[DVec3], format: u32| -> Result<(i32, i32), String> {
+        let one = keys.iter().all(|k| (*k - keys[0]).length() < 1e-6);
+        let keys = if one { &keys[..1] } else { keys };
+        let at = s.len() as i32;
+        let format = if keys.len() == 1 { NONE } else { format };
+        match format {
+            NONE | FLOAT96 => {
+                for k in keys {
+                    put_f32(s, k.x);
+                    put_f32(s, k.y);
+                    put_f32(s, k.z);
+                }
+            }
+            FIXED48 => {
+                for k in keys {
+                    if k.abs().max_element() > 128.0 {
+                        return Err(format!("{k:?} is past the 48-bit packing's 128"));
+                    }
+                    for c in [k.x, k.y, k.z] {
+                        put_u16(s, i64::from(quantize(c / 128.0, 16)));
+                    }
+                }
+                vec_step = vec_step.max(128.0 / 32767.0);
+            }
+            INTERVAL_FIXED32 => {
+                let (mins, ranges) = interval(keys);
+                for v in [mins, ranges] {
+                    put_f32(s, v.x);
+                    put_f32(s, v.y);
+                    put_f32(s, v.z);
+                }
+                for k in keys {
+                    let x = quantize(unit(k.x, mins.x, ranges.x), 10);
+                    let y = quantize(unit(k.y, mins.y, ranges.y), 11);
+                    let z = quantize(unit(k.z, mins.z, ranges.z), 11);
+                    s.extend_from_slice(&((z << 21) | (y << 10) | x).to_le_bytes());
+                }
+                vec_step = vec_step.max(
+                    (ranges.x / 511.0)
+                        .max(ranges.y / 1023.0)
+                        .max(ranges.z / 1023.0),
+                );
+            }
+            f => return Err(format!("vector format {f} holds no changing keys")),
+        }
+        pad4(s);
+        table(s, keys.len());
+        Ok((at, keys.len() as i32))
+    };
+    let mut quats = |s: &mut Vec<u8>, keys: &[DQuat], format: u32| -> Result<(i32, i32), String> {
+        // w made positive: the packed formats keep x y z and rebuild w.
+        let keys: Vec<DQuat> = keys
+            .iter()
+            .map(|q| if q.w < 0.0 { -*q } else { *q }.normalize())
+            .collect();
+        let one = keys.iter().all(|q| q.dot(keys[0]) > 1.0 - 1e-12);
+        let keys = if one { &keys[..1] } else { &keys[..] };
+        let at = s.len() as i32;
+        let format = if keys.len() == 1 { FLOAT96 } else { format };
+        match format {
+            NONE => {
+                for q in keys {
+                    for c in [q.x, q.y, q.z, q.w] {
+                        put_f32(s, c);
+                    }
+                }
+            }
+            FLOAT96 => {
+                for q in keys {
+                    for c in [q.x, q.y, q.z] {
+                        put_f32(s, c);
+                    }
+                }
+            }
+            FIXED48 => {
+                for q in keys {
+                    for c in [q.x, q.y, q.z] {
+                        put_u16(s, i64::from(quantize(c, 16)));
+                    }
+                }
+                rot_step = rot_step.max(1.0 / 32767.0);
+            }
+            FIXED32 => {
+                for q in keys {
+                    let p =
+                        (quantize(q.x, 11) << 21) | (quantize(q.y, 11) << 10) | quantize(q.z, 10);
+                    s.extend_from_slice(&p.to_le_bytes());
+                }
+                rot_step = rot_step.max(1.0 / 511.0);
+            }
+            INTERVAL_FIXED32 => {
+                let xyz: Vec<DVec3> = keys.iter().map(|q| q.xyz()).collect();
+                let (mins, ranges) = interval(&xyz);
+                for v in [mins, ranges] {
+                    put_f32(s, v.x);
+                    put_f32(s, v.y);
+                    put_f32(s, v.z);
+                }
+                for k in &xyz {
+                    let x = quantize(unit(k.x, mins.x, ranges.x), 11);
+                    let y = quantize(unit(k.y, mins.y, ranges.y), 11);
+                    let z = quantize(unit(k.z, mins.z, ranges.z), 10);
+                    s.extend_from_slice(&((x << 21) | (y << 10) | z).to_le_bytes());
+                }
+                rot_step = rot_step.max(
+                    (ranges.x / 1023.0)
+                        .max(ranges.y / 1023.0)
+                        .max(ranges.z / 511.0),
+                );
+            }
+            FLOAT32 => {
+                for q in keys {
+                    let p = (float_bits(q.x, 7) << 21)
+                        | (float_bits(q.y, 7) << 10)
+                        | float_bits(q.z, 6);
+                    s.extend_from_slice(&p.to_le_bytes());
+                }
+                // A component under 2^-4 is stored as 2^-4.
+                rot_step = rot_step.max(1.0 / 16.0);
+            }
+            f => return Err(format!("rotation format {f} holds no changing keys")),
+        }
+        pad4(s);
+        table(s, keys.len());
+        Ok((at, keys.len() as i32))
+    };
+    let mut offsets = Vec::with_capacity(tracks.len() * 4);
+    let mut scale_offsets = Vec::new();
+    for t in tracks {
+        let (to, tn) = match &t.pos {
+            Some(k) if !k.is_empty() => vecs(&mut s, k, formats.translation)?,
+            _ => (0, 0),
+        };
+        let (ro, rn) = match &t.rot {
+            Some(k) if !k.is_empty() => quats(&mut s, k, formats.rotation)?,
+            _ => (0, 0),
+        };
+        offsets.extend([to, tn, ro, rn]);
+        if scale {
+            // The decoder takes a scale at offset 0 as none.
+            if s.is_empty() {
+                s.extend([0u8; 4]);
+            }
+            let (so, sn) = match &t.scale {
+                Some(k) if !k.is_empty() => vecs(&mut s, k, formats.scale)?,
+                _ => (0, 0),
+            };
+            scale_offsets.extend([so, sn]);
+        }
+    }
+    Ok(WrittenLerp {
+        offsets,
+        scale_offsets,
+        stream: s,
+        vec_step,
+        rot_step,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    /// Every key lerp packing encode_key_lerp writes decodes back to the
+    /// keys, within its packing, for both key formats.
+    #[test]
+    fn key_lerp_round_trip() {
+        let q = |a: f64| DQuat::from_rotation_y(a) * DQuat::from_rotation_x(-0.4 * a);
+        let n = 5;
+        let pos: Vec<DVec3> = (0..n)
+            .map(|i| DVec3::new(i as f64 * 3.0, -20.0 + i as f64, 60.25))
+            .collect();
+        let rot: Vec<DQuat> = (0..n).map(|i| q(0.3 * i as f64)).collect();
+        let sc: Vec<DVec3> = (0..n).map(|i| DVec3::splat(1.0 + 0.1 * i as f64)).collect();
+        let tracks = [
+            TrackKeys {
+                pos: Some(pos.clone()),
+                rot: Some(rot.clone()),
+                scale: Some(sc.clone()),
+            },
+            TrackKeys {
+                pos: Some(vec![DVec3::new(1.0, 2.0, 3.0); n]),
+                rot: None,
+                scale: None,
+            },
+        ];
+        for key_format in [CONSTANT_KEY_LERP, VARIABLE_KEY_LERP] {
+            for (tf, rf) in [
+                (NONE, NONE),
+                (FLOAT96, FLOAT96),
+                (FIXED48, FIXED48),
+                (INTERVAL_FIXED32, FIXED32),
+                (INTERVAL_FIXED32, INTERVAL_FIXED32),
+                (NONE, FLOAT32),
+            ] {
+                let f = LerpFormats {
+                    key_format,
+                    translation: tf,
+                    rotation: rf,
+                    scale: tf,
+                };
+                let w = encode_key_lerp(&tracks, f, n as u32, true).unwrap();
+                let d = UeData {
+                    key_format,
+                    translation_format: tf,
+                    rotation_format: rf,
+                    scale_format: tf,
+                    num_frames: n as u32,
+                    track_offsets: &w.offsets,
+                    scale_offsets: &w.scale_offsets,
+                    stream: &w.stream,
+                };
+                let t = decode(&d, 2, 1.0).unwrap();
+                let tol_v = w.vec_step + 1e-4;
+                let tol_q = 1.0 - 4.0 * (w.rot_step * w.rot_step + 1e-8);
+                for i in 0..n {
+                    let rel = i as f64 / (n - 1) as f64;
+                    let (r, p, s) = t[0].sample(rel, n as u32, false);
+                    assert!((p - pos[i]).length() < tol_v, "{f:?} {i} pos {p:?}");
+                    assert!(r.dot(rot[i]).abs() > tol_q, "{f:?} {i} rot {r:?}");
+                    assert!((s - sc[i]).length() < tol_v, "{f:?} {i} scale {s:?}");
+                    let (r, p, s) = t[1].sample(rel, n as u32, false);
+                    assert!((p - DVec3::new(1.0, 2.0, 3.0)).length() < 1e-6);
+                    assert_eq!(r, DQuat::IDENTITY);
+                    assert_eq!(s, DVec3::ONE);
+                }
+                // The constant part is one key.
+                assert_eq!(w.offsets[5], 1, "{f:?}");
+            }
+        }
+    }
+
     /// What encode_per_track writes decodes back to the same keys.
     #[test]
     fn per_track_round_trip() {

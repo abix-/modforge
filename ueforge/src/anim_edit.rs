@@ -11,9 +11,11 @@
 //! Prior art: UE's editor recompresses an edited animation through the
 //! clip's codec; a shipped game has no editor, so the codecs' writers are
 //! run here: ACL as UE's ACL plugin compresses (cpp/ueforge_acl.cpp
-//! ueforge_acl_compress), and UE's own per track format
-//! (anim_codec::encode_per_track, the reverse of the decoder ported from
-//! CUE4Parse).
+//! ueforge_acl_compress), and UE's own formats, the reverse of the
+//! decoder ported from CUE4Parse: per track (anim_codec::encode_per_track)
+//! and constant and variable key lerp (anim_codec::encode_key_lerp, in
+//! the clip's own packing; asked 2026-11-22: "we need the framework to
+//! support doing all the rewwites necessary").
 //!
 //! Where the engine reads the data (mine, from the engine's layout):
 //! - ACL: UAnimSequence holds the bytes in a TArray (owned by the engine:
@@ -25,8 +27,10 @@
 //!   with count 1776, the buffer's size). Only the view is repointed.
 //! - UE's own codecs: the FUECompressedAnimData anim_data reads holds
 //!   three TArrayViews: track offsets at 0x10, scale offsets at 0x20, the
-//!   byte stream at 0x38. All three are repointed; only the per track key
-//!   format is written.
+//!   byte stream at 0x38. All three are repointed. The key format and the
+//!   three packings at 0x60 stay: the engine picked its decoders (the
+//!   three codec pointers before them) from them, so a key lerp clip is
+//!   written in its own packing.
 //!
 //! New data is Rust's and never freed, as a worker thread may still read
 //! it. Not proven: that a swap while worker threads animate cannot be
@@ -267,11 +271,18 @@ fn encode_acl(clip: &Clip, poses: &[Vec<Xform>]) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// Whether `got` reads back as `want` on every tracked bone.
-fn same(clip: &Clip, got: &[Xform], want: &[Xform]) -> Result<(), String> {
+/// Whether `got` reads back as `want` on every tracked bone, within
+/// `pos_tol` cm and quaternion dot `rot_tol`.
+fn same(
+    clip: &Clip,
+    got: &[Xform],
+    want: &[Xform],
+    pos_tol: f64,
+    rot_tol: f64,
+) -> Result<(), String> {
     for &b in &clip.track_bone {
         let (g, w) = (&got[b as usize], &want[b as usize]);
-        if (g.pos - w.pos).length() > POS_TOLERANCE || g.rot.dot(w.rot).abs() < ROT_TOLERANCE {
+        if (g.pos - w.pos).length() > pos_tol || g.rot.dot(w.rot).abs() < rot_tol {
             return Err(format!(
                 "bone {} reads back {:?} {:?}, asked {:?} {:?}",
                 clip.skeleton.bones[b as usize], g.pos, g.rot, w.pos, w.rot
@@ -317,25 +328,45 @@ fn acl_slots(seq: &UObject, clip: &Clip, poses: &[Vec<Xform>]) -> Result<Vec<Slo
 /// gets data only when the edit changed it.
 fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec<Slot>, String> {
     let p = clip.ue_data().ok_or("not UE data")?;
-    let key_format = crate::anim_data::read::<u32>(p + UE_KEY_FORMAT).ok_or("key format")?;
-    if key_format != codec::PER_TRACK {
-        return Err(format!(
-            "UE key format {key_format}: only per track ({}) is written",
-            codec::PER_TRACK
-        ));
-    }
+    let codes: Vec<u32> = (0..4)
+        .map(|i| crate::anim_data::read::<u32>(p + UE_KEY_FORMAT + i * 4))
+        .collect::<Option<_>>()
+        .ok_or("key format")?;
+    let key_format = codes[0];
+    let per_track = key_format == codec::PER_TRACK;
     let offsets: Vec<i32> =
         crate::anim_data::view(p + UE_OFFSETS, 1 << 22).ok_or("track offsets")?;
     let scale_offsets: Vec<i32> =
         crate::anim_data::view(p + UE_SCALE_OFFSETS, 1 << 22).ok_or("scale offsets")?;
     let tracks = clip.tracks as usize;
-    if offsets.len() != tracks * 2 {
+    // Per track: two offsets a track, -1 for a part with no data. Key
+    // lerp: an offset and a key count for each part, 0 keys for none.
+    let per = if per_track { 2 } else { 4 };
+    if offsets.len() != tracks * per {
         return Err(format!(
             "{} track offsets for {tracks} tracks",
             offsets.len()
         ));
     }
     let has_scale = !scale_offsets.is_empty();
+    let (pos_has, rot_has, scale_has) = if per_track {
+        (
+            Box::new(|t: usize| offsets[t * 2] >= 0) as Box<dyn Fn(usize) -> bool>,
+            Box::new(|t: usize| offsets[t * 2 + 1] >= 0) as Box<dyn Fn(usize) -> bool>,
+            Box::new(|t: usize| scale_offsets.get(t).is_some_and(|&s| s >= 0))
+                as Box<dyn Fn(usize) -> bool>,
+        )
+    } else {
+        (
+            Box::new(|t: usize| offsets[t * 4 + 1] > 0) as Box<dyn Fn(usize) -> bool>,
+            Box::new(|t: usize| offsets[t * 4 + 3] > 0) as Box<dyn Fn(usize) -> bool>,
+            Box::new(|t: usize| {
+                scale_offsets
+                    .get(t * 2..t * 2 + 2)
+                    .is_some_and(|s| s[0] > 0 && s[1] > 0)
+            }) as Box<dyn Fn(usize) -> bool>,
+        )
+    };
     // A part the clip has no data for keeps none unless the edit changed
     // it.
     let moved = |b: usize| {
@@ -365,22 +396,56 @@ fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec
         .enumerate()
         .map(|(t, &b)| {
             let b = b as usize;
-            let pos = (offsets[t * 2] >= 0 || moved(b))
+            let pos = (pos_has(t) || moved(b))
                 .then(|| poses.iter().map(|q| q[b].pos).collect::<Vec<DVec3>>());
-            let rot = (offsets[t * 2 + 1] >= 0 || turned(b))
+            let rot = (rot_has(t) || turned(b))
                 .then(|| poses.iter().map(|q| q[b].rot).collect::<Vec<DQuat>>());
-            let scale = (has_scale && (scale_offsets.get(t).is_some_and(|&s| s >= 0) || sized(b)))
+            let scale = (has_scale && (scale_has(t) || sized(b)))
                 .then(|| poses.iter().map(|q| q[b].scale).collect::<Vec<DVec3>>());
             codec::TrackKeys { pos, rot, scale }
         })
         .collect();
-    let w = codec::encode_per_track(&keys, has_scale);
+    // Per track is written in full floats; key lerp in the clip's own
+    // packing (the engine's decoders were picked from it), so the check
+    // allows what that packing can be off by.
+    let (offsets_w, scale_w, stream_w, formats, pos_tol, rot_tol) = if per_track {
+        let w = codec::encode_per_track(&keys, has_scale);
+        (
+            w.offsets,
+            w.scale_offsets,
+            w.stream,
+            [0, 0, 0],
+            POS_TOLERANCE,
+            ROT_TOLERANCE,
+        )
+    } else {
+        let f = codec::LerpFormats {
+            key_format,
+            translation: codes[1],
+            rotation: codes[2],
+            scale: codes[3],
+        };
+        let w = codec::encode_key_lerp(&keys, f, clip.samples, has_scale)?;
+        (
+            w.offsets,
+            w.scale_offsets,
+            w.stream,
+            [codes[1], codes[2], codes[3]],
+            POS_TOLERANCE.max(w.vec_step * 2.0),
+            ROT_TOLERANCE.min(1.0 - 4.0 * w.rot_step * w.rot_step),
+        )
+    };
+    let w = codec::Written {
+        offsets: offsets_w,
+        scale_offsets: scale_w,
+        stream: stream_w,
+    };
     // Read it back the way anim_data does and compare every sample.
     let d = codec::UeData {
         key_format,
-        translation_format: 0,
-        rotation_format: 0,
-        scale_format: 0,
+        translation_format: formats[0],
+        rotation_format: formats[1],
+        scale_format: formats[2],
         num_frames: clip.samples,
         track_offsets: &w.offsets,
         scale_offsets: &w.scale_offsets,
@@ -398,7 +463,7 @@ fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec
             let (rot, pos, scale) = back[t].sample(rel, clip.samples, false);
             got[b as usize] = Xform { rot, pos, scale };
         }
-        same(clip, &got, want)
+        same(clip, &got, want, pos_tol, rot_tol)
             .map_err(|e| format!("sample {i}: {e} (a part with no data was changed?)"))?;
     }
     let as_bytes = |v: &[i32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
