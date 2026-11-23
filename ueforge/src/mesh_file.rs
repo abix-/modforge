@@ -342,33 +342,52 @@ impl Mesh {
         which: &[usize],
     ) -> Vec<DVec3> {
         let rest = self.ref_pose();
-        let mut moved: HashMap<usize, DVec3> = HashMap::new();
+        // Only the vertices asked for are moved by the morphs, and each
+        // bone's skinning (rest to pose) is one affine map, made once per
+        // call (the same sum as at.point(rest.inverse_point(p)) per
+        // weight; the mod's fits call this thousands of times a scene).
+        let mut slot: Vec<u32> = vec![u32::MAX; self.verts.len()];
+        for (n, &i) in which.iter().enumerate() {
+            if let Some(s) = slot.get_mut(i) {
+                *s = n as u32;
+            }
+        }
+        let mut moved: Vec<DVec3> = vec![DVec3::ZERO; which.len()];
         for (name, k) in morphs {
             let Some(m) = self.morphs.iter().find(|m| m.name == *name) else {
                 continue;
             };
             for (i, x, y, z) in &m.d {
-                *moved.entry(*i as usize).or_insert(DVec3::ZERO) +=
-                    DVec3::new(*x as f64, *y as f64, *z as f64) * *k;
+                if let Some(&s) = slot.get(*i as usize)
+                    && s != u32::MAX
+                {
+                    moved[s as usize] += DVec3::new(*x as f64, *y as f64, *z as f64) * *k;
+                }
             }
         }
+        let affine =
+            |x: &Xform| glam::DAffine3::from_scale_rotation_translation(x.scale, x.rot, x.pos);
+        let mut skin: Vec<Option<glam::DAffine3>> = vec![None; rest.len()];
+        let mut skin_of = |b: usize| -> glam::DAffine3 {
+            *skin[b].get_or_insert_with(|| {
+                let r = rest[b];
+                let at = pose.get(b).copied().flatten().unwrap_or(r);
+                affine(&at) * affine(&r).inverse()
+            })
+        };
         which
             .iter()
-            .filter_map(|&i| {
+            .enumerate()
+            .filter_map(|(n, &i)| {
                 let v = self.verts.get(i)?;
-                let p = DVec3::from_array(v.p) + moved.get(&i).copied().unwrap_or(DVec3::ZERO);
+                let p = DVec3::from_array(v.p) + moved[n];
                 let total: f64 = v.w.iter().map(|(_, w)| w).sum();
                 if total <= 0.0 {
                     return Some(p);
                 }
                 Some(
                     v.w.iter()
-                        .map(|&(b, w)| {
-                            let b = b as usize;
-                            let r = rest[b];
-                            let at = pose.get(b).copied().flatten().unwrap_or(r);
-                            at.point(r.inverse_point(p)) * (w / total)
-                        })
+                        .map(|&(b, w)| skin_of(b as usize).transform_point3(p) * (w / total))
                         .sum(),
                 )
             })
@@ -603,6 +622,36 @@ mod tests {
         for r in &t {
             assert!((r - 2.0).abs() < 0.1, "{t:?}");
         }
+    }
+
+    /// drawn: each weight's share taken from the bone's reference pose to
+    /// its pose (turned and scaled unevenly), the morph first, and only
+    /// the vertices asked for.
+    #[test]
+    fn drawn_skins_each_weight_from_rest_to_pose() {
+        let mut m = tube();
+        m.verts[9].w = vec![(0, 0.25), (1, 0.75)];
+        m.morphs.push(Morph {
+            name: "m".into(),
+            d: vec![(9, 0.0, 1.0, 0.0), (3, 5.0, 0.0, 0.0)],
+        });
+        let rest = m.ref_pose();
+        let pose = vec![
+            None,
+            Some(Xform {
+                rot: DQuat::from_rotation_z(0.7),
+                pos: DVec3::new(4.0, 1.0, -2.0),
+                scale: DVec3::new(1.0, 2.0, 0.5),
+            }),
+        ];
+        let got = m.drawn(&pose, &[("m", 2.0)], &[9, 10]);
+        let p = DVec3::from_array(m.verts[9].p) + DVec3::new(0.0, 2.0, 0.0);
+        let at = pose[1].unwrap();
+        let want = rest[0].point(rest[0].inverse_point(p)) * 0.25
+            + at.point(rest[1].inverse_point(p)) * 0.75;
+        assert!((got[0] - want).length() < 1e-9, "{got:?} {want}");
+        let q = DVec3::from_array(m.verts[10].p);
+        assert!((got[1] - q).length() < 1e-9);
     }
 
     #[test]
