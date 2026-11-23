@@ -142,6 +142,25 @@ unsafe fn write_slot(at: usize, (data, count): (usize, i32)) {
     }
 }
 
+/// The bone data of `seq` as the engine plays it. anim_data::clip reads
+/// an ACL clip from the sequence's own buffer, which a rewrite leaves as
+/// the engine's (it points the codec's views at a new one), so a
+/// rewritten ACL clip is read from the rewrite's buffer. UE format data
+/// is read through the views already. Game thread.
+pub fn played(seq: &UObject) -> Result<Clip, String> {
+    let clip = crate::anim_data::clip(seq)?;
+    let base = seq.as_ptr() as usize;
+    let now = EDITS
+        .lock()
+        .iter()
+        .find(|e| e.sequence == base && e.format != CURVES)
+        .and_then(|e| e.slots.first().map(|s| s.now.0));
+    Ok(match (now, clip.acl_buffer()) {
+        (Some(b), Some(_)) => clip.with_acl_buffer(b),
+        _ => clip,
+    })
+}
+
 /// Every place in the AnimSequence, and in the objects it points to,
 /// that holds the address of its ACL data. Game thread.
 pub fn refs(seq: &UObject) -> Result<(Clip, Vec<Ref>), String> {

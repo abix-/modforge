@@ -580,6 +580,15 @@ impl Clip {
         }
     }
 
+    /// The same ACL clip read from another buffer of its layout (a
+    /// rewrite's, anim_edit played); a UE format clip as it is.
+    pub fn with_acl_buffer(mut self, buffer: usize) -> Clip {
+        if let Data::Acl { .. } = self.data {
+            self.data = Data::Acl { buffer };
+        }
+        self
+    }
+
     /// The FUECompressedAnimData the clip was read from, None for ACL.
     pub fn ue_data(&self) -> Option<usize> {
         match self.data {
