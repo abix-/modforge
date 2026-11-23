@@ -15,6 +15,7 @@
 //! | `first_class:Foo` | first non-CDO instance of class `Foo`      |
 //! | `class:Foo`       | alias for `first_class:Foo`                |
 //! | `singleton:Foo`   | class default object (CDO) of class `Foo`  |
+//! | `asset:/Game/P.N` | asset by object path, loaded in the same call (game thread only) |
 //!
 //! Game-specific shorthand (`live_player`, `current_save`, ...)
 //! lives in the embedding crate, registered into the same
@@ -145,6 +146,11 @@ pub fn register_builtins() {
             summary: "Class default object (CDO) of <Name>",
             resolver: try_singleton,
         },
+        SelectorDef {
+            prefix: "asset:/Game/Pkg.Name",
+            summary: "An asset by its object path, loaded in the same game-thread call that reads it, so it cannot be freed between the load and the read",
+            resolver: try_asset,
+        },
     ]);
 }
 
@@ -182,13 +188,26 @@ fn resolve_singleton(class_name: &str) -> Result<&'static UObject, String> {
     Ok(extended)
 }
 
+fn try_asset(s: &str) -> Option<Result<&'static UObject, String>> {
+    let path = s.strip_prefix("asset:")?;
+    Some(crate::assets::load_path(path))
+}
+
+/// An address an earlier call gave may have been freed since: an asset
+/// load_asset pulled in is held by nothing, so garbage collection can
+/// free it between two calls, and reading it raw crashed Wicked Island
+/// (EXCEPTION_ACCESS_VIOLATION reading 0x41, 2026-11-23). Only an object
+/// still in GObjects at that address is read.
 fn resolve_addr(orig: &str, hex: &str) -> Result<&'static UObject, String> {
     let addr = u64::from_str_radix(hex, 16).map_err(|e| format!("bad address '{orig}': {e}"))?;
     if addr == 0 {
         return Err("addr is null".to_string());
     }
-    let p = addr as *const UObject;
-    Ok(unsafe { &*p })
+    if !ue::uobject::is_live(addr as usize) {
+        return Err(format!("'{orig}' is not a live object (freed, or never one)"));
+    }
+    // SAFETY: is_live found this address in GObjects.
+    Ok(unsafe { &*(addr as *const UObject) })
 }
 
 fn resolve_first_class(class_name: &str) -> Result<&'static UObject, String> {
@@ -223,4 +242,15 @@ fn resolve_first_class(class_name: &str) -> Result<&'static UObject, String> {
         }
     }
     Err(format!("no instance of '{class_name}'"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_address_that_is_not_a_live_object_is_refused_not_read() {
+        let err = try_addr("addr:0x41").expect("addr shape").err();
+        assert!(err.is_some_and(|e| e.contains("not a live object")));
+    }
 }
