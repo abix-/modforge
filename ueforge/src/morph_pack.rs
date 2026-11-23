@@ -210,6 +210,47 @@ impl Buffers {
         (0..self.batches.len()).map(|m| self.decode(m)).collect()
     }
 
+    /// This LOD's data with `new` morphs appended after the existing
+    /// ones, each a list of (vertex index, position offset in cm),
+    /// tangents unchanged. Their minimum and maximum are worked out as
+    /// Compress does (all zero for a morph with no offsets).
+    pub fn with_new(&self, new: &[Vec<(u32, [f32; 3])>]) -> Buffers {
+        let rcp = 1.0 / self.position_precision;
+        let mut morphs = self.decode_all();
+        let mut minimum = Vec::new();
+        let mut maximum = Vec::new();
+        for m in new {
+            let mut lo = [0.0f32; 4];
+            let mut hi = [0.0f32; 4];
+            if !m.is_empty() {
+                lo = [f32::MAX, f32::MAX, f32::MAX, 0.0];
+                hi = [f32::MIN, f32::MIN, f32::MIN, 0.0];
+            }
+            for (_, p) in m {
+                for k in 0..3 {
+                    lo[k] = lo[k].min(p[k]);
+                    hi[k] = hi[k].max(p[k]);
+                }
+            }
+            minimum.push(lo);
+            maximum.push(hi);
+            morphs.push(
+                m.iter()
+                    .map(|(index, p)| Delta {
+                        index: *index,
+                        position: p.map(|c| (c * rcp).round() as i32),
+                        tangent: [0; 3],
+                    })
+                    .collect(),
+            );
+        }
+        let mut out = self.encode(&morphs);
+        out.minimum.extend(minimum);
+        out.maximum.extend(maximum);
+        out.len = out.to_bytes().len();
+        out
+    }
+
     /// This LOD's data rebuilt from every morph's deltas (sorted by
     /// index, zero deltas dropped), as Compress lays it out. The minimum
     /// and maximum per morph stay as given.
@@ -554,6 +595,20 @@ mod tests {
         assert_eq!(found[0].at, 37);
         assert_eq!(found[0].words, b.words);
         assert_eq!(found[0].decode_all(), sample());
+    }
+
+    #[test]
+    fn new_morphs_come_after_the_old_ones() {
+        let old = empty(3).encode(&sample());
+        let b = old.with_new(&[vec![(5, [0.5, -0.25, 0.0])], vec![]]);
+        assert_eq!(b.batches.len(), 5);
+        assert_eq!(b.minimum.len(), 5);
+        let d = b.decode(3);
+        assert_eq!(d.len(), 1);
+        assert_eq!((d[0].index, d[0].position), (5, [50, -25, 0]));
+        assert_eq!(b.minimum[3], [0.5, -0.25, 0.0, 0.0]);
+        assert_eq!(b.maximum[4], [0.0; 4]);
+        assert_eq!(&b.decode_all()[..3], &sample()[..]);
     }
 
     #[test]

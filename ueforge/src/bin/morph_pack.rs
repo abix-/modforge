@@ -89,17 +89,73 @@ fn run(args: &[String]) -> Result<(), String> {
                     n
                 })
                 .collect();
-            let (uexp, changes) = ueforge::morph_pack::replace(&file, &new);
-            let header = ueforge::morph_pack::fix_package(&uasset, file.len(), &changes)?;
-            std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
-            let name = |p: &str| std::path::Path::new(p).file_name().unwrap().to_owned();
-            std::fs::write(out_dir.join(name(path)), &uexp).map_err(|e| e.to_string())?;
-            std::fs::write(out_dir.join(name(uasset_path)), &header).map_err(|e| e.to_string())?;
+            let changes = write(&file, path, &uasset, uasset_path, out_dir, &new)?;
             println!("morph {m} scaled {k}: size changes {changes:?}");
+        }
+        "add" => {
+            // add <uexp> <uasset> <out dir> <morphs.json>: the new morphs'
+            // offsets appended to every LOD's data, in the JSON's order
+            // ({"morphs": [{"name", "deltas": [[vertex, dx, dy, dz], ...]}]},
+            // LOD 0 vertices, cm). The other LODs get the morphs empty.
+            // The package must already hold the new morph targets, added
+            // in the same order (tools/morphadd).
+            let uasset_path = args.get(2).ok_or("uasset")?;
+            let out_dir = std::path::Path::new(args.get(3).ok_or("out dir")?);
+            let json_path = args.get(4).ok_or("morphs.json")?;
+            let uasset =
+                std::fs::read(uasset_path).map_err(|e| format!("read {uasset_path}: {e}"))?;
+            let json: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(json_path).map_err(|e| format!("read {json_path}: {e}"))?,
+            )
+            .map_err(|e| format!("{json_path}: {e}"))?;
+            let morphs = json["morphs"].as_array().ok_or("no morphs in the JSON")?;
+            let mut lod0 = Vec::new();
+            for m in morphs {
+                let deltas = m["deltas"].as_array().ok_or("a morph without deltas")?;
+                let d: Option<Vec<(u32, [f32; 3])>> = deltas
+                    .iter()
+                    .map(|d| {
+                        let n = |i: usize| d.get(i)?.as_f64();
+                        Some((n(0)? as u32, [n(1)? as f32, n(2)? as f32, n(3)? as f32]))
+                    })
+                    .collect();
+                lod0.push(d.ok_or("a delta is not [vertex, dx, dy, dz]")?);
+            }
+            let none = vec![Vec::new(); lod0.len()];
+            let new: Vec<Buffers> = lods
+                .iter()
+                .enumerate()
+                .map(|(i, b)| b.with_new(if i == 0 { &lod0 } else { &none }))
+                .collect();
+            let changes = write(&file, path, &uasset, uasset_path, out_dir, &new)?;
+            println!(
+                "{} morphs added (LOD 0 offsets {}): size changes {changes:?}",
+                lod0.len(),
+                lod0.iter().map(Vec::len).sum::<usize>()
+            );
         }
         other => return Err(format!("unknown command {other}")),
     }
     Ok(())
+}
+
+/// The package with every LOD's morph data replaced by `new`, written to
+/// `out_dir` under the input file names; the size change at each place.
+fn write(
+    uexp: &[u8],
+    uexp_path: &str,
+    uasset: &[u8],
+    uasset_path: &str,
+    out_dir: &std::path::Path,
+    new: &[Buffers],
+) -> Result<Vec<(usize, i64)>, String> {
+    let (out, changes) = ueforge::morph_pack::replace(uexp, new);
+    let header = ueforge::morph_pack::fix_package(uasset, uexp.len(), &changes)?;
+    std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
+    let name = |p: &str| std::path::Path::new(p).file_name().unwrap().to_owned();
+    std::fs::write(out_dir.join(name(uexp_path)), &out).map_err(|e| e.to_string())?;
+    std::fs::write(out_dir.join(name(uasset_path)), &header).map_err(|e| e.to_string())?;
+    Ok(changes)
 }
 
 fn main() -> ExitCode {
