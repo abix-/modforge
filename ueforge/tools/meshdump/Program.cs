@@ -34,7 +34,9 @@ if (!File.Exists(oodle))
     OodleHelper.DownloadOodleDll(ref oodle);
 }
 OodleHelper.Initialize(oodle);
-var provider = new DefaultFileProvider(paks, SearchOption.TopDirectoryOnly, true,
+// Subfolders too: a mod's paks in Paks/~mods (the game loads them over its
+// own, as the mod's canal morph package; 2026-11-23) are read the same way.
+var provider = new DefaultFileProvider(paks, SearchOption.AllDirectories, true,
     new VersionContainer(Enum.Parse<EGame>(engine)));
 if (args.Length > 4)
 {
