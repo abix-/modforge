@@ -369,6 +369,31 @@ impl Town {
         town
     }
 
+    /// The same town with its places moved about `times` times (topside
+    /// todo "Storm effect 2", the shuffle storm: the same town, the map
+    /// wrong): each time, the places of one part (main street's, the
+    /// edge's) trade lots among themselves, rolled from the town's seed.
+    /// The houses and the bunkers under them stay.
+    pub fn shuffled(mut self, times: u32) -> Self {
+        for time in 0..times {
+            for part in [Part::MainStreet, Part::Edge] {
+                let mut lots: Vec<usize> = self.places.iter().map(|(lot, _)| *lot).filter(|&i| self.lots[i].part == part).collect();
+                // Fisher-Yates, each pick rolled from the seed and the time.
+                for k in (1..lots.len()).rev() {
+                    let j = (tile_hash(self.seed, (k as i32, time as i32), TOWN_SALT + 0x5A) % (k as u64 + 1)) as usize;
+                    lots.swap(k, j);
+                }
+                let mut next = lots.into_iter();
+                for (lot, _) in self.places.iter_mut().filter(|(lot, _)| self.lots[*lot].part == part) {
+                    if let Some(to) = next.next() {
+                        *lot = to;
+                    }
+                }
+            }
+        }
+        self
+    }
+
     /// The places standing in the town (topside-town "What the town
     /// has"), each by its lot.
     pub fn places(&self) -> &[(usize, PlanDef)] {

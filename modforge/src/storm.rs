@@ -185,6 +185,42 @@ pub fn pick_type(types: &[StormType], storm: u32, seed: u64) -> Option<&StormTyp
     can.last().copied()
 }
 
+/// The storm number `storm` is, as `pick_type` rolls it; from storm
+/// `stack_from` on, one in three also stacks a second type on it, as
+/// Diablo 2's rare monsters stack affixes (topside todo "Storm effect
+/// 10"): it kills if either does, rolls and does what both do, keeps the
+/// first's colours and teaching topic, and is named for both.
+pub fn pick(types: &[StormType], storm: u32, seed: u64, stack_from: u32) -> Option<StormType> {
+    let first = pick_type(types, storm, seed)?.clone();
+    if storm < stack_from || crate::roll::salted_index(seed ^ u64::from(storm), 0x5707_5700, 3) != 0 {
+        return Some(first);
+    }
+    let others: Vec<StormType> = types.iter().filter(|t| t.name != first.name).cloned().collect();
+    let Some(second) = pick_type(&others, storm, seed.rotate_left(29)) else {
+        return Some(first);
+    };
+    Some(first.stacked(second))
+}
+
+impl StormType {
+    /// This type with `other` stacked on it (`pick`).
+    pub fn stacked(mut self, other: &StormType) -> StormType {
+        self.name = format!("{} and {}", self.name, other.name);
+        self.kills |= other.kills;
+        for r in &other.rolls {
+            if !self.rolls.contains(r) {
+                self.rolls.push(*r);
+            }
+        }
+        for e in &other.does {
+            if !self.does.contains(e) {
+                self.does.push(*e);
+            }
+        }
+        self
+    }
+}
+
 /// When the storm hits, in seconds on the clock: `days` game days (a range,
 /// as an episode's data gives it) after `from`, rolled from `seed`
 /// (`roll::salted_index`, the same every time for the same seed), a game
