@@ -519,6 +519,15 @@ impl Town {
         self.lots.iter().filter(|l| l.house)
     }
 
+    /// The house nearest `at`, none over a bunker: where an episode's
+    /// thing stands in the town (topside todo Town 5, "The first episode
+    /// is in the town").
+    pub fn house_nearest(&self, at: Vec2) -> Option<usize> {
+        (0..self.lots.len())
+            .filter(|i| self.lots[*i].house && !self.over.contains(i))
+            .min_by(|&a, &b| self.lots[a].at.distance(at).total_cmp(&self.lots[b].at.distance(at)))
+    }
+
     /// The brief the house on lot `i` is laid out from: the house brief of
     /// the highest tier at or below its own, none over a bunker (the
     /// bunker's top room stands in the fixed house's garage).
