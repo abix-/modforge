@@ -264,6 +264,15 @@ pub fn storage(front: Vec2, over_bunker: bool) -> Vec<(&'static str, Vec2)> {
     all
 }
 
+/// Where a vehicle stands in a house's driveway (topside-town
+/// "Everything works": "cars in driveways"): before the garage door, 3 m
+/// out from the house's front, turned to face `front`. Claude's.
+pub fn driveway(front: Vec2) -> Vec2 {
+    let q = quarters_for(front);
+    let p = room_at(0, 0) + Vec3::new(0.0, 0.0, 0.5 * ROWS[0] + 3.0);
+    (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+}
+
 /// Where the living room's couch stands, from the house's middle, turned
 /// to face `front` (topside-town "Everything works"). Claude's.
 pub fn couch(front: Vec2) -> Vec2 {
