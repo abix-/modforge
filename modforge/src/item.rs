@@ -468,6 +468,15 @@ pub fn spoiled(stack: &ItemStack, today: f32, keeps_days: f32) -> bool {
     today - stack.made_day >= keeps_days
 }
 
+/// Food kept cold ages slower (Project Zomboid's fridge and freezer;
+/// topside-town "Everything works": "kept in pantries, fridges and
+/// freezers"): over `days` kept, it ages only `1 - slows` of them, so a
+/// fridge that slows by 0.75 keeps it four times as long and a freezer
+/// that slows by 1 stops it.
+pub fn keep_cold(stack: &mut ItemStack, days: f32, slows: f32) {
+    stack.made_day += days * slows.clamp(0.0, 1.0);
+}
+
 /// The one way an item comes to exist with layers: through `create`,
 /// then each named layer put on in order. Refuses a layer that is not
 /// registered, a layer the item has no slot for, or a second layer in

@@ -213,6 +213,20 @@ pub fn heating(front: Vec2) -> Vec<(&'static str, Vec2)> {
     .collect()
 }
 
+/// A house's kitchen (topside-town "Everything works": food "kept in
+/// pantries, fridges and freezers, cooked on stoves"): the pantry, the
+/// fridge, the freezer and the stove, each where it stands from the
+/// house's middle, turned to face `front`, along the kitchen's east wall.
+/// Where each stands is Claude's.
+pub fn kitchen(front: Vec2) -> Vec<(&'static str, Vec2)> {
+    let q = quarters_for(front);
+    let turn = |p: Vec3| (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x));
+    [("pantry", -0.3), ("fridge", -0.1), ("freezer", 0.1), ("stove", 0.3)]
+        .iter()
+        .map(|&(kind, fz)| (kind, turn(room_at(0, 1) + Vec3::new(0.4 * COLUMNS[0], 0.0, fz * ROWS[1]))))
+        .collect()
+}
+
 /// Where the dining table's middle stands, from the house's middle,
 /// turned to face `front` (a candle on it, topside-town "Everything
 /// works").

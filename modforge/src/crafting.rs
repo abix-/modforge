@@ -44,6 +44,9 @@ pub enum StationKind {
     ElectronicsWorkbench,
     ArmoryBench,
     ResearchStation,
+    /// A kitchen's stove, where food is cooked (topside-town "Everything
+    /// works": "cooked on stoves").
+    Stove,
 }
 
 /// One recipe as data. Inputs are (item id, count) pairs consumed.
