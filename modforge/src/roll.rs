@@ -129,18 +129,20 @@ pub fn pick(weights: &[f64]) -> Option<usize> {
         return None;
     }
     let mut roll = fastrand::f64() * total;
+    // Floating point can leave a sliver; the last positive entry
+    // is the honest answer rather than None.
+    let mut last = None;
     for (i, w) in weights.iter().enumerate() {
         if *w <= 0.0 {
             continue;
         }
+        last = Some(i);
         roll -= w;
         if roll <= 0.0 {
             return Some(i);
         }
     }
-    // Floating point can leave a sliver; the last positive entry
-    // is the honest answer rather than None.
-    weights.iter().rposition(|w| *w > 0.0)
+    last
 }
 
 /// Pick up to `count` DISTINCT indices, weighted at `level`.
