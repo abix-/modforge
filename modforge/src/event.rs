@@ -223,7 +223,17 @@ pub struct Director {
     pub boredom: f32,
     pub tension: f32,
     pub recent: Vec<(String, String)>,
+    /// The ratings: the share of the viewers watching, 0 to 1 (topside-show
+    /// "The viewers"; operator, 2026-11-24: "they're going to take into
+    /// account all the reviewer stats and the ratings"). A dull stretch
+    /// drops them; the star in danger lifts them.
+    #[serde(default)]
+    pub viewers: f32,
 }
+
+/// Below these ratings the viewers vote for trouble, whatever else is on
+/// offer (topside-show "Ratings bring trouble"; Claude's).
+pub const LOW_RATINGS: f32 = 0.4;
 
 /// One event as rolled: every layer settled, for the game to carry out.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -239,6 +249,10 @@ pub struct Event {
     pub warning: Warning,
     /// The seed the game rolls the exact spots from.
     pub seed: u64,
+    /// The other event the viewers voted on and turned down (`choose`),
+    /// for the television to show (topside-show "The viewers").
+    #[serde(default)]
+    pub voted_down: Option<String>,
 }
 
 impl Event {
@@ -257,11 +271,13 @@ impl Event {
 
 impl Director {
     /// What the game sees, given to the director: game days since the
-    /// last trouble (boredom fills over one day) and how hurt the star
-    /// is, 0 to 1. Once the show has ratings, they are what bores it.
+    /// last trouble and how hurt the star is, 0 to 1. The ratings fall
+    /// over a quiet day and rise with the star in danger; the director is
+    /// as bored as the viewers are gone.
     pub fn feel(&mut self, days_quiet: f32, hurt: f32) {
-        self.boredom = days_quiet.clamp(0.0, 1.0);
         self.tension = hurt.clamp(0.0, 1.0);
+        self.viewers = (1.0 - days_quiet.clamp(0.0, 1.0)).max(self.tension);
+        self.boredom = 1.0 - self.viewers;
     }
 
     /// The budget to spend in episode `episode`: more when the show is
@@ -322,16 +338,37 @@ pub fn choose(events: &EventsDef, director: &Director, episode: u32, night: bool
     if total <= 0.0 {
         return None;
     }
-    let mut left = f64::from(share(seed, 0xE7E7_0200)) * total;
-    let base = can
-        .iter()
-        .find(|(_, w)| {
-            left -= w;
-            left <= 0.0
-        })
-        .or(can.last())?
-        .0;
-    Some(layer(events, base, director.budget(&events.director, episode), night, seed))
+    let pick = |salt: u64| {
+        let mut left = f64::from(share(seed, salt)) * total;
+        can.iter()
+            .find(|(_, w)| {
+                left -= w;
+                left <= 0.0
+            })
+            .or(can.last())
+            .map(|(e, _)| *e)
+    };
+    let first = pick(0xE7E7_0200)?;
+    // The viewers vote between two (topside-show "The viewers": "they're
+    // voting on what's happening and what is going to happen"): with the
+    // ratings low they want trouble; else the vote goes to the first by
+    // the share watching, the second by the share gone (Claude's).
+    let second = pick(0xE7E7_0210).filter(|e| e.name != first.name);
+    let (base, other) = match second {
+        None => (first, None),
+        Some(second) => {
+            let trouble = |e: &EventDef| e.mood == Mood::Trouble;
+            let first_wins = if director.viewers < LOW_RATINGS && trouble(first) != trouble(second) {
+                trouble(first)
+            } else {
+                share(seed, 0xE7E7_0220) <= director.viewers.max(0.5)
+            };
+            if first_wins { (first, Some(second)) } else { (second, Some(first)) }
+        }
+    };
+    let mut event = layer(events, base, director.budget(&events.director, episode), night, seed);
+    event.voted_down = other.map(|e| e.name.clone());
+    Some(event)
 }
 
 /// Every layer of `base` rolled within `budget`: its twists (0 to 2,
@@ -406,6 +443,7 @@ pub fn layer(events: &EventsDef, base: &EventDef, budget: f32, night: bool, seed
         twists: twists.iter().map(|t| t.name.clone()).collect(),
         warning,
         seed,
+        voted_down: None,
     }
 }
 
