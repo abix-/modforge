@@ -85,6 +85,25 @@ pub struct Brief {
     #[serde(rename = "furniture colour")]
     pub furniture_color: Rgb,
     pub height: f32,
+    /// The most the place may cover, metres across and along, so it stays
+    /// on its lot; a room that would go past it is left out. No limit when
+    /// left out.
+    #[serde(default)]
+    pub lot: Option<[f32; 2]>,
+}
+
+/// The grid's size, metres across and along, of the rooms `down` (each
+/// column as wide as its widest piece, each row as long as its longest).
+fn extent<'a>(down: impl Iterator<Item = ((i32, i32), &'a RoomPiece)>) -> [f32; 2] {
+    let mut columns: BTreeMap<i32, f32> = BTreeMap::new();
+    let mut rows: BTreeMap<i32, f32> = BTreeMap::new();
+    for ((c, r), p) in down {
+        let w = columns.entry(c).or_insert(0.0);
+        *w = w.max(p.size[0]);
+        let l = rows.entry(r).or_insert(0.0);
+        *l = l.max(p.size[1]);
+    }
+    [columns.values().sum(), rows.values().sum()]
 }
 
 /// A room a brief asks for.
@@ -182,6 +201,12 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
                 .filter(|&(at, s)| {
                     let to = next(at, s);
                     to.1 >= 0 && !down.contains_key(&to) && piece.doors.contains(&back(s))
+                })
+                .filter(|&(at, s)| {
+                    brief.lot.is_none_or(|lot| {
+                        let size = extent(down.iter().map(|(&c, (_, p))| (c, *p)).chain([(next(at, s), piece)]));
+                        size[0] <= lot[0] && size[1] <= lot[1]
+                    })
                 })
                 .collect();
             if spots.is_empty() {

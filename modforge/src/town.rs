@@ -137,6 +137,8 @@ pub struct Town {
     pieces: Vec<RoomPiece>,
     briefs: Vec<Brief>,
     boarded: Option<Boarded>,
+    /// A house lot's width and depth, so a laid out house stays on it.
+    lot: Vec2,
 }
 
 impl Town {
@@ -354,6 +356,7 @@ impl Town {
             pieces: def.pieces.clone(),
             briefs: def.briefs.clone(),
             boarded: def.boarded.clone(),
+            lot: def.lot,
         };
         town.street_tiles = town.lay_streets();
         // Each place on the next free lot of its part: main street's from
@@ -509,8 +512,10 @@ impl Town {
     /// The house on lot `i` laid out from the pieces, if it is (`layout`):
     /// the same every time for a seed and a lot, another on another lot.
     pub fn rolled(&self, i: usize) -> Option<PlanDef> {
-        let brief = self.brief_for(i)?;
-        Some(crate::layout::roll(brief, &self.pieces, tile_hash(self.seed, (i as i32, 5), TOWN_SALT + 0x42)))
+        // Kept a few metres in from the lot's sides and back (Claude's).
+        let mut brief = self.brief_for(i)?.clone();
+        brief.lot = brief.lot.or(Some([self.lot.x - 2.0, self.lot.y - 4.0]));
+        Some(crate::layout::roll(&brief, &self.pieces, tile_hash(self.seed, (i as i32, 5), TOWN_SALT + 0x42)))
     }
 
     /// Whether lot `i` holds the fixed house (`house`), whose furniture,
