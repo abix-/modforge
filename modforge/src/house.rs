@@ -256,6 +256,10 @@ pub fn storage(front: Vec2, over_bunker: bool) -> Vec<(&'static str, Vec2)> {
     let mut all = vec![("kitchen cabinet", turn(room_at(0, 1) + Vec3::new(-0.4 * COLUMNS[0], 0.0, 0.0)))];
     if !over_bunker {
         all.push(("garage shelf", turn(room_at(0, 0) + Vec3::new(-0.4 * COLUMNS[0], 0.0, -0.3 * ROWS[0]))));
+        // The garage's workbench and toolbox ("garage workbenches,
+        // toolboxes ... fix and build things").
+        all.push(("garage workbench", turn(room_at(0, 0) + Vec3::new(-0.4 * COLUMNS[0], 0.0, 0.1 * ROWS[0]))));
+        all.push(("toolbox", turn(room_at(0, 0) + Vec3::new(-0.4 * COLUMNS[0], 0.0, 0.3 * ROWS[0]))));
     }
     all
 }
