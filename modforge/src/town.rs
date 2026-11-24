@@ -14,6 +14,7 @@ use glam::Vec2;
 
 use crate::ground::tile_hash;
 use crate::house::{HouseDef, bunker_offset, clothing, fixtures, heating, home_spots, house, kitchen, quarters_for, storage, wiring};
+use crate::plan::PlanDef;
 use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
@@ -46,6 +47,9 @@ pub struct TownDef {
     /// Who lives in the houses with no bunker: an actor def, and how many
     /// a house, fewest and most.
     pub residents: (String, (u32, u32)),
+    /// The town's places, each standing on a lot of its part
+    /// (topside-town "What the town has").
+    pub places: Vec<PlanDef>,
 }
 
 /// Which part of the town a lot or street is in.
@@ -101,6 +105,8 @@ pub struct Town {
     /// The house lots over a bunker, the first the home one.
     over: Vec<usize>,
     residents: (String, (u32, u32)),
+    /// The places standing, each by its lot (`places`).
+    places: Vec<(usize, PlanDef)>,
 }
 
 impl Town {
@@ -312,9 +318,44 @@ impl Town {
             seed,
             over,
             residents: def.residents.clone(),
+            places: Vec::new(),
         };
         town.street_tiles = town.lay_streets();
+        // Each place on the next free lot of its part: main street's from
+        // the middle out, the edge's from main street out.
+        let mut free: Vec<usize> = (0..town.lots.len()).filter(|&i| !town.lots[i].house).collect();
+        free.sort_by(|&a, &b| town.lots[a].at.x.abs().total_cmp(&town.lots[b].at.x.abs()).then(a.cmp(&b)));
+        for plan in &def.places {
+            let part = if plan.edge { Part::Edge } else { Part::MainStreet };
+            if let Some(k) = free.iter().position(|&i| town.lots[i].part == part) {
+                town.places.push((free.remove(k), *plan));
+            }
+        }
         town
+    }
+
+    /// The places standing in the town (topside-town "What the town
+    /// has"), each by its lot.
+    pub fn places(&self) -> &[(usize, PlanDef)] {
+        &self.places
+    }
+
+    /// The place standing on lot `i`, if one does.
+    pub fn place_on(&self, i: usize) -> Option<StructureDef> {
+        let (_, plan) = self.places.iter().find(|(lot, _)| *lot == i)?;
+        let seed = tile_hash(self.seed, (i as i32, 1), TOWN_SALT + 0x41);
+        Some(crate::plan::build(plan, self.lots[i].front, seed))
+    }
+
+    /// Where every place's things stand, each with its place's name.
+    pub fn place_things(&self) -> Vec<(&'static str, &'static str, Vec2)> {
+        self.places
+            .iter()
+            .flat_map(|(i, plan)| {
+                let lot = &self.lots[*i];
+                crate::plan::things_of(plan, lot.front).into_iter().map(move |(thing, at)| (plan.name, thing, lot.at + at))
+            })
+            .collect()
     }
 
     /// Every tile whose middle lies on a street or a turning circle.

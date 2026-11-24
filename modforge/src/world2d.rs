@@ -215,16 +215,21 @@ impl World2d {
         town.lots
             .iter()
             .enumerate()
-            .filter(|(_, l)| l.house && l.at.cmpge(lo).all() && l.at.cmplt(hi).all())
-            .map(|(i, l)| Place {
-                monument: "house".to_string(),
+            .filter(|(_, l)| l.at.cmpge(lo).all() && l.at.cmplt(hi).all())
+            // A house, or a place of the town (plan.rs) on its lot.
+            .filter_map(|(i, l)| {
+                let structure = if l.house { town.house_on(i) } else { town.place_on(i)? };
+                Some((l, structure))
+            })
+            .map(|(l, structure)| Place {
+                monument: structure.name.clone(),
                 position: l.at.round(),
                 biome: String::new(),
                 rolled: MonumentDef {
-                    name: "house".to_string(),
-                    kind: "house".to_string(),
+                    name: structure.name.clone(),
+                    kind: structure.name.clone(),
                     members: vec![MonumentMember {
-                        structure: town.house_on(i),
+                        structure,
                         offset: Vec3::ZERO,
                     }],
                     loot_spots: Vec::new(),
