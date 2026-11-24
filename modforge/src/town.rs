@@ -14,6 +14,7 @@ use glam::Vec2;
 
 use crate::ground::tile_hash;
 use crate::house::{HouseDef, bunker_offset, clothing, fixtures, heating, home_spots, house, kitchen, quarters_for, storage, wiring};
+use crate::layout::{Brief, RoomPiece};
 use crate::plan::PlanDef;
 use crate::structure::StructureDef;
 use crate::path::Cell;
@@ -55,6 +56,12 @@ pub struct TownDef {
     /// (topside-town "Tiers").
     pub tiers: u32,
     pub usual_tiers: Vec<(String, u32)>,
+    /// The room pieces places are laid out from, and each kind of place's
+    /// brief by tier (`layout`; topside todo "Places rolled"). A house
+    /// whose tier has a brief is laid out from the pieces, unless a
+    /// bunker is under it; a house with none is `house`.
+    pub pieces: Vec<RoomPiece>,
+    pub briefs: Vec<Brief>,
 }
 
 /// Which part of the town a lot or street is in.
@@ -114,6 +121,8 @@ pub struct Town {
     places: Vec<(usize, PlanDef)>,
     tiers: u32,
     usual_tiers: Vec<(String, u32)>,
+    pieces: Vec<RoomPiece>,
+    briefs: Vec<Brief>,
 }
 
 impl Town {
@@ -328,6 +337,8 @@ impl Town {
             places: Vec::new(),
             tiers: def.tiers,
             usual_tiers: def.usual_tiers.clone(),
+            pieces: def.pieces.clone(),
+            briefs: def.briefs.clone(),
         };
         town.street_tiles = town.lay_streets();
         // Each place on the next free lot of its part: main street's from
@@ -378,14 +389,18 @@ impl Town {
     }
 
     /// Where every place's things stand, each with its place's name.
-    pub fn place_things(&self) -> Vec<(&str, &str, Vec2)> {
-        self.places
-            .iter()
-            .flat_map(|(i, plan)| {
-                let lot = &self.lots[*i];
-                crate::plan::things_of(plan, lot.front).into_iter().map(move |(thing, at)| (plan.name.as_str(), thing, lot.at + at))
-            })
-            .collect()
+    /// The laid out houses' things (`layout`), from their pieces, are
+    /// among them, by the name "house".
+    pub fn place_things(&self) -> Vec<(&str, String, Vec2)> {
+        let places = self.places.iter().flat_map(|(i, plan)| {
+            let lot = &self.lots[*i];
+            crate::plan::things_of(plan, lot.front).into_iter().map(move |(thing, at)| (plan.name.as_str(), thing.to_string(), lot.at + at))
+        });
+        let houses = (0..self.lots.len()).filter_map(|i| self.rolled(i).map(|plan| (i, plan))).flat_map(|(i, plan)| {
+            let lot = &self.lots[i];
+            crate::plan::things_of(&plan, lot.front).into_iter().map(|(thing, at)| ("house", thing.to_string(), lot.at + at)).collect::<Vec<_>>()
+        });
+        places.chain(houses).collect()
     }
 
     /// Every tile whose middle lies on a street or a turning circle.
@@ -433,11 +448,56 @@ impl Town {
         self.lots.iter().filter(|l| l.house)
     }
 
+    /// The brief the house on lot `i` is laid out from: the house brief of
+    /// the highest tier at or below its own, none over a bunker (the
+    /// bunker's top room stands in the fixed house's garage).
+    fn brief_for(&self, i: usize) -> Option<&Brief> {
+        if !self.lots[i].house || self.over.contains(&i) {
+            return None;
+        }
+        let tier = self.tier_of(i);
+        self.briefs.iter().filter(|b| b.place == "house" && b.tier <= tier).max_by_key(|b| b.tier)
+    }
+
+    /// The house on lot `i` laid out from the pieces, if it is (`layout`):
+    /// the same every time for a seed and a lot, another on another lot.
+    pub fn rolled(&self, i: usize) -> Option<PlanDef> {
+        let brief = self.brief_for(i)?;
+        Some(crate::layout::roll(brief, &self.pieces, tile_hash(self.seed, (i as i32, 5), TOWN_SALT + 0x42)))
+    }
+
+    /// Whether lot `i` holds the fixed house (`house`), whose furniture,
+    /// fixtures and wiring stand where `house` says.
+    fn fixed(&self, i: usize) -> bool {
+        self.lots[i].house && self.brief_for(i).is_none()
+    }
+
+    /// The lots holding the fixed house, with their index.
+    pub fn fixed_houses(&self) -> impl Iterator<Item = (usize, &Lot)> {
+        self.lots.iter().enumerate().filter(|(i, _)| self.fixed(*i))
+    }
+
+    /// Where the people living on lot `i` stand when it is made, from the
+    /// lot's middle: the fixed house's bedrooms and living room, else
+    /// the laid out house's (any room when it has none of those).
+    pub fn home_spots(&self, i: usize) -> Vec<Vec2> {
+        let front = self.lots[i].front;
+        let Some(plan) = self.rolled(i) else {
+            return home_spots(front);
+        };
+        let rooms = crate::plan::room_spots(&plan, front);
+        let homely: Vec<Vec2> = rooms.iter().filter(|(name, _)| name.starts_with("bedroom") || name.starts_with("living room")).map(|(_, p)| *p).collect();
+        if homely.is_empty() { rooms.into_iter().map(|(_, p)| p).collect() } else { homely }
+    }
+
     /// The house standing on lot `i`, facing its street, its middle at
     /// the lot's: the same every time for a seed and a lot.
     pub fn house_on(&self, i: usize) -> StructureDef {
         let seed = tile_hash(self.seed, (i as i32, 0), TOWN_SALT + 0x40);
-        house(&self.house, self.lots[i].front, seed, self.over.contains(&i))
+        match self.rolled(i) {
+            Some(plan) => crate::plan::build(&plan, self.lots[i].front, seed),
+            None => house(&self.house, self.lots[i].front, seed, self.over.contains(&i)),
+        }
     }
 
     /// Where each bunker is, under its house's garage, the home one first.
@@ -452,9 +512,8 @@ impl Town {
     /// Every house's water fixtures (`house::fixtures`): each its kind and
     /// where it stands.
     pub fn fixtures(&self) -> Vec<(&'static str, Vec2)> {
-        self.lots
-            .iter()
-            .filter(|l| l.house)
+        self.fixed_houses()
+            .map(|(_, l)| l)
             .flat_map(|l| fixtures(l.front).into_iter().map(move |(kind, at)| (kind, l.at + at)))
             .collect()
     }
@@ -462,10 +521,7 @@ impl Town {
     /// Every house's wiring (`house::wiring`): its breaker box, and each
     /// room's switch with its light, where they stand.
     pub fn wiring(&self) -> Vec<(Vec2, Vec<(Vec2, Vec2)>)> {
-        self.lots
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| l.house)
+        self.fixed_houses()
             .map(|(i, l)| {
                 let (breaker, rooms) = wiring(l.front, self.over.contains(&i));
                 (l.at + breaker, rooms.into_iter().map(|(s, light)| (l.at + s, l.at + light)).collect())
@@ -476,40 +532,31 @@ impl Town {
     /// Every house's heating and cooling (`house::heating`), in the same
     /// order as `wiring`, each its kind and where it stands.
     pub fn heating(&self) -> Vec<Vec<(&'static str, Vec2)>> {
-        self.lots
-            .iter()
-            .filter(|l| l.house)
-            .map(|l| heating(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
+        self.fixed_houses()
+            .map(|(_, l)| heating(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
             .collect()
     }
 
     /// Every house's kitchen (`house::kitchen`), in the same order as
     /// `wiring`, each its kind and where it stands.
     pub fn kitchens(&self) -> Vec<Vec<(&'static str, Vec2)>> {
-        self.lots
-            .iter()
-            .filter(|l| l.house)
-            .map(|l| kitchen(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
+        self.fixed_houses()
+            .map(|(_, l)| kitchen(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
             .collect()
     }
 
     /// Every house's clothing (`house::clothing`), in the same order as
     /// `wiring`, each its kind and where it stands.
     pub fn clothing(&self) -> Vec<Vec<(&'static str, Vec2)>> {
-        self.lots
-            .iter()
-            .filter(|l| l.house)
-            .map(|l| clothing(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
+        self.fixed_houses()
+            .map(|(_, l)| clothing(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
             .collect()
     }
 
     /// Every house's storage (`house::storage`), in the same order as
     /// `wiring`, each its kind and where it stands.
     pub fn storage(&self) -> Vec<Vec<(&'static str, Vec2)>> {
-        self.lots
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| l.house)
+        self.fixed_houses()
             .map(|(i, l)| storage(l.front, self.over.contains(&i)).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
             .collect()
     }
@@ -552,7 +599,7 @@ impl Town {
                 continue;
             }
             let count = lo + (tile_hash(self.seed, (i as i32, 1), TOWN_SALT + 0x50) % u64::from(hi.saturating_sub(lo) + 1)) as u32;
-            let spots = home_spots(lot.front);
+            let spots = self.home_spots(i);
             for k in 0..count as usize {
                 if let Some(spot) = spots.get(k % spots.len().max(1)) {
                     // Two in a room stand a metre apart.

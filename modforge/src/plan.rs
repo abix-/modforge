@@ -205,6 +205,19 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
     turned(&plan, quarters_for(front))
 }
 
+/// Each room's name and where someone stands in it when the place is
+/// made: toward its front, from the place's middle, turned to face
+/// `front` (as `house::home_spots`).
+pub fn room_spots(def: &PlanDef, front: Vec2) -> Vec<(&str, Vec2)> {
+    def.rooms
+        .iter()
+        .map(|room| {
+            let (c, r) = room.at;
+            (room.name.as_str(), turn(room_at(def, c, r) + Vec3::new(0.0, 0.0, 0.35 * def.rows[r]), front))
+        })
+        .collect()
+}
+
 /// Where each of the place's things stands, from its middle, turned to
 /// face `front`.
 pub fn things_of(def: &PlanDef, front: Vec2) -> Vec<(&str, Vec2)> {
