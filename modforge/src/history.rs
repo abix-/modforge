@@ -57,6 +57,9 @@ pub fn roll(figures: &[Figure], places: usize, days: u32, fights: &dyn Fn(&Figur
     if places == 0 {
         return events;
     }
+    // Every place a figure can be: the rolled ones, and any home past them.
+    let size = at.iter().copied().max().map_or(places, |home| places.max(home + 1));
+    let mut by_place: Vec<Vec<usize>> = vec![Vec::new(); size];
     for day in 0..days {
         for (i, f) in figures.iter().enumerate() {
             if alive[i] && roll.chance(MOVES) {
@@ -67,9 +70,20 @@ pub fn roll(figures: &[Figure], places: usize, days: u32, fights: &dyn Fn(&Figur
                 }
             }
         }
+        // Who is at each place, in order: a pair meets only where both
+        // are, taken in the same order as every pair would be (i, then
+        // each j after it), so the rolls fall the same.
+        for here in by_place.iter_mut() {
+            here.clear();
+        }
+        for (i, place) in at.iter().enumerate() {
+            by_place[*place].push(i);
+        }
         for i in 0..figures.len() {
-            for j in i + 1..figures.len() {
-                if !(alive[i] && alive[j]) || at[i] != at[j] {
+            let here = &by_place[at[i]];
+            let after = here.partition_point(|&k| k <= i);
+            for &j in &here[after..] {
+                if !(alive[i] && alive[j]) {
                     continue;
                 }
                 let (a, b) = (&figures[i], &figures[j]);
