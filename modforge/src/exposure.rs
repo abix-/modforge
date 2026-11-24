@@ -21,6 +21,15 @@ pub const DRIFT: f32 = 0.0005;
 /// What a body warms itself toward when the air is mild: its own warmth
 /// holds between these airs.
 pub const MILD: (f32, f32) = (10.0, 30.0);
+/// The warmth heat sources add to the air where a person stands
+/// (topside-town "Everything works": "furnaces, fireplaces, wood stoves,
+/// AC"; Valheim's and Atlas's fires warm whoever is near them): each
+/// source as (how far off, its heat, its reach), its heat falling to
+/// nothing at its reach, summed. A negative heat cools (AC).
+pub fn warmth_near(sources: &[(f32, f32, f32)]) -> f32 {
+    sources.iter().map(|&(far, heat, reach)| if far < reach { heat * (1.0 - far / reach) } else { 0.0 }).sum()
+}
+
 /// Over this dose radiation hurts; a dose clears this much a game second.
 pub const SICK: f32 = 50.0;
 pub const CLEARS: f32 = 0.01;

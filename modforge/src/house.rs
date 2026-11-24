@@ -192,6 +192,27 @@ pub fn wiring(front: Vec2, over_bunker: bool) -> (Vec2, Vec<(Vec2, Vec2)>) {
     (breaker, rooms)
 }
 
+/// A house's heating and cooling (topside-town "Everything works":
+/// "furnaces, fireplaces, wood stoves, AC, blankets, thermostats"): each
+/// its kind and where it stands from the house's middle, turned to face
+/// `front`: a fireplace on the living room's west wall, a wood stove in
+/// the kitchen, the furnace in the laundry, the thermostat and the air
+/// conditioner in the hall. Where each stands is Claude's.
+pub fn heating(front: Vec2) -> Vec<(&'static str, Vec2)> {
+    let q = quarters_for(front);
+    let turn = |p: Vec3| (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x));
+    [
+        ("fireplace", (1, 0), [-0.4, 0.0]),
+        ("wood stove", (0, 1), [0.3, 0.35]),
+        ("furnace", (0, 2), [0.3, -0.35]),
+        ("thermostat", (2, 1), [0.4, 0.0]),
+        ("air conditioner", (2, 2), [0.0, -0.4]),
+    ]
+    .iter()
+    .map(|&(kind, (c, r), [fx, fz])| (kind, turn(room_at(c, r) + Vec3::new(fx * COLUMNS[c], 0.0, fz * ROWS[r]))))
+    .collect()
+}
+
 /// The quarter turns that take the plan's front (+z, the ground's +y) to
 /// `front`.
 pub fn quarters_for(front: Vec2) -> u32 {
