@@ -23,6 +23,9 @@ pub struct Affix {
     pub power: f32,
     #[serde(default)]
     pub armor: f32,
+    /// Added to the wearer's most health while worn (crate::gear).
+    #[serde(default)]
+    pub health: f32,
 }
 
 /// Roll the affixes of one item from `table`: the first comes one time in
@@ -72,6 +75,7 @@ mod tests {
             delay,
             power,
             armor: 0.0,
+            health: 0.0,
         };
         vec![a("light", -0.1, 1.0), a("sharp", 0.0, 1.2)]
     }

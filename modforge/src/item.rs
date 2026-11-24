@@ -1009,6 +1009,7 @@ mod tests {
             delay: -0.1,
             power: 1.0,
             armor: 0.0,
+            health: 0.0,
         });
         let layers = LayerRegistry::default();
         let delay = |s: &ItemStack| numbers_of(&pipe, s, &layers).combat.unwrap().delay;

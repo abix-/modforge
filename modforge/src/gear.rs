@@ -67,6 +67,8 @@ pub struct Ranges {
     pub power: (f32, f32),
     /// Added to the armor worn.
     pub armor: (f32, f32),
+    /// Added to the wearer's most health while worn.
+    pub health: (f32, f32),
 }
 
 impl Ranges {
@@ -80,8 +82,15 @@ impl Ranges {
             delay: at(self.delay),
             power: 1.0 + at(self.power) / 100.0,
             armor: at(self.armor),
+            health: at(self.health),
         }
     }
+}
+
+/// How much more health what `worn` holds gives its wearer, all its
+/// pieces' affixes together.
+pub fn worn_health(worn: &crate::item::Equipment) -> f32 {
+    worn.items().flat_map(|stack| &stack.affixes).map(|a| a.health).sum()
 }
 
 /// An item as gear.
@@ -99,6 +108,11 @@ pub struct BaseDef {
     /// The sockets a plain one is found with, fewest and most.
     #[serde(default)]
     pub sockets: (u32, u32),
+    /// What its x tier adds on top of its own numbers (todo "Tiered loot",
+    /// operator 2026-11-23: "a tier 1x and then a tier 2x and then a tier
+    /// 5x"), the x tier's one more socket too.
+    #[serde(default)]
+    pub x: Ranges,
 }
 
 fn first() -> u32 {
@@ -161,6 +175,10 @@ pub struct Word {
 pub struct Odds {
     pub magic: u64,
     pub rare: u64,
+    /// How often a piece is found in its x tier, per mille; never when left
+    /// out.
+    #[serde(default)]
+    pub x: u64,
 }
 
 /// Every piece of gear content: read from a game's content (topside's
@@ -220,13 +238,19 @@ pub fn found(defs: &GearDefs, def: &ItemDef, stack: &mut ItemStack, tier: u32, s
     };
     let mut roll = Roll::new(seed);
     stack.affixes.push(base.rolls.roll("", &mut roll));
+    // Its x tier, one in `odds.x` per mille: named "x", read after the
+    // tier ("tier 2x").
+    let x = roll.next(1000) < defs.odds.x;
+    if x {
+        stack.affixes.push(base.x.roll("x", &mut roll));
+    }
     let n = roll.next(1000);
     let count = if n < defs.odds.rare {
         roll.between(3, 4)
     } else if n < defs.odds.rare + defs.odds.magic {
         roll.between(1, 2)
     } else {
-        stack.sockets.count = roll.between(base.sockets.0, base.sockets.1);
+        stack.sockets.count = roll.between(base.sockets.0, base.sockets.1) + u32::from(x);
         0
     };
     let mut open: Vec<&AffixDef> = defs.affixes.iter().filter(|a| a.on.contains(&kind) && a.tier <= tier).collect();
