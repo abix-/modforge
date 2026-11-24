@@ -47,6 +47,9 @@ pub enum StationKind {
     /// A kitchen's stove, where food is cooked (topside-town "Everything
     /// works": "cooked on stoves").
     Stove,
+    /// A furnace, where ore and metal are smelted (Rust's furnace; todo
+    /// "Recipes": "smelting is on the stove for now").
+    Furnace,
 }
 
 /// One recipe as data. Inputs are (item id, count) pairs consumed.

@@ -42,15 +42,27 @@ pub enum Kind {
     Wall,
     Doorway,
     Window,
+    /// Atlas's railing: a waist-high wall on an edge, for a porch or a
+    /// balcony; it holds nothing up (todo "Recipes": Atlas's building).
+    Railing,
+    /// Atlas's pillar: a post filling its cell, on the ground or on a
+    /// pillar below, holding up the slab over it, so a floor stands on
+    /// stilts with no walls under it.
+    Pillar,
 }
 
 impl Kind {
     /// Every kind, in the order the building plan offers them.
-    pub const ALL: [Kind; 7] = [Kind::Foundation, Kind::Wall, Kind::Doorway, Kind::Window, Kind::Floor, Kind::Stairs, Kind::Roof];
+    pub const ALL: [Kind; 9] = [Kind::Foundation, Kind::Wall, Kind::Doorway, Kind::Window, Kind::Railing, Kind::Pillar, Kind::Floor, Kind::Stairs, Kind::Roof];
 
     /// Whether it stands on a cell's edge (a wall) or fills the cell.
     pub fn on_edge(self) -> bool {
-        matches!(self, Kind::Wall | Kind::Doorway | Kind::Window)
+        matches!(self, Kind::Wall | Kind::Doorway | Kind::Window | Kind::Railing)
+    }
+
+    /// Whether it holds up the slab over it from the level below.
+    pub fn holds_up(self) -> bool {
+        matches!(self, Kind::Wall | Kind::Doorway | Kind::Window | Kind::Pillar)
     }
 
     pub fn name(self) -> &'static str {
@@ -62,6 +74,8 @@ impl Kind {
             Kind::Wall => "wall",
             Kind::Doorway => "doorway",
             Kind::Window => "window",
+            Kind::Railing => "railing",
+            Kind::Pillar => "pillar",
         }
     }
 
@@ -262,8 +276,14 @@ impl Build {
         match kind {
             Kind::Foundation => 1.0,
             // A wall stands on the slab of either cell it lies between.
-            Kind::Wall | Kind::Doorway | Kind::Window => {
+            Kind::Wall | Kind::Doorway | Kind::Window | Kind::Railing => {
                 slot.cells().into_iter().map(|(x, z)| of(Slot::cell(x, z, slot.level))).fold(0.0, f32::max)
+            }
+            // A pillar stands on the ground, or on the pillar under it.
+            Kind::Pillar if slot.level == 0 => 1.0,
+            Kind::Pillar => {
+                let under = Slot::cell(slot.x, slot.z, slot.level - 1);
+                if self.pieces.get(&under).is_some_and(|p| p.kind == Kind::Pillar) { of(under) } else { 0.0 }
             }
             // Stairs stand on the slab of their own cell.
             Kind::Stairs => of(Slot::cell(slot.x, slot.z, slot.level)).max(self.slab_held(slot, strength)),
@@ -271,11 +291,17 @@ impl Build {
         }
     }
 
-    /// A slab at level L is held by a wall on its edge at L - 1, or by a
-    /// slab beside it, keeping `REACH_KEEPS` of that one's strength.
+    /// A slab at level L is held by a wall on its edge at L - 1 or a pillar
+    /// under it, or by a slab beside it, keeping `REACH_KEEPS` of that
+    /// one's strength.
     fn slab_held(&self, slot: Slot, strength: &BTreeMap<Slot, f32>) -> f32 {
-        let of = |s: Slot| if self.pieces.get(&s).is_some_and(|p| !p.kind.on_edge() && p.kind != Kind::Stairs) { strength.get(&s).copied().unwrap_or(0.0) } else { 0.0 };
-        let below = Slot::edges(slot.x, slot.z, slot.level - 1).into_iter().map(|e| strength.get(&e).copied().unwrap_or(0.0)).fold(0.0, f32::max);
+        let of = |s: Slot| if self.pieces.get(&s).is_some_and(|p| !p.kind.on_edge() && p.kind != Kind::Stairs && p.kind != Kind::Pillar) { strength.get(&s).copied().unwrap_or(0.0) } else { 0.0 };
+        let holding = |s: Slot| if self.pieces.get(&s).is_some_and(|p| p.kind.holds_up()) { strength.get(&s).copied().unwrap_or(0.0) } else { 0.0 };
+        let below = Slot::edges(slot.x, slot.z, slot.level - 1)
+            .into_iter()
+            .chain([Slot::cell(slot.x, slot.z, slot.level - 1)])
+            .map(holding)
+            .fold(0.0, f32::max);
         let beside = [(1, 0), (-1, 0), (0, 1), (0, -1)]
             .into_iter()
             .map(|(dx, dz)| of(Slot::cell(slot.x + dx, slot.z + dz, slot.level)) * REACH_KEEPS)
