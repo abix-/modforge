@@ -9,6 +9,7 @@
 //! [`crate::memory_research::Remote`] reads, so research tests written
 //! against an outside reader work unchanged against an injected DLL.
 
+use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::ops::{OP_REGISTRY, OpDef};
@@ -77,22 +78,24 @@ fn read_memory(addr: usize, len: usize) -> Result<Json, String> {
     if ok == 0 || read == 0 {
         return Err(format!("address 0x{addr:x} is not readable"));
     }
-    let ascii: String = bytes
-        .iter()
-        .map(|byte| {
-            if byte.is_ascii_graphic() || *byte == b' ' {
-                char::from(*byte)
-            } else {
-                '.'
-            }
-        })
-        .collect();
+    // The bytes in hex, spaced and packed, and as text, in one pass.
+    let mut hex = String::with_capacity(bytes.len() * 3);
+    let mut bytes_hex = String::with_capacity(bytes.len() * 2);
+    let mut ascii = String::with_capacity(bytes.len());
+    for byte in &bytes {
+        if !hex.is_empty() {
+            hex.push(' ');
+        }
+        let _ = write!(hex, "{byte:02x}");
+        let _ = write!(bytes_hex, "{byte:02x}");
+        ascii.push(if byte.is_ascii_graphic() || *byte == b' ' { char::from(*byte) } else { '.' });
+    }
     Ok(json!({
         "addr": format!("0x{addr:x}"),
         "requested": len,
         "read": read,
-        "hex": bytes.iter().map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(" "),
-        "bytes_hex": bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+        "hex": hex,
+        "bytes_hex": bytes_hex,
         "ascii": ascii,
     }))
 }
