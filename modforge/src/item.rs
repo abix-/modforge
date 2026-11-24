@@ -91,48 +91,76 @@ pub struct FoodStats {
 /// One item kind as data. `name` is the id; one concept, one name.
 /// `quality_siblings` is how many statistical siblings each quality
 /// tier has (see [`crate::quality`]).
+///
+/// Read from a game's content (topside's content/items.yaml), an item
+/// names only what it has: every field but `name` and `kind` may be left
+/// out, and is then empty, none, false, or one for `max_stack` and
+/// `quality_siblings`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ItemDef {
     pub name: String,
     /// One line on what it is and how it is used, shown when it is
     /// selected (Rust's item information panel).
+    #[serde(default)]
     pub description: String,
     /// Only one of this item may enter a save.
+    #[serde(default)]
     pub unique: bool,
     pub kind: ItemKind,
+    #[serde(default = "one")]
     pub max_stack: u32,
+    #[serde(default = "one_u64")]
     pub quality_siblings: u64,
+    #[serde(default)]
     pub combat: Option<CombatStats>,
+    #[serde(default)]
     pub food: Option<FoodStats>,
     /// Inventory slots this item holds once deployed in the world
     /// (a storage box). None for everything that holds nothing.
+    #[serde(default)]
     pub storage: Option<usize>,
     /// Worn gear: the slot it is worn in and the armor it gives that
     /// slot's body area (design.md "protection per body area from
     /// worn gear"). None for everything that is not worn.
+    #[serde(default)]
     pub armor: Option<Armor>,
     /// What this is good for once it stands in the world (life.md
     /// "What things are good for"): a storage box is good for hunger
     /// (whoever remembers it may come to eat from it). Empty for
     /// things nobody seeks out.
+    #[serde(default)]
     pub good_for: crate::memory::GoodFor,
     /// The picture the game draws this item with, by name, the same
     /// one on the ground, in the hand, and as the hotbar icon. None
     /// until one exists; the consumer draws a square then.
+    #[serde(default)]
     pub picture: Option<String>,
     /// The layers this item takes on top of itself, by slot (topside
     /// design.md "What 2D changes": the type of a thing decides its
     /// layers): a melee weapon's handle takes a "head". Empty for an
     /// item that is one layer, itself.
+    #[serde(default)]
     pub layer_slots: Vec<String>,
     /// Standing in the world, it breaks, and is gone, when used with a
     /// melee weapon in hand, by anyone (topside's tap). False for
     /// everything else.
+    #[serde(default)]
     pub breaks_when_struck: bool,
     /// A container's size in litres (crate::fluid): a bottle, a barrel.
     /// None for everything that holds no water.
     #[serde(default)]
     pub holds_litres: Option<f32>,
+}
+
+/// One, an item's `max_stack` and `quality_siblings` when its content
+/// leaves them out.
+fn one() -> u32 {
+    1
+}
+
+fn one_u64() -> u64 {
+    1
 }
 
 #[derive(Default)]
