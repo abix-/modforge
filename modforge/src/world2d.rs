@@ -14,6 +14,7 @@ use crate::ground::{Ground, GroundChunk, GroundGen, tile_hash};
 use crate::monument::{BuildingRegistry, MonumentRegistry};
 use crate::path::{Cell, search};
 use crate::places::{Makers, Place, Places};
+use crate::town::Town;
 use crate::walk::{CHUNK, ChunkKey, TILE, cell_of, centre};
 
 /// How far a site with buildings looks for the site its road leads to.
@@ -69,6 +70,8 @@ pub struct World2d {
     /// and how many (topside design.md "The small world first").
     people: Vec<(String, u32)>,
     people_spots: Option<Vec<(String, Vec2)>>,
+    /// The planned town, if the world has one (topside-town).
+    pub town: Option<Town>,
 }
 
 /// Tries at a spot for one topside person before they are left out.
@@ -92,7 +95,15 @@ impl World2d {
             roads: HashMap::new(),
             people: Vec::new(),
             people_spots: None,
+            town: None,
         }
+    }
+
+    /// This town as well: its streets laid as road, its streets and lots
+    /// cleared of water and of what grows or lies there.
+    pub fn with_town(mut self, town: Town) -> Self {
+        self.town = Some(town);
+        self
     }
 
     /// These topside people as well, placed on open land inside the
@@ -342,13 +353,30 @@ impl World2d {
                 }
             }
         }
+        // The town's streets are road, on any ground; a river or a lake
+        // under the town is dry land.
+        if let Some(town) = &self.town {
+            for y in 0..CHUNK {
+                for x in 0..CHUNK {
+                    let t = (first.0 + x, first.1 + y);
+                    let g = &mut chunk.ground[index(t)];
+                    if town.is_street(t) {
+                        *g = Ground::Road;
+                    } else if matches!(g, Ground::Water | Ground::Cliff) && town.covers(centre(t)) {
+                        *g = Ground::Grass;
+                    }
+                }
+            }
+        }
         let bunkers = &self.bunkers;
+        let town = &self.town;
         let ground = chunk.ground.clone();
         chunk.things.retain(|thing| {
             let at = centre(thing.tile);
             !on_site(thing.tile)
                 && !bunkers.iter().any(|c| c.clears(at))
                 && ground[index(thing.tile)] != Ground::Road
+                && !town.as_ref().is_some_and(|t| t.covers(at))
         });
         chunk
     }

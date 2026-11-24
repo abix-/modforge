@@ -93,6 +93,7 @@ pub mod talk;
 pub mod tech;
 pub mod test_queue;
 pub mod testkit;
+pub mod town;
 pub mod trade;
 pub mod ui;
 pub mod unknown;
