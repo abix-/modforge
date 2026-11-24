@@ -142,6 +142,9 @@ pub struct SolidDef {
     pub center: Vec3,
     pub size: Vec3,
     pub color: Rgb,
+    /// The model it is drawn as (a couch, a stove), made to its size; none
+    /// is the plain block, stretched to it.
+    pub model: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -661,6 +664,8 @@ pub struct Part {
     pub size: Vec3,
     pub color: Rgb,
     pub health: f32,
+    /// Furniture's own model (`SolidDef::model`); none is the plain block.
+    pub model: Option<String>,
 }
 
 impl Part {
@@ -682,6 +687,7 @@ pub fn parts_of(def: &StructureDef) -> Vec<Part> {
             size,
             color,
             health: PART_HEALTH,
+            model: None,
         });
     };
     for room in &def.rooms {
@@ -778,7 +784,14 @@ pub fn parts_of(def: &StructureDef) -> Vec<Part> {
         }
     }
     for part in &def.furniture {
-        push(PartKind::Furniture, part.center, part.size, part.color);
+        parts.push(Part {
+            kind: PartKind::Furniture,
+            center: part.center,
+            size: part.size,
+            color: part.color,
+            health: PART_HEALTH,
+            model: part.model.clone(),
+        });
     }
     parts
 }
@@ -2285,6 +2298,7 @@ mod tests {
                 center: Vec3::new(3.5, 0.5, 0.5),
                 size: Vec3::ONE,
                 color: [0.5, 0.4, 0.2],
+                model: None,
             }],
             lights: vec![],
             parts: vec![],
@@ -2342,6 +2356,7 @@ mod tests {
                 center: Vec3::new(-2.4, 0.25, 3.0),
                 size: Vec3::new(1.0, 0.5, 2.0),
                 color: [0.3, 0.35, 0.55],
+                model: None,
             }],
             lights: vec![],
             parts: vec![],

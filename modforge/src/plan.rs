@@ -116,7 +116,7 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
             let size = Vec3::new(sx.min(w - 0.4), sy, sz.min(l - 0.4));
             let dx = (fx * w).clamp(-(w / 2.0 - size.x / 2.0 - 0.1), w / 2.0 - size.x / 2.0 - 0.1);
             let dz = (fz * l).clamp(-(l / 2.0 - size.z / 2.0 - 0.1), l / 2.0 - size.z / 2.0 - 0.1);
-            furniture.push(SolidDef { center: origin + Vec3::new(dx, size.y / 2.0, dz), size, color: def.furniture_color });
+            furniture.push(SolidDef { center: origin + Vec3::new(dx, size.y / 2.0, dz), size, color: def.furniture_color, model: None });
         }
         lights.push(LightDef { position: origin + Vec3::new(0.0, def.height - 0.4, 0.0), color: [1.0, 0.95, 0.85], intensity: 400_000.0 });
     }

@@ -497,6 +497,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                             center: origin + Vec3::new(dx, size.y / 2.0, dz),
                             size,
                             color,
+                            model: None,
                         });
                     }
                 }
@@ -519,6 +520,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                         center: origin + Vec3::new(dx, size.y / 2.0, dz),
                         size,
                         color: *roll.pick(&p.palette),
+                        model: None,
                     });
                 }
                 if (front && floor == 0) || roll.chance(p.lights) {
@@ -585,6 +587,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                     center: Vec3::new(stairwell_x, y - SLAB / 2.0, tower_z + slab_centre_local),
                     size: Vec3::new(STAIRWELL_WIDTH, SLAB, slab_depth),
                     color: floor_color,
+                    model: None,
                 });
             }
             if level + 1 < floors {
@@ -609,6 +612,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
                     ),
                     size: Vec3::new(STAIRWELL_WIDTH, SLAB, HALF_LANDING),
                     color: floor_color,
+                    model: None,
                 });
                 // Return flight: west lane, from the half landing's
                 // south edge back south to the next level's slab.

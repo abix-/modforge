@@ -82,43 +82,44 @@ const WAYS: [((usize, usize), Side, bool); 12] = [
 
 /// Each room's furniture: where it sits as a share of the room's width and
 /// length from its middle (-0.5 to 0.5), its size, and whether every house
-/// has it (else it is an extra).
-type Piece = ([f32; 2], [f32; 3], bool);
+/// has it (else it is an extra), and the model it is drawn as (topside's
+/// scripts/models.py, made to its size, its long side along x).
+type Piece = ([f32; 2], [f32; 3], bool, &'static str);
 
 fn furniture_of(name: &str) -> &'static [Piece] {
     match name {
         "garage" => &[
-            ([-0.42, -0.1], [0.6, 0.9, 1.8], true),  // workbench
-            ([0.42, -0.35], [0.5, 1.8, 1.2], false), // shelves
+            ([-0.42, -0.1], [0.6, 0.9, 1.8], true, "garage workbench"),
+            ([0.42, -0.35], [0.5, 1.8, 1.2], false, "garage shelf"),
         ],
         "living room" => &[
-            ([-0.4, 0.0], [0.9, 0.8, 2.0], true),    // couch
-            ([0.3, 0.42], [1.4, 0.6, 0.45], true),   // TV stand
-            ([0.25, -0.3], [0.8, 0.8, 0.8], false),  // armchair
+            ([-0.4, 0.0], [0.9, 0.8, 2.0], true, "couch"),
+            ([0.3, 0.42], [1.4, 0.6, 0.45], true, "tv stand"),
+            ([0.25, -0.3], [0.8, 0.8, 0.8], false, "armchair"),
         ],
         "kitchen" => &[
-            ([-0.44, -0.15], [0.6, 0.9, 2.2], true), // counter and sink
-            ([-0.44, 0.38], [0.6, 0.9, 0.75], true), // stove
-            ([0.4, -0.4], [0.8, 1.8, 0.7], true),    // fridge
+            ([-0.44, -0.15], [0.6, 0.9, 2.2], true, "kitchen counter"),
+            ([-0.44, 0.38], [0.6, 0.9, 0.75], true, "stove"),
+            ([0.4, -0.4], [0.8, 1.8, 0.7], true, "fridge"),
         ],
         "dining room" => &[
-            ([0.0, -0.2], [1.6, 0.75, 0.9], true),   // table
-            ([-0.3, -0.2], [0.45, 0.9, 0.45], false), // chair
-            ([0.3, -0.2], [0.45, 0.9, 0.45], false),  // chair
+            ([0.0, -0.2], [1.6, 0.75, 0.9], true, "dining table"),
+            ([-0.3, -0.2], [0.45, 0.9, 0.45], false, "chair"),
+            ([0.3, -0.2], [0.45, 0.9, 0.45], false, "chair"),
         ],
         "bedroom" => &[
-            ([0.15, -0.3], [1.5, 0.6, 2.0], true),   // bed
-            ([0.42, 0.3], [0.5, 1.0, 1.2], true),    // dresser
-            ([-0.3, -0.42], [0.45, 0.5, 0.45], false), // nightstand
+            ([0.15, -0.3], [1.5, 0.6, 2.0], true, "bed"),
+            ([0.42, 0.3], [0.5, 1.0, 1.2], true, "dresser"),
+            ([-0.3, -0.42], [0.45, 0.5, 0.45], false, "nightstand"),
         ],
         "bathroom" => &[
-            ([0.3, -0.38], [1.6, 0.6, 0.75], true),  // tub
-            ([0.42, 0.3], [0.4, 0.8, 0.65], true),   // toilet
-            ([-0.1, 0.42], [0.6, 0.9, 0.45], true),  // sink
+            ([0.3, -0.38], [1.6, 0.6, 0.75], true, "bathtub"),
+            ([0.42, 0.3], [0.4, 0.8, 0.65], true, "toilet bowl"),
+            ([-0.1, 0.42], [0.6, 0.9, 0.45], true, "vanity"),
         ],
         "laundry" => &[
-            ([-0.42, 0.0], [0.65, 0.9, 0.65], true),  // washer
-            ([-0.42, 0.3], [0.65, 0.9, 0.65], false), // dryer
+            ([-0.42, 0.0], [0.65, 0.9, 0.65], true, "washer"),
+            ([-0.42, 0.3], [0.65, 0.9, 0.65], false, "dryer"),
         ],
         _ => &[],
     }
@@ -164,7 +165,7 @@ pub fn fixtures(front: Vec2) -> Vec<(&'static str, Vec2)> {
         .iter()
         .filter_map(|&(room, kind, piece)| {
             let &((c, r), _) = ROOMS.iter().find(|(_, name)| *name == room)?;
-            let &([fx, fz], [sx, _, sz], _) = furniture_of(room).get(piece)?;
+            let &([fx, fz], [sx, _, sz], _, _) = furniture_of(room).get(piece)?;
             let (w, l) = (COLUMNS[c], ROWS[r]);
             // Placed as `house` places the furniture.
             let (sx, sz) = (sx.min(w - 0.4), sz.min(l - 0.4));
@@ -456,7 +457,7 @@ pub fn house(def: &HouseDef, front: Vec2, seed: u64, over_bunker: bool) -> Struc
             floor: true,
             ceiling: true,
         });
-        for &([fx, fz], [sx, sy, sz], always) in furniture_of(name) {
+        for &([fx, fz], [sx, sy, sz], always, model) in furniture_of(name) {
             if !always && !roll.chance(def.extras) {
                 continue;
             }
@@ -468,6 +469,7 @@ pub fn house(def: &HouseDef, front: Vec2, seed: u64, over_bunker: bool) -> Struc
                 center: origin + Vec3::new(dx, size.y / 2.0, dz),
                 size,
                 color: *roll.pick(&def.furniture),
+                model: Some(model.to_string()),
             });
         }
         lights.push(LightDef {
