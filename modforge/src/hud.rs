@@ -594,11 +594,12 @@ pub fn end_drag(
     }
 }
 
-/// A drag of a rune ends on a piece of gear with a free socket
-/// (crate::gear, Diablo 2's: a rune dropped on a socketed item goes in):
-/// one rune leaves its stack and goes in the next socket. Gear worn is
-/// taken off first. True when it went in, the drag then over; false
-/// changes nothing, for `end_drag` to move the stack as any.
+/// A drag of a socketable (a rune, a module: crate::gear) ends on a piece
+/// of gear with sockets it fits: one leaves its stack and goes in the next
+/// socket; with every socket full, the last one put in comes out into the
+/// inventory, swapped. Gear worn is taken off first. True when it went
+/// in, the drag then over; false changes nothing, for `end_drag` to move
+/// the stack as any.
 pub fn socket_drop(
     state: &mut HudState,
     holders: &mut Holders<'_>,
@@ -609,37 +610,41 @@ pub fn socket_drop(
     let Some(from) = state.dragging else {
         return false;
     };
-    if from == slot || slot.holder == Holder::Equipment {
+    if from == slot || slot.holder == Holder::Equipment || from.holder == Holder::Equipment {
         return false;
     }
-    let Some(rune) = holders.stack(from).map(|s| s.item.clone()) else {
+    let Some(piece) = holders.stack(from).map(|s| s.item.clone()) else {
         return false;
     };
-    if !crate::gear::is_rune(gear, &rune) {
-        return false;
-    }
     let Some(target) = holders.stack(slot) else {
         return false;
     };
     let Some(def) = registry.def(&target.item) else {
         return false;
     };
-    if target.sockets.runes.len() as u32 >= target.sockets.count {
-        return false;
-    }
-    let seed = (slot.index as u64) << 8 ^ target.sockets.runes.len() as u64;
-    // The rune out of its stack first, then into the socket.
-    let Some(src) = holders.get_mut(from.holder).and_then(|inv| inv.slots.get_mut(from.index)) else {
+    let seed = (slot.index as u64) << 8 ^ target.sockets.filled.len() as u64;
+    // Into the socket first: refused, nothing moves.
+    let Some(Some(target)) = holders.get_mut(slot.holder).and_then(|inv| inv.slots.get_mut(slot.index)) else {
         return false;
     };
-    if let Some(s) = src.as_mut() {
+    let Some(out) = crate::gear::socket(gear, def, target, &piece, seed) else {
+        return false;
+    };
+    // Then one out of its stack.
+    if let Some(src) = holders.get_mut(from.holder).and_then(|inv| inv.slots.get_mut(from.index))
+        && let Some(s) = src.as_mut()
+    {
         s.count -= 1;
         if s.count == 0 {
             *src = None;
         }
     }
-    if let Some(Some(target)) = holders.get_mut(slot.holder).and_then(|inv| inv.slots.get_mut(slot.index)) {
-        crate::gear::socket(gear, def, target, &rune, seed);
+    // The one swapped out back into the inventory.
+    if let Some(out) = out
+        && let Some(out_def) = registry.def(&out)
+    {
+        let stack = crate::item::create(out_def, 1, &[], 0.0, seed);
+        let _ = holders.inventory.add(stack, out_def.max_stack);
     }
     state.dragging = None;
     true
