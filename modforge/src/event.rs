@@ -93,6 +93,25 @@ pub enum Does {
     /// Trouble at home, inside the player's own walls (topside todo
     /// Events 5).
     Home(Home),
+    /// The show's own doings (topside todo Events 6).
+    Aliens(Aliens),
+}
+
+/// What the aliens do for their show (topside todo Events 6, Claude's
+/// list the operator took, 2026-11-24). A rule changed for a day is a
+/// `Last` (the dark all day), no doing of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Aliens {
+    /// A challenge: a kill before the day is out, a reward paid when done.
+    Challenge,
+    /// A special guest from another channel's bunker, at the door.
+    Guest,
+    /// A cliffhanger: the storm brought near.
+    Cliffhanger,
+    /// A sound that pulls the enemies near to the player's door.
+    Lure,
+    /// A rumor of a place: a secret the player has not found, told.
+    Rumor,
 }
 
 /// The trouble at home an event can make (topside todo Events 5,
@@ -443,7 +462,7 @@ pub fn layer(events: &EventsDef, base: &EventDef, budget: f32, night: bool, seed
                 let h = hours.0 + (hours.1 - hours.0) * share(seed, salt + 2);
                 *hours = (h, h);
             }
-            Does::Spoil | Does::Storm(_) | Does::Home(_) => {}
+            Does::Spoil | Does::Storm(_) | Does::Home(_) | Does::Aliens(_) => {}
         }
     }
     let at = |k: u64| base.places.get(roll(seed, 0xE7E7_0500 + k, base.places.len() as u64) as usize).copied().unwrap_or(Place::Town);
