@@ -310,6 +310,18 @@ pub fn den(front: Vec2) -> [(&'static str, Vec2); 5] {
     ]
 }
 
+/// Where a house's garden beds lie (topside-town "Everything works":
+/// "gardens"): two in the back yard, 4 m behind the house's back wall,
+/// turned to face `front`. Claude's.
+pub fn garden(front: Vec2) -> [Vec2; 2] {
+    let q = quarters_for(front);
+    let back = room_at(1, ROWS.len() - 1) + Vec3::new(0.0, 0.0, -0.5 * ROWS[ROWS.len() - 1] - 4.0);
+    [-1.5, 1.5].map(|dx| {
+        let p = back + Vec3::new(dx, 0.0, 0.0);
+        (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+    })
+}
+
 /// Where a house's safe stands (topside-town "Everything works":
 /// "safes"): against the first bedroom's back wall, between its closet
 /// and its dresser, turned to face `front`. Claude's.

@@ -31,6 +31,7 @@ pub mod exposure;
 pub mod broadcast;
 pub mod faction;
 pub mod fire;
+pub mod grow;
 pub mod trash;
 pub mod fluid;
 pub mod genome;
