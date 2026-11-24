@@ -445,9 +445,11 @@ pub fn house(def: &HouseDef, front: Vec2, seed: u64, over_bunker: bool) -> Struc
         // A bedroom's furniture is laid out for one entered from the west;
         // one entered only from the east has it mirrored, so it is not in
         // the way in.
-        let east_only = name == "bedroom"
-            && openings.iter().any(|o| o.side == Side::East && o.sill == 0.0)
-            && !openings.iter().any(|o| o.side == Side::West && o.sill == 0.0);
+        let (east, west) = openings
+            .iter()
+            .filter(|o| o.sill == 0.0)
+            .fold((false, false), |(east, west), o| (east || o.side == Side::East, west || o.side == Side::West));
+        let east_only = name == "bedroom" && east && !west;
         let mirror = if east_only { -1.0 } else { 1.0 };
         rooms.push(RoomDef {
             origin,
