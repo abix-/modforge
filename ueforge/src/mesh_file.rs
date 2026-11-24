@@ -357,14 +357,20 @@ impl Mesh {
         })
     }
 
+    /// Bone `b`'s reference transform relative to its parent.
+    fn local(&self, b: usize) -> Xform {
+        let b = &self.bones[b];
+        Xform {
+            rot: DQuat::from_xyzw(b.rot[0], b.rot[1], b.rot[2], b.rot[3]).normalize(),
+            pos: DVec3::from_array(b.pos),
+            scale: DVec3::from_array(b.scale),
+        }
+    }
+
     fn ref_pose_worked(&self) -> Vec<Xform> {
         let mut out: Vec<Xform> = Vec::with_capacity(self.bones.len());
-        for b in &self.bones {
-            let local = Xform {
-                rot: DQuat::from_xyzw(b.rot[0], b.rot[1], b.rot[2], b.rot[3]).normalize(),
-                pos: DVec3::from_array(b.pos),
-                scale: DVec3::from_array(b.scale),
-            };
+        for (n, b) in self.bones.iter().enumerate() {
+            let local = self.local(n);
             // Parents come before children in a reference skeleton.
             let x = match usize::try_from(b.parent).ok().and_then(|p| out.get(p)) {
                 Some(p) => local.under(p),
@@ -396,7 +402,8 @@ impl Mesh {
     /// weights, linear blend as the engine skins a mesh (each weight's
     /// share of the vertex taken from the bone's reference pose to its
     /// pose). The answer is in `pose`'s space. A bone missing from `pose`
-    /// counts at its reference pose. Read only. Asked 2026-11-23: "all of
+    /// is drawn as the engine draws a bone no animation drives
+    /// ([`Mesh::posed`]). Read only. Asked 2026-11-23: "all of
     /// this data should come from actual observation of doing the
     /// things, not from guessing, but from actually how it's drawn".
     pub fn drawn(
@@ -432,10 +439,10 @@ impl Mesh {
         let affine =
             |x: &Xform| glam::DAffine3::from_scale_rotation_translation(x.scale, x.rot, x.pos);
         let mut skin: Vec<Option<glam::DAffine3>> = vec![None; rest.len()];
+        let mut done: Vec<Option<Xform>> = vec![None; rest.len()];
         let mut skin_of = |b: usize| -> glam::DAffine3 {
             *skin[b].get_or_insert_with(|| {
-                let at = pose.get(b).copied().flatten().unwrap_or(rest[b]);
-                affine(&at) * rest_inv[b]
+                affine(&self.posed(pose, rest, &mut done, b)) * rest_inv[b]
             })
         };
         which
@@ -455,6 +462,38 @@ impl Mesh {
                 )
             })
             .collect()
+    }
+
+    /// Bone `b` as posed: from `pose` when it has it, else as the engine
+    /// draws a bone no animation drives (its local reference transform
+    /// under its parent as posed, so it moves with its parent in
+    /// `pose`'s space; a root, its reference place). The reference pose
+    /// in component space alone put a missing bone's skin in the wrong
+    /// space when `pose` is in world space (the mouth path 41 m long in
+    /// the Archdemon scene, 2026-11-24). `rest` is [`Mesh::ref_pose`];
+    /// `done` keeps each answer for the call.
+    fn posed(
+        &self,
+        pose: &[Option<Xform>],
+        rest: &[Xform],
+        done: &mut [Option<Xform>],
+        b: usize,
+    ) -> Xform {
+        if let Some(x) = done[b] {
+            return x;
+        }
+        let x = match pose.get(b).copied().flatten() {
+            Some(x) => x,
+            None => match usize::try_from(self.bones[b].parent)
+                .ok()
+                .filter(|&p| p < done.len())
+            {
+                Some(p) => self.local(b).under(&self.posed(pose, rest, done, p)),
+                None => rest[b],
+            },
+        };
+        done[b] = Some(x);
+        x
     }
 
     /// [`Mesh::thickness`] counting each vertex weighted at least `least`
