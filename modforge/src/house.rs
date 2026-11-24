@@ -282,6 +282,15 @@ pub fn front_door(front: Vec2) -> Vec2 {
     (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
 }
 
+/// Where a house's smoke detector is (topside-town "Everything works":
+/// "smoke detectors"): in the front hall, behind its light, turned to
+/// face `front`. Claude's.
+pub fn smoke_detector(front: Vec2) -> Vec2 {
+    let q = quarters_for(front);
+    let p = room_at(2, 0) + Vec3::new(0.0, 0.0, -0.3 * ROWS[0]);
+    (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+}
+
 /// Where a house's safe stands (topside-town "Everything works":
 /// "safes"): against the first bedroom's back wall, between its closet
 /// and its dresser, turned to face `front`. Claude's.

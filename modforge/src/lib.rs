@@ -29,6 +29,7 @@ pub mod edge;
 pub mod envelope;
 pub mod exposure;
 pub mod faction;
+pub mod fire;
 pub mod fluid;
 pub mod genome;
 pub mod grid;
