@@ -96,6 +96,21 @@ pub struct Mesh {
     /// recalculate the same mathematical thing over and over again").
     #[serde(skip)]
     pub rest: OnceLock<(Vec<Xform>, Vec<glam::DAffine3>)>,
+    /// [`Mesh::verts_weighted`]'s answers, kept the same way.
+    #[serde(skip)]
+    pub weighted: Kept,
+}
+
+/// Vertex lists by the bones and least weight asked, kept in memory with
+/// the mesh (never on disk). A clone starts empty.
+#[derive(Debug, Default)]
+#[allow(clippy::type_complexity)]
+pub struct Kept(Mutex<HashMap<(Vec<usize>, u64), Arc<Vec<usize>>>>);
+
+impl Clone for Kept {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
 }
 
 enum State {
@@ -300,6 +315,32 @@ impl Mesh {
     /// Each bone's transform in component space, reference pose.
     pub fn ref_pose(&self) -> Vec<Xform> {
         self.rest_once().0.clone()
+    }
+
+    /// The vertices weighted at least `least` in all to bones `bones`
+    /// (bone indices), in vertex order; worked out once per bones and
+    /// weight, then kept.
+    pub fn verts_weighted(&self, bones: &[usize], least: f64) -> Arc<Vec<usize>> {
+        let key = (bones.to_vec(), least.to_bits());
+        if let Some(v) = self.weighted.0.lock().get(&key) {
+            return v.clone();
+        }
+        let v: Arc<Vec<usize>> = Arc::new(
+            self.verts
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| {
+                    v.w.iter()
+                        .filter(|(k, _)| bones.contains(&(*k as usize)))
+                        .map(|(_, w)| w)
+                        .sum::<f64>()
+                        >= least
+                })
+                .map(|(n, _)| n)
+                .collect(),
+        );
+        self.weighted.0.lock().insert(key, v.clone());
+        v
     }
 
     /// Each bone's rest affine inverted (rest space to bone space), kept.
@@ -610,6 +651,7 @@ mod tests {
             verts,
             morphs: Vec::new(),
             rest: OnceLock::new(),
+            weighted: Kept::default(),
         }
     }
 
