@@ -6,8 +6,10 @@
 //! when it starts); the clock is plain arithmetic toward that moment; the
 //! consumer decides what counts as shelter and rolls the new world.
 
-/// How long each part of a storm lasts, in seconds.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// How long each part of a storm lasts, in seconds; read from a game's
+/// content (topside's content/storm.yaml).
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StormDef {
     /// How long the sky warns before the storm hits.
     pub warning_secs: f32,
