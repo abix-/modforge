@@ -27,6 +27,20 @@ pub struct TopicDef {
     /// Researched again and again, each level costing more.
     #[serde(default)]
     pub endless: bool,
+    /// The least bench tier a group must have to research it (Rust's tech
+    /// tree per workbench level); 1 when left out.
+    #[serde(default = "first_tier")]
+    pub tier: u32,
+    /// Each level of it raises the group's bench tier by one (Rust's
+    /// workbench 2 and 3; endless, so no last tier: topside todo "Recipes
+    /// and research", operator 2026-11-23: "tier n").
+    #[serde(default)]
+    pub raises_tier: bool,
+}
+
+/// A topic's tier when its content leaves it out.
+fn first_tier() -> u32 {
+    1
 }
 
 /// Every topic.
@@ -53,11 +67,20 @@ impl TechTree {
         self.topics.iter().find(|t| t.name == name)
     }
 
+    /// A group's bench tier: 1, and one more for each level of every topic
+    /// that raises it. No last tier.
+    pub fn tier(&self, known: &Known) -> u32 {
+        1 + self.topics.iter().filter(|t| t.raises_tier).map(|t| known.level(&t.name)).sum::<u32>()
+    }
+
     /// The topics a group can research now, in the tree's order: every
-    /// one needed is done, and it is not done unless endless.
+    /// one needed is done, its tier is reached, and it is not done unless
+    /// endless.
     pub fn open(&self, known: &Known) -> Vec<&TopicDef> {
+        let tier = self.tier(known);
         self.topics
             .iter()
+            .filter(|t| t.tier <= tier)
             .filter(|t| t.needs.iter().all(|n| known.level(n) > 0))
             .filter(|t| t.endless || known.level(&t.name) == 0)
             .collect()
@@ -102,6 +125,8 @@ mod tests {
             needs: needs.iter().map(|s| s.to_string()).collect(),
             unlocks: unlocks.iter().map(|s| s.to_string()).collect(),
             endless,
+            tier: 1,
+            raises_tier: false,
         };
         TechTree { topics: vec![t("tools", &[], &["pipe"], false), t("guns", &["tools"], &["shotgun"], false), t("better tools", &["tools"], &[], true)] }
     }

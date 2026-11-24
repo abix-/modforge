@@ -54,8 +54,12 @@ pub enum StationKind {
 /// handle made with nails in it), none for a simple item.
 ///
 /// Read from a game's content (topside's content/recipes.yaml), a recipe
-/// names only what it has: left out, it makes no layers and takes no
-/// time.
+/// names only what it has: left out, it makes no layers, takes no time,
+/// and is tier 1.
+///
+/// Its `tier` is the least bench tier a group must have to make it
+/// (Rust's workbench levels; crate::tech `TechTree::tier`, which has no
+/// last tier).
 #[derive(Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecipeDef {
@@ -67,6 +71,13 @@ pub struct RecipeDef {
     pub station: StationKind,
     #[serde(default)]
     pub craft_time: f32,
+    #[serde(default = "first_tier")]
+    pub tier: u32,
+}
+
+/// A recipe's tier when its content leaves it out.
+fn first_tier() -> u32 {
+    1
 }
 
 /// The collection of checked-in RecipeDefs. Consumers register their
@@ -221,6 +232,7 @@ mod tests {
                 layers: Vec::new(),
                 station: StationKind::CraftingBench,
                 craft_time: 2.0,
+                tier: 1,
             })
             .unwrap();
 
@@ -253,6 +265,7 @@ mod tests {
             layers: Vec::new(),
             station: StationKind::CraftingBench,
             craft_time: 1.0,
+            tier: 1,
         };
         reg.register(def.clone()).unwrap();
         assert!(reg.register(def).is_err());
