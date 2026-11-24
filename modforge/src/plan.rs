@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::house::quarters_for;
 use crate::monument::{Roll, WALL, door, spaced, window};
-use crate::structure::{LightDef, Opening, Rgb, RoomDef, Side, SolidDef, StructureDef, turned, validate};
+use crate::structure::{LightDef, Opening, Rgb, RoomDef, SLAB, Side, SolidDef, StairDef, StructureDef, turned, validate};
 
 /// One place's plan, a blueprint read from the game's content (topside's
 /// content/places.yaml). Columns run west to east, rows front to back
@@ -44,6 +44,11 @@ pub struct PlanDef {
     pub things: Vec<PlanThing>,
     #[serde(default)]
     pub outside: Vec<PlanOutside>,
+    /// The stairs, each from a room up to the room over it (topside-town
+    /// "Every place different": "a tier 3 house, so that means it would
+    /// be 2 stories").
+    #[serde(default)]
+    pub stairs: Vec<PlanStair>,
     pub walls: Vec<Rgb>,
     pub floor: Rgb,
     #[serde(rename = "furniture colour")]
@@ -57,7 +62,23 @@ pub struct PlanDef {
 pub struct PlanRoom {
     pub at: (usize, usize),
     pub name: String,
+    /// Its storey, 0 the ground floor.
+    #[serde(default)]
+    pub level: u32,
 }
+
+/// A straight flight up the west wall of the room at `from` on `level`,
+/// front to back, to the room over it: the stairwell, left with no floor.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanStair {
+    pub from: (usize, usize),
+    #[serde(default)]
+    pub level: u32,
+}
+
+/// A stair's width, metres (Claude's).
+pub const PLAN_STAIR_WIDTH: f32 = 1.0;
 
 /// A way between rooms: from a room east or north, with a door hung or
 /// an open way.
@@ -68,6 +89,9 @@ pub struct PlanWay {
     pub side: Side,
     #[serde(default)]
     pub door: bool,
+    /// The storey it is on.
+    #[serde(default)]
+    pub level: u32,
 }
 
 /// A way out: a room, its outside wall, and the way's width.
@@ -112,12 +136,18 @@ pub struct PlanOutside {
     pub at: [f32; 2],
 }
 
-/// Where a room's middle is, from the plan's middle, unturned.
+/// Where a room's middle is on the ground floor, from the plan's middle,
+/// unturned.
 fn room_at(def: &PlanDef, c: usize, r: usize) -> Vec3 {
     let xs = spaced(&def.columns, 1.0);
     let zs = spaced(&def.rows, -1.0);
     let mid = Vec3::new((xs[0] + xs[xs.len() - 1]) / 2.0, 0.0, (zs[0] + zs[zs.len() - 1]) / 2.0).round();
     Vec3::new(xs[c], 0.0, zs[r]) - mid
+}
+
+/// How high a storey's floor is.
+fn level_height(def: &PlanDef, level: u32) -> f32 {
+    level as f32 * def.height
 }
 
 /// A point of the unturned plan, turned to face `front`, on the ground.
@@ -134,12 +164,37 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
     let mut rooms = Vec::new();
     let mut furniture = Vec::new();
     let mut lights = Vec::new();
-    for PlanRoom { at: (c, r), name } in &def.rooms {
-        let (c, r) = (*c, *r);
+    let mut stairs = Vec::new();
+    for PlanRoom { at: (c, r), name, level } in &def.rooms {
+        let (c, r, level) = (*c, *r, *level);
         let (w, l) = (def.columns[c], def.rows[r]);
-        let origin = room_at(def, c, r);
+        let origin = room_at(def, c, r) + Vec3::Y * level_height(def, level);
+        // A room with one over it has that room's floor for its ceiling;
+        // a room a stair comes up into is open over the flight.
+        let covered = def.rooms.iter().any(|o| o.at == (c, r) && o.level == level + 1);
+        let stair_below = level > 0 && def.stairs.iter().any(|s| s.from == (c, r) && s.level + 1 == level);
+        if def.stairs.iter().any(|s| s.from == (c, r) && s.level == level) {
+            stairs.push(StairDef {
+                base: origin + Vec3::new(-w / 2.0 + PLAN_STAIR_WIDTH / 2.0 + 0.1, SLAB, l / 2.0 - 0.1),
+                side: Side::North,
+                width: PLAN_STAIR_WIDTH,
+                rise: def.height,
+                landing: 0.6,
+            });
+            // The landing upstairs, the stairwell's back across its width,
+            // where its way to the rooms upstairs is.
+            furniture.push(SolidDef {
+                center: origin + Vec3::new(0.0, def.height + SLAB / 2.0, -l / 2.0 + 0.5),
+                size: Vec3::new(w, SLAB, 1.0),
+                color: def.floor,
+                model: None,
+            });
+        }
         let mut openings: Vec<Opening> = Vec::new();
-        for &PlanWay { from: (wc, wr), side, door: hung } in &def.ways {
+        for &PlanWay { from: (wc, wr), side, door: hung, level: on } in &def.ways {
+            if on != level {
+                continue;
+            }
             let other = match side {
                 Side::East => (wc + 1, wr),
                 Side::North => (wc, wr + 1),
@@ -153,7 +208,7 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
             }
         }
         for &PlanExit { from, side, width } in &def.exits {
-            if from == (c, r) {
+            if from == (c, r) && level == 0 {
                 openings.push(Opening { width, ..door(side, 0.0) });
             }
         }
@@ -175,8 +230,8 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
             interior: Vec3::new(w, def.height, l),
             wall_thickness: WALL,
             openings,
-            floor: true,
-            ceiling: true,
+            floor: !stair_below,
+            ceiling: !covered,
         });
         for f in def.furniture.iter().filter(|f| &f.room == name) {
             let ([fx, fz], [sx, sy, sz]) = (f.at, f.size);
@@ -193,7 +248,7 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
         wall_color,
         floor_color: def.floor,
         rooms,
-        stairs: Vec::new(),
+        stairs,
         hatches: Vec::new(),
         furniture,
         lights,

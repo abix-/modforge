@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::monument::Roll;
-use crate::plan::{PlanDef, PlanExit, PlanFurniture, PlanRoom, PlanThing, PlanWay};
+use crate::plan::{PlanDef, PlanExit, PlanFurniture, PlanRoom, PlanStair, PlanThing, PlanWay};
 use crate::structure::{Rgb, Side};
 
 /// One room piece, a version of its room.
@@ -42,6 +42,11 @@ pub struct RoomPiece {
     /// The things used in it, each where it stands as a share of the room.
     #[serde(default)]
     pub things: Vec<PieceThing>,
+    /// Whether the stairs up are in it: a flight up its west wall, front to
+    /// back, to the stairwell over it, which opens on the rooms upstairs
+    /// through its back.
+    #[serde(default)]
+    pub stair: bool,
 }
 
 fn common() -> u64 {
@@ -138,6 +143,41 @@ fn extent<'a>(down: impl Iterator<Item = ((i32, i32), &'a RoomPiece)>) -> [f32; 
 pub struct BriefRoom {
     pub room: String,
     pub count: (u32, u32),
+    /// Whether it is on the second storey ("a tier 3 house, so that means
+    /// it would be 2 stories"), over the ground floor's rooms, reached by
+    /// the stairs; left out when the ground floor has no stairs.
+    #[serde(default)]
+    pub upstairs: bool,
+}
+
+/// Where `room` joins the rooms down (each cell's door spots in `doors`):
+/// the room down, the side, and the piece; a piece goes only on a free
+/// cell not out front, through a side both have a door spot on, where
+/// `fits`. Up to a few tries of its pieces.
+fn grow<'a>(
+    pieces: &'a [RoomPiece],
+    room: &str,
+    roll: &mut Roll,
+    doors: &BTreeMap<(i32, i32), Vec<Side>>,
+    fits: &dyn Fn((i32, i32), &RoomPiece) -> bool,
+) -> Option<((i32, i32), Side, &'a RoomPiece)> {
+    for _ in 0..4 {
+        let piece = pick(pieces, room, roll)?;
+        let spots: Vec<((i32, i32), Side)> = doors
+            .iter()
+            .flat_map(|(&at, sides)| sides.iter().map(move |&s| (at, s)))
+            .filter(|&(at, s)| {
+                let to = next(at, s);
+                to.1 >= 0 && !doors.contains_key(&to) && piece.doors.contains(&back(s)) && fits(to, piece)
+            })
+            .collect();
+        if spots.is_empty() {
+            continue;
+        }
+        let &(at, side) = roll.pick(&spots);
+        return Some((at, side, piece));
+    }
+    None
 }
 
 /// The side across from `side`.
@@ -184,10 +224,10 @@ fn pick<'a>(pieces: &'a [RoomPiece], room: &str, roll: &mut Roll) -> Option<&'a 
 pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
     let mut roll = Roll::new(seed);
     // The rooms wanted, the front room first, the rest in rolled order.
-    let mut wanted: Vec<String> = Vec::new();
-    for BriefRoom { room, count: (lo, hi) } in &brief.rooms {
+    let mut wanted: Vec<(String, bool)> = Vec::new();
+    for BriefRoom { room, count: (lo, hi), upstairs } in &brief.rooms {
         for _ in 0..roll.between(*lo, *hi) {
-            wanted.push(room.clone());
+            wanted.push((room.clone(), *upstairs));
         }
     }
     if wanted.len() > 2 {
@@ -206,42 +246,45 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
         *n += 1;
         if *n == 1 { room.to_string() } else { format!("{room} {n}") }
     };
-    let mut rooms = wanted.iter();
-    let Some(front) = rooms.next() else {
+    let Some((front, false)) = wanted.first().cloned() else {
         return empty(brief);
     };
-    let entry = pieces.iter().filter(|p| p.room == *front && p.doors.contains(&Side::South)).collect::<Vec<_>>();
+    let entry = pieces.iter().filter(|p| p.room == front && p.doors.contains(&Side::South)).collect::<Vec<_>>();
     let Some(&first) = (if entry.is_empty() { None } else { Some(roll.pick(&entry)) }) else {
         return empty(brief);
     };
-    down.insert((0, 0), (name_of(front), first));
-    for room in rooms {
-        // Up to a few tries of its pieces; each try, every open door spot
-        // of a room down whose cell is free and not out front, matched to
-        // a door spot of the piece.
-        for _ in 0..4 {
-            let Some(piece) = pick(pieces, room, &mut roll) else { break };
-            let spots: Vec<((i32, i32), Side)> = down
-                .iter()
-                .flat_map(|(&at, (_, p))| p.doors.iter().map(move |&s| (at, s)))
-                .filter(|&(at, s)| {
-                    let to = next(at, s);
-                    to.1 >= 0 && !down.contains_key(&to) && piece.doors.contains(&back(s))
-                })
-                .filter(|&(at, s)| {
-                    brief.lot.is_none_or(|lot| {
-                        let size = extent(down.iter().map(|(&c, (_, p))| (c, *p)).chain([(next(at, s), piece)]));
-                        size[0] <= lot[0] && size[1] <= lot[1]
-                    })
-                })
-                .collect();
-            if spots.is_empty() {
-                continue;
-            }
-            let &(at, side) = roll.pick(&spots);
+    down.insert((0, 0), (name_of(&front), first));
+    for (room, _) in wanted.iter().skip(1).filter(|(_, up)| !up) {
+        let doors = down.iter().map(|(&c, (_, p))| (c, p.doors.clone())).collect();
+        let fits = |to: (i32, i32), piece: &RoomPiece| {
+            brief.lot.is_none_or(|lot| {
+                let size = extent(down.iter().map(|(&c, (_, p))| (c, *p)).chain([(to, piece)]));
+                size[0] <= lot[0] && size[1] <= lot[1]
+            })
+        };
+        if let Some((at, side, piece)) = grow(pieces, room, &mut roll, &doors, &fits) {
             down.insert(next(at, side), (name_of(room), piece));
             ways.push((at, side));
-            break;
+        }
+    }
+    // The second storey: the stairwell over the stairs, the rooms upstairs
+    // joined from it through its back and from each other, each over a
+    // room of the ground floor.
+    let mut up: BTreeMap<(i32, i32), (String, Option<&RoomPiece>)> = BTreeMap::new();
+    let mut up_ways: Vec<((i32, i32), Side)> = Vec::new();
+    let stair = down.iter().find(|(_, (_, p))| p.stair).map(|(&c, _)| c);
+    if let Some(stair) = stair {
+        let upper: Vec<&String> = wanted.iter().filter(|(_, up)| *up).map(|(room, _)| room).collect();
+        if !upper.is_empty() {
+            up.insert(stair, ("stairwell".to_string(), None));
+        }
+        for room in upper {
+            let doors = up.iter().map(|(&c, (_, p))| (c, p.map_or(vec![Side::North], |p| p.doors.clone()))).collect();
+            let fits = |to: (i32, i32), _: &RoomPiece| down.contains_key(&to);
+            if let Some((at, side, piece)) = grow(pieces, room, &mut roll, &doors, &fits) {
+                up.insert(next(at, side), (name_of(room), Some(piece)));
+                up_ways.push((at, side));
+            }
         }
     }
     // The grid: each column as wide as its widest piece, each row as long
@@ -266,21 +309,28 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
     let cell = |(c, r): (i32, i32)| ((c - west) as usize, r as usize);
     // A way joins two rooms from the west or front one, east or north,
     // a door hung in it.
-    let plan_ways = ways
-        .iter()
-        .map(|&(at, side)| match side {
-            Side::East | Side::North => PlanWay { from: cell(at), side, door: true },
-            Side::West | Side::South => PlanWay { from: cell(next(at, side)), side: back(side), door: true },
-        })
-        .collect();
+    let way = |&(at, side): &((i32, i32), Side), level: u32| match side {
+        Side::East | Side::North => PlanWay { from: cell(at), side, door: true, level },
+        Side::West | Side::South => PlanWay { from: cell(next(at, side)), side: back(side), door: true, level },
+    };
+    let plan_ways = ways.iter().map(|w| way(w, 0)).chain(up_ways.iter().map(|w| way(w, 1))).collect();
     let mut plan_rooms = Vec::new();
     let mut furniture = Vec::new();
     let mut things = Vec::new();
     for (&at, (name, p)) in &down {
-        plan_rooms.push(PlanRoom { at: cell(at), name: name.clone() });
+        plan_rooms.push(PlanRoom { at: cell(at), name: name.clone(), level: 0 });
         furniture.extend(p.furniture.iter().map(|f| PlanFurniture { room: name.clone(), at: f.at, size: f.size, model: f.model.clone() }));
         things.extend(p.things.iter().map(|t| PlanThing { thing: t.thing.clone(), room: name.clone(), at: t.at }));
     }
+    // Upstairs, the furniture; the things used stand on the ground, so
+    // those upstairs are left out until a thing carries its height.
+    for (&at, (name, p)) in &up {
+        plan_rooms.push(PlanRoom { at: cell(at), name: name.clone(), level: 1 });
+        for f in p.iter().flat_map(|p| &p.furniture) {
+            furniture.push(PlanFurniture { room: name.clone(), at: f.at, size: f.size, model: f.model.clone() });
+        }
+    }
+    let stairs = stair.filter(|_| !up.is_empty()).map(|s| PlanStair { from: cell(s), level: 0 }).into_iter().collect();
     PlanDef {
         name: brief.place.clone(),
         about: String::new(),
@@ -293,6 +343,7 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
         furniture,
         things,
         outside: Vec::new(),
+        stairs,
         walls: brief.walls.clone(),
         floor: brief.floor,
         furniture_color: brief.furniture_color,
@@ -310,12 +361,13 @@ fn empty(brief: &Brief) -> PlanDef {
         edge: false,
         columns: vec![4.0],
         rows: vec![4.0],
-        rooms: vec![PlanRoom { at: (0, 0), name: "room".to_string() }],
+        rooms: vec![PlanRoom { at: (0, 0), name: "room".to_string(), level: 0 }],
         ways: Vec::new(),
         exits: vec![PlanExit { from: (0, 0), side: Side::South, width: brief.entry }],
         furniture: Vec::new(),
         things: Vec::new(),
         outside: Vec::new(),
+        stairs: Vec::new(),
         walls: brief.walls.clone(),
         floor: brief.floor,
         furniture_color: brief.furniture_color,
