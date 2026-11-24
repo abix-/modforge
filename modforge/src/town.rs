@@ -642,21 +642,26 @@ impl Town {
     /// The people living in the town (topside-town "The houses": up to 4
     /// a house, in the houses with no bunker): each house's count rolled
     /// from the def's range, each person standing in a room of their
-    /// house. The same every time for a seed.
+    /// house. Who each is and how many are rolled per house from its
+    /// brief's people (`Brief::person`), else the town's residents. The same
+    /// every time for a seed.
     pub fn residents(&self) -> Vec<(String, Vec2)> {
-        let (lo, hi) = self.residents.1;
         let mut out = Vec::new();
         for (i, lot) in self.lots.iter().enumerate() {
             if !lot.house || self.over.contains(&i) {
                 continue;
             }
+            let brief = self.brief_for(i);
+            let (lo, hi) = brief.and_then(|b| b.living).unwrap_or(self.residents.1);
             let count = lo + (tile_hash(self.seed, (i as i32, 1), TOWN_SALT + 0x50) % u64::from(hi.saturating_sub(lo) + 1)) as u32;
             let spots = self.home_spots(i);
+            let seed = tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x51);
             for k in 0..count as usize {
                 if let Some(spot) = spots.get(k % spots.len().max(1)) {
                     // Two in a room stand a metre apart.
                     let apart = Vec2::new((k / spots.len().max(1)) as f32, 0.0);
-                    out.push((self.residents.0.clone(), lot.at + *spot + apart));
+                    let who = brief.and_then(|b| b.person(seed, k as u64)).unwrap_or(&self.residents.0);
+                    out.push((who.to_string(), lot.at + *spot + apart));
                 }
             }
         }

@@ -90,6 +90,32 @@ pub struct Brief {
     /// left out.
     #[serde(default)]
     pub lot: Option<[f32; 2]>,
+    /// Who lives in a place of this brief: each person in it rolled from
+    /// these kinds by weight (the game's actor kinds), and how many, fewest
+    /// and most. The town's own residents when left out.
+    #[serde(default)]
+    pub people: Vec<(String, u64)>,
+    #[serde(default)]
+    pub living: Option<(u32, u32)>,
+}
+
+impl Brief {
+    /// The `k`th person living in a place of this brief, rolled from
+    /// `seed` among `people` by weight; none when it names none.
+    pub fn person(&self, seed: u64, k: u64) -> Option<&str> {
+        let total: u64 = self.people.iter().map(|(_, w)| w).sum();
+        if total == 0 {
+            return None;
+        }
+        let mut n = crate::roll::salted_index(seed, 0x1A_7E00 + k, total);
+        self.people.iter().find(|(_, w)| {
+            if n < *w {
+                return true;
+            }
+            n -= w;
+            false
+        }).map(|(who, _)| who.as_str())
+    }
 }
 
 /// The grid's size, metres across and along, of the rooms `down` (each
