@@ -171,14 +171,16 @@ pub unsafe fn dispatch_raw(fn_addr: u64, sig: &Signature, args: &[ArgValue]) -> 
         }
     }
 
-    // Materialize the four register slots as u64 bit-patterns.
+    // Materialize the four register slots as u64 bit-patterns, and the
+    // stack args (positions 4..), in one pass.
     let mut regs = [0u64; 4];
-    for (i, v) in args.iter().enumerate().take(4) {
-        regs[i] = v.to_u64();
+    let mut stack_args: Vec<u64> = Vec::with_capacity(args.len().saturating_sub(4));
+    for (i, v) in args.iter().enumerate() {
+        match regs.get_mut(i) {
+            Some(reg) => *reg = v.to_u64(),
+            None => stack_args.push(v.to_u64()),
+        }
     }
-
-    // Stack args (positions 4..).
-    let stack_args: Vec<u64> = args.iter().skip(4).map(|v| v.to_u64()).collect();
 
     let mut frame = Frame {
         fn_addr,
