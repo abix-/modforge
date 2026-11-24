@@ -34,6 +34,10 @@ pub struct PlanDef {
     /// Furniture by room name: where it sits as a share of the room
     /// (-0.5 to 0.5 across and along), and its size.
     pub furniture: &'static [(&'static str, [f32; 2], [f32; 3])],
+    /// The model each piece of `furniture` is drawn as, in its order
+    /// (`SolidDef::model`); a piece past the list's end, or named "", is
+    /// drawn as a block.
+    pub furniture_models: &'static [&'static str],
     /// The things used in it by room name: the thing's name and where it
     /// stands as a share of the room, in the first room of that name.
     pub things: &'static [(&'static str, &'static str, [f32; 2])],
@@ -112,11 +116,12 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
             floor: true,
             ceiling: true,
         });
-        for &(_, [fx, fz], [sx, sy, sz]) in def.furniture.iter().filter(|f| f.0 == name) {
+        for (i, &(_, [fx, fz], [sx, sy, sz])) in def.furniture.iter().enumerate().filter(|(_, f)| f.0 == name) {
             let size = Vec3::new(sx.min(w - 0.4), sy, sz.min(l - 0.4));
             let dx = (fx * w).clamp(-(w / 2.0 - size.x / 2.0 - 0.1), w / 2.0 - size.x / 2.0 - 0.1);
             let dz = (fz * l).clamp(-(l / 2.0 - size.z / 2.0 - 0.1), l / 2.0 - size.z / 2.0 - 0.1);
-            furniture.push(SolidDef { center: origin + Vec3::new(dx, size.y / 2.0, dz), size, color: def.furniture_color, model: None });
+            let model = def.furniture_models.get(i).filter(|m| !m.is_empty()).map(|m| m.to_string());
+            furniture.push(SolidDef { center: origin + Vec3::new(dx, size.y / 2.0, dz), size, color: def.furniture_color, model });
         }
         lights.push(LightDef { position: origin + Vec3::new(0.0, def.height - 0.4, 0.0), color: [1.0, 0.95, 0.85], intensity: 400_000.0 });
     }
@@ -159,6 +164,7 @@ mod tests {
     const SHOP: PlanDef = PlanDef {
         name: "shop",
         edge: false,
+        furniture_models: &[],
         columns: &[8.0, 4.0],
         rows: &[6.0, 4.0],
         rooms: &[((0, 0), "floor"), ((1, 0), "office"), ((0, 1), "stockroom"), ((1, 1), "restroom")],
