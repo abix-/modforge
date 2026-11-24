@@ -79,8 +79,11 @@ pub struct World2d {
 /// Tries at a spot for one topside person before they are left out.
 const PEOPLE_TRIES: u64 = 64;
 
-/// The most secrets a world rolls (operator, 2026-08-21: 0 to 5).
-pub const SECRETS_MOST: u64 = 5;
+/// The fewest and most secrets a world rolls: 0 to 5 (operator,
+/// 2026-08-21) became "lots of secrets" (operator, 2026-11-24; topside
+/// todo Secrets 4); 5 to 12 is Claude's.
+pub const SECRETS_LEAST: u64 = 5;
+pub const SECRETS_MOST: u64 = 12;
 /// How far a secret keeps from every road, site and bunker clearing,
 /// metres (Claude's, for the operator to change).
 pub const SECRET_OFF: f32 = 40.0;
@@ -157,15 +160,15 @@ impl World2d {
     }
 
     /// Where this world's secrets are (topside design.md "The unknown" rule
-    /// 7: "every map should have the possibility to have 0-5 secrets"): 0
-    /// to `SECRETS_MOST` rolled from the seed, each a land tile in the
+    /// 7, now "lots of secrets"): `SECRETS_LEAST` to `SECRETS_MOST`
+    /// rolled from the seed, each a land tile in the
     /// chunks from `lo` to `hi` (chunk keys, both ways) taken only if no
     /// road, site or bunker clearing comes within `SECRET_OFF` of it. A
     /// secret with no such tile in its tries is left out. The same every
     /// time for a seed.
     pub fn secrets(&mut self, r: Registries, (lo, hi): (i32, i32)) -> Vec<Vec2> {
         let seed = self.ground.seed;
-        let count = tile_hash(seed, (0, 0), SECRETS_SALT) % (SECRETS_MOST + 1);
+        let count = SECRETS_LEAST + tile_hash(seed, (0, 0), SECRETS_SALT) % (SECRETS_MOST - SECRETS_LEAST + 1);
         let (lo, span) = (lo * CHUNK, ((hi - lo) * CHUNK).max(1));
         let off = (SECRET_OFF / TILE).ceil() as i32;
         let mut out = Vec::new();
