@@ -213,6 +213,15 @@ pub fn heating(front: Vec2) -> Vec<(&'static str, Vec2)> {
     .collect()
 }
 
+/// Where the dining table's middle stands, from the house's middle,
+/// turned to face `front` (a candle on it, topside-town "Everything
+/// works").
+pub fn dining_table(front: Vec2) -> Vec2 {
+    let q = quarters_for(front);
+    let p = room_at(1, 1) + Vec3::new(0.0, 0.0, -0.2 * ROWS[1]);
+    (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+}
+
 /// The quarter turns that take the plan's front (+z, the ground's +y) to
 /// `front`.
 pub fn quarters_for(front: Vec2) -> u32 {

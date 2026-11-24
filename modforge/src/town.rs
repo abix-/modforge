@@ -412,6 +412,20 @@ impl Town {
             .collect()
     }
 
+    /// Where the streetlights stand (topside-town "Everything works"):
+    /// along every street, at its edge, one each `apart` metres.
+    pub fn streetlights(&self, apart: f32) -> Vec<Vec2> {
+        self.streets
+            .iter()
+            .flat_map(|s| {
+                let length = s.from.distance(s.to);
+                let along = (s.to - s.from).normalize_or_zero();
+                let edge = along.perp() * (s.width / 2.0);
+                (0..=(length / apart) as u32).map(move |k| s.from + along * (k as f32 * apart) + edge)
+            })
+            .collect()
+    }
+
     /// Where the substation stands: the town's south east corner, until it
     /// is a building of its own (Claude's).
     pub fn substation(&self) -> Vec2 {
