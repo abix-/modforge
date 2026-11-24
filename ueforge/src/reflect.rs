@@ -383,6 +383,7 @@ unsafe fn read_within(
                     _ => json!({"count": count}),
                 }
             }
+            "SetProperty" => read_set(at, property, budget),
             _ => {
                 // Undecoded kinds come back as their raw bytes, which write_value accepts unchanged.
                 let size = (property.element_size as usize).min(256);
@@ -442,8 +443,78 @@ fn array_inner() -> usize {
     0x78
 }
 
+/// A set field's elements, in storage order (up to 256): its element
+/// record (SET_ELEMENT) and slot stride (SET_SLOT_SIZE). The set's
+/// storage is a TSparseArray: slot data (0x00), ArrayNum (0x08), and
+/// AllocationFlags, a TBitArray with 4 inline words (0x10), its secondary
+/// data (0x20), NumBits (0x28) and MaxBits (0x2C); a slot holds an
+/// element when its bit is set (UE 5 Set.h, SparseArray.h, BitArray.h; a
+/// set is 0x50 bytes).
+///
+/// # Safety
+/// `at` is a live set's bytes, `property` its own record.
+unsafe fn read_set(at: *const u8, property: &NativeProperty, budget: &mut usize) -> Value {
+    let (inner, inner_kind) = match element_at(property, SET_ELEMENT) {
+        Ok(v) => v,
+        Err(e) => return json!({"set": e}),
+    };
+    let layout = property.address + SET_SLOT_SIZE;
+    if !crate::winproc::is_addr_readable(layout + 4) {
+        return json!({"set": "layout unreadable"});
+    }
+    // SAFETY: the set record's own FScriptSetLayout Size.
+    let stride = unsafe { (layout as *const i32).read_unaligned() };
+    if stride < inner.element_size as i32 || stride > 65536 {
+        return json!({"set": format!("implausible slot size {stride}")});
+    }
+    // SAFETY: the set's own TSparseArray header (0x50 bytes, `at` live).
+    let (data, num, num_bits, max_bits, secondary) = unsafe {
+        (
+            (at as *const *const u8).read_unaligned(),
+            (at.add(0x08) as *const i32).read_unaligned().max(0) as usize,
+            (at.add(0x28) as *const i32).read_unaligned().max(0) as usize,
+            (at.add(0x2C) as *const i32).read_unaligned().max(0) as usize,
+            (at.add(0x20) as *const *const u32).read_unaligned(),
+        )
+    };
+    if num == 0 {
+        return json!([]);
+    }
+    // SAFETY: within the set's own header.
+    let words: *const u32 = if max_bits > 128 { secondary } else { unsafe { at.add(0x10).cast() } };
+    let used = num.min(num_bits).min(256);
+    if data.is_null()
+        || words.is_null()
+        || !crate::winproc::is_addr_readable(data as usize + used * stride as usize - 1)
+        || !crate::winproc::is_addr_readable(words as usize + used.div_ceil(32) * 4 - 1)
+    {
+        return json!({"count": num});
+    }
+    let mut out = Vec::new();
+    for i in 0..used {
+        // SAFETY: within the bit words and slots checked readable above.
+        let set = unsafe { words.add(i / 32).read_unaligned() } & (1 << (i % 32)) != 0;
+        if set {
+            out.push(unsafe { read_within(data.add(i * stride as usize), &inner, &inner_kind, budget) });
+        }
+    }
+    json!(out)
+}
+
 fn inner_of(property: &NativeProperty) -> Result<(NativeProperty, String), String> {
-    let at = property.address + array_inner();
+    element_at(property, array_inner())
+}
+
+/// FSetProperty's ElementProp, right after the FProperty base (0x70);
+/// FArrayProperty puts its ArrayFlags there and Inner after (Wicked
+/// Island, UE 5.6, read live 2026-11-24: ElementProp at 0x70, then
+/// FScriptSetLayout 8, 0xC, slot size 0x10 at 0x78..0x84).
+const SET_ELEMENT: usize = 0x70;
+/// FScriptSetLayout Size, the set's slot stride.
+const SET_SLOT_SIZE: usize = 0x80;
+
+fn element_at(property: &NativeProperty, offset: usize) -> Result<(NativeProperty, String), String> {
+    let at = property.address + offset;
     if property.address == 0 || !crate::winproc::is_addr_readable(at + 8) {
         return Err(format!("{}: array record unreadable", property.name));
     }
