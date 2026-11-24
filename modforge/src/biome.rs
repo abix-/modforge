@@ -14,34 +14,57 @@ use glam::Vec3;
 
 /// One kind of thing nature strews across a biome (trees, rocks,
 /// wrecks), with how densely.
-#[derive(Clone)]
+#[derive(Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScatterDef {
     pub size: Vec3,
+    #[serde(rename = "colour")]
     pub color: Rgb,
     pub density: f32,
     /// The picture the game draws it with, by name; none draws it as a
     /// shape in its colour.
+    #[serde(default)]
     pub picture: Option<String>,
     /// A thing used where it stands to eat or drink (a well, a berry
     /// bush): the ItemDef of kind `Source` it is, by name. None for a
     /// thing that only stands there (a tree, a rock); a source never
     /// stops a body, so it is reached.
+    #[serde(default)]
     pub source: Option<String>,
 }
 
 /// The generic definition of a type of area. `name` is the id. The
 /// generator builds concrete areas from this; the storm re-rolls the
-/// built areas, never the defs.
-#[derive(Clone)]
+/// built areas, never the defs. Read from a game's content (topside's
+/// content/biomes.yaml), a biome names only what it has; its weather is
+/// written as each kind with its weight (`weighted`).
+#[derive(Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BiomeDef {
     pub name: String,
     pub ground: Rgb,
+    #[serde(default)]
     pub scatter: Vec<ScatterDef>,
+    /// Each weather named as often as its weight, rolled a game hour at
+    /// a time (modforge weather).
+    #[serde(default, deserialize_with = "weighted")]
     pub weather: Vec<String>,
+    #[serde(default)]
     pub monuments: Vec<String>,
+    #[serde(default)]
     pub npcs: Vec<String>,
+    #[serde(default)]
     pub wildlife: Vec<String>,
+    #[serde(default)]
     pub harvest: Vec<String>,
+}
+
+/// A biome's weather as content writes it, each kind with its weight in
+/// order, made the list `BiomeDef::weather` holds: each named as often as
+/// its weight.
+fn weighted<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let weights: Vec<(String, u32)> = serde::Deserialize::deserialize(d)?;
+    Ok(weights.into_iter().flat_map(|(name, n)| std::iter::repeat_n(name, n as usize)).collect())
 }
 
 /// The collection of checked-in BiomeDefs. Consumers register their
