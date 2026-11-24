@@ -235,6 +235,7 @@ mod tests {
                 litres: 0.0,
                 affixes: Vec::new(),
                 made_day: 0.0,
+                sockets: Default::default(),
             },
             20,
         );

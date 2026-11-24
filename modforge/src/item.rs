@@ -461,6 +461,10 @@ pub struct ItemStack {
     /// joining another keeps that one's day.
     #[serde(default)]
     pub made_day: f32,
+    /// Its sockets and the runes in them (crate::gear), set when it is
+    /// found.
+    #[serde(default)]
+    pub sockets: crate::gear::Sockets,
 }
 
 impl ItemStack {
@@ -472,6 +476,7 @@ impl ItemStack {
             && self.layers == other.layers
             && self.litres == other.litres
             && self.affixes == other.affixes
+            && self.sockets == other.sockets
     }
 }
 
@@ -495,6 +500,7 @@ pub fn create(def: &ItemDef, count: u32, odds: &[u64], now: f32, salt: u64) -> I
         litres: 0.0,
         affixes: Vec::new(),
         made_day: 0.0,
+        sockets: Default::default(),
     }
 }
 
@@ -587,10 +593,12 @@ pub fn numbers_of(def: &ItemDef, stack: &ItemStack, layers: &LayerRegistry) -> N
         combat.spread_degrees = (combat.spread_degrees + affix.spread_degrees).max(0.0);
         combat.delay = (combat.delay + affix.delay).max(0.05);
     }
-    Numbers {
-        combat,
-        armor: def.armor,
-    }
+    // A worn piece's armor, with what its affixes add (crate::gear).
+    let armor = def.armor.map(|a| Armor {
+        amount: (a.amount + stack.affixes.iter().map(|x| x.armor).sum::<f32>()).max(0.0),
+        ..a
+    });
+    Numbers { combat, armor }
 }
 
 /// The one way a note comes to exist: a single `Note` item through
@@ -841,6 +849,7 @@ mod tests {
             litres: 0.0,
             affixes: Vec::new(),
             made_day: 0.0,
+            sockets: Default::default(),
         }
     }
 
@@ -999,6 +1008,7 @@ mod tests {
             spread_degrees: 0.0,
             delay: -0.1,
             power: 1.0,
+            armor: 0.0,
         });
         let layers = LayerRegistry::default();
         let delay = |s: &ItemStack| numbers_of(&pipe, s, &layers).combat.unwrap().delay;

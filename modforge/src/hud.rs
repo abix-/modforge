@@ -594,6 +594,57 @@ pub fn end_drag(
     }
 }
 
+/// A drag of a rune ends on a piece of gear with a free socket
+/// (crate::gear, Diablo 2's: a rune dropped on a socketed item goes in):
+/// one rune leaves its stack and goes in the next socket. Gear worn is
+/// taken off first. True when it went in, the drag then over; false
+/// changes nothing, for `end_drag` to move the stack as any.
+pub fn socket_drop(
+    state: &mut HudState,
+    holders: &mut Holders<'_>,
+    slot: SlotRef,
+    registry: &ItemRegistry,
+    gear: &crate::gear::GearDefs,
+) -> bool {
+    let Some(from) = state.dragging else {
+        return false;
+    };
+    if from == slot || slot.holder == Holder::Equipment {
+        return false;
+    }
+    let Some(rune) = holders.stack(from).map(|s| s.item.clone()) else {
+        return false;
+    };
+    if !crate::gear::is_rune(gear, &rune) {
+        return false;
+    }
+    let Some(target) = holders.stack(slot) else {
+        return false;
+    };
+    let Some(def) = registry.def(&target.item) else {
+        return false;
+    };
+    if target.sockets.runes.len() as u32 >= target.sockets.count {
+        return false;
+    }
+    let seed = (slot.index as u64) << 8 ^ target.sockets.runes.len() as u64;
+    // The rune out of its stack first, then into the socket.
+    let Some(src) = holders.get_mut(from.holder).and_then(|inv| inv.slots.get_mut(from.index)) else {
+        return false;
+    };
+    if let Some(s) = src.as_mut() {
+        s.count -= 1;
+        if s.count == 0 {
+            *src = None;
+        }
+    }
+    if let Some(Some(target)) = holders.get_mut(slot.holder).and_then(|inv| inv.slots.get_mut(slot.index)) {
+        crate::gear::socket(gear, def, target, &rune, seed);
+    }
+    state.dragging = None;
+    true
+}
+
 /// Hover plus T (Atlas): the stack under the cursor goes to the
 /// other side, container to inventory or inventory/hotbar to
 /// container, whatever fits; `half` is Shift+T. Without an open
@@ -941,6 +992,7 @@ mod tests {
             litres: 0.0,
             affixes: Vec::new(),
             made_day: 0.0,
+            sockets: Default::default(),
         }
     }
 

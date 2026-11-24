@@ -51,6 +51,7 @@ pub mod hygiene;
 pub mod inject;
 pub mod input;
 pub mod affix;
+pub mod gear;
 pub mod bed;
 pub mod item;
 #[cfg(feature = "keen")]

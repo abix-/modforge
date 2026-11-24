@@ -12,7 +12,8 @@ use crate::unknown::rng;
 
 /// One affix: its name, as a player reads it before the item's, and what
 /// it changes: added to the item's reach (metres), spread (degrees) and
-/// delay (seconds), and how much harder its hits land (1 changes nothing).
+/// delay (seconds), how much harder its hits land (1 changes nothing), and
+/// the armor it adds when worn (crate::gear).
 #[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Affix {
     pub name: String,
@@ -20,6 +21,8 @@ pub struct Affix {
     pub spread_degrees: f32,
     pub delay: f32,
     pub power: f32,
+    #[serde(default)]
+    pub armor: f32,
 }
 
 /// Roll the affixes of one item from `table`: the first comes one time in
@@ -68,6 +71,7 @@ mod tests {
             spread_degrees: 0.0,
             delay,
             power,
+            armor: 0.0,
         };
         vec![a("light", -0.1, 1.0), a("sharp", 0.0, 1.2)]
     }
