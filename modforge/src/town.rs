@@ -67,6 +67,12 @@ pub struct TownDef {
     /// it's all boarded up... and there's people with guns inside"); none
     /// for a town with no such houses.
     pub boarded: Option<Boarded>,
+    /// Every this many metres a lot stands out from the town's middle,
+    /// its usual tier is one higher, so the town grows harder the farther
+    /// out one goes (topside todo Tier 4, operator 2026-11-24: "my
+    /// favorite, I think it was Icarus difficulty, right? It gets harder
+    /// the closer you get to the sun"); 0 for none.
+    pub tier_every: f32,
 }
 
 /// A boarded house: the least tier boarded, and who holds it, by actor
@@ -137,6 +143,7 @@ pub struct Town {
     pieces: Vec<RoomPiece>,
     briefs: Vec<Brief>,
     boarded: Option<Boarded>,
+    tier_every: f32,
     /// A house lot's width and depth, so a laid out house stays on it.
     lot: Vec2,
 }
@@ -356,6 +363,7 @@ impl Town {
             pieces: def.pieces.clone(),
             briefs: def.briefs.clone(),
             boarded: def.boarded.clone(),
+            tier_every: def.tier_every,
             lot: def.lot,
         };
         town.street_tiles = town.lay_streets();
@@ -416,7 +424,8 @@ impl Town {
     pub fn tier_of(&self, i: usize) -> u32 {
         let name = if self.lots[i].house { "house" } else { self.places.iter().find(|(lot, _)| *lot == i).map_or("", |(_, p)| p.name.as_str()) };
         let usual = self.usual_tiers.iter().find(|(n, _)| n == name).map_or(1, |(_, t)| *t);
-        crate::tier::roll(usual, self.tiers, tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x71))
+        let out = if self.tier_every > 0.0 { (self.lots[i].at.length() / self.tier_every) as u32 } else { 0 };
+        crate::tier::roll(usual + out, self.tiers, tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x71))
     }
 
     /// Who holds the house on lot `i` when it is boarded up (`boarded`):

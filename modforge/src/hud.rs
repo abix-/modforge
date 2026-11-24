@@ -52,6 +52,17 @@ pub fn unlocked(door: bool) -> InteractKind {
     if door { InteractKind::Door { open: false } } else { InteractKind::Container }
 }
 
+/// A locked door used with a tool that breaks doors in hand is broken in:
+/// it is a closed door from then on, as if its key had opened it (topside
+/// todo Tier 4, operator 2026-11-24: "breaking something in"). A box or
+/// anything else stays locked. None when nothing breaks.
+pub fn broken_in(kind: InteractKind, breaks_doors: bool) -> Option<InteractKind> {
+    match kind {
+        InteractKind::Locked { door: true, .. } if breaks_doors => Some(unlocked(true)),
+        _ => None,
+    }
+}
+
 /// What the player is looking at right now.
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Prompt {
@@ -1068,6 +1079,11 @@ mod tests {
         assert_eq!(interact(safe, &mut inv, None, 10, &mut state), InteractResult::NeedsKey(7));
         inv.slots[0] = Some(stack(&key_for(7), 1));
         assert_eq!(interact(safe, &mut inv, None, 10, &mut state), InteractResult::Unlock(InteractKind::Container));
+        // A locked door breaks in to a tool that breaks doors; a box never.
+        let door = InteractKind::Locked { lock: 3, door: true };
+        assert_eq!(broken_in(door, true), Some(InteractKind::Door { open: false }));
+        assert_eq!(broken_in(door, false), None);
+        assert_eq!(broken_in(safe, true), None);
     }
 
     #[test]
