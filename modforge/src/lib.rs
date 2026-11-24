@@ -33,6 +33,7 @@ pub mod faction;
 pub mod fire;
 pub mod grow;
 pub mod plan;
+pub mod tier;
 pub mod trash;
 pub mod fluid;
 pub mod genome;

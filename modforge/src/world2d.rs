@@ -15,7 +15,7 @@ use crate::monument::{BuildingRegistry, MonumentRegistry};
 use crate::path::{Cell, search};
 use crate::places::{Makers, Place, Places};
 use crate::memory::GoodFor;
-use crate::structure::{MonumentDef, MonumentMember};
+use crate::structure::{LootSpot, MonumentDef, MonumentMember, NpcSpot};
 use crate::town::Town;
 use crate::walk::{CHUNK, ChunkKey, TILE, cell_of, centre};
 
@@ -219,9 +219,21 @@ impl World2d {
             // A house, or a place of the town (plan.rs) on its lot.
             .filter_map(|(i, l)| {
                 let structure = if l.house { town.house_on(i) } else { town.place_on(i)? };
-                Some((l, structure))
+                Some((l, structure, town.tier_of(i)))
             })
-            .map(|(l, structure)| Place {
+            .map(|(l, structure, tier)| {
+                // Its tier (topside-town "Tiers") in what is found inside:
+                // a box a tier, filled at the tier's danger, and from tier
+                // 3 up people at it, one fewer than the tier past 2, each
+                // in a room of its own in turn. How many is Claude's.
+                let danger = crate::tier::danger_of(tier);
+                let rooms: Vec<Vec3> = structure.rooms.iter().filter(|r| r.origin.y.abs() < 0.5).map(|r| Vec3::new(r.origin.x, 0.0, r.origin.z)).collect();
+                let at = |k: usize| rooms.get(k % rooms.len().max(1)).copied().unwrap_or(Vec3::ZERO);
+                let loot_spots = (0..tier as usize).map(|k| LootSpot { position: at(k) + Vec3::new(0.6, 0.0, 0.6), danger }).collect();
+                let npc_spots = (0..tier.saturating_sub(2) as usize).map(|k| NpcSpot { position: at(k + 1), danger }).collect();
+                (l, structure, loot_spots, npc_spots)
+            })
+            .map(|(l, structure, loot_spots, npc_spots)| Place {
                 monument: structure.name.clone(),
                 position: l.at.round(),
                 biome: String::new(),
@@ -232,8 +244,8 @@ impl World2d {
                         structure,
                         offset: Vec3::ZERO,
                     }],
-                    loot_spots: Vec::new(),
-                    npc_spots: Vec::new(),
+                    loot_spots,
+                    npc_spots,
                     gates: Vec::new(),
                     props: Vec::new(),
                     good_for: GoodFor::default(),

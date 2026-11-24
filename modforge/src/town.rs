@@ -50,6 +50,11 @@ pub struct TownDef {
     /// The town's places, each standing on a lot of its part
     /// (topside-town "What the town has").
     pub places: Vec<PlanDef>,
+    /// How many tiers the map has, and each kind of place's usual tier
+    /// by its name ("house", a plan's name); one not named is tier 1
+    /// (topside-town "Tiers").
+    pub tiers: u32,
+    pub usual_tiers: Vec<(String, u32)>,
 }
 
 /// Which part of the town a lot or street is in.
@@ -107,6 +112,8 @@ pub struct Town {
     residents: (String, (u32, u32)),
     /// The places standing, each by its lot (`places`).
     places: Vec<(usize, PlanDef)>,
+    tiers: u32,
+    usual_tiers: Vec<(String, u32)>,
 }
 
 impl Town {
@@ -319,6 +326,8 @@ impl Town {
             over,
             residents: def.residents.clone(),
             places: Vec::new(),
+            tiers: def.tiers,
+            usual_tiers: def.usual_tiers.clone(),
         };
         town.street_tiles = town.lay_streets();
         // Each place on the next free lot of its part: main street's from
@@ -345,6 +354,15 @@ impl Town {
         let (_, plan) = self.places.iter().find(|(lot, _)| *lot == i)?;
         let seed = tile_hash(self.seed, (i as i32, 1), TOWN_SALT + 0x41);
         Some(crate::plan::build(plan, self.lots[i].front, seed))
+    }
+
+    /// The tier of what stands on lot `i` (topside-town "Tiers"), rolled
+    /// once from its kind's usual tier: the same every time for a seed,
+    /// and another in another world.
+    pub fn tier_of(&self, i: usize) -> u32 {
+        let name = if self.lots[i].house { "house" } else { self.places.iter().find(|(lot, _)| *lot == i).map_or("", |(_, p)| p.name) };
+        let usual = self.usual_tiers.iter().find(|(n, _)| n == name).map_or(1, |(_, t)| *t);
+        crate::tier::roll(usual, self.tiers, tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x71))
     }
 
     /// Where every place's things stand, each with its place's name.
