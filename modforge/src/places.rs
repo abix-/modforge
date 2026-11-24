@@ -100,6 +100,7 @@ pub struct Places {
     /// "The small world first": one of each kind at a fixed place).
     fixed: Vec<(String, Vec2)>,
     fixed_cache: HashMap<usize, Option<Place>>,
+    tiers: u32,
 }
 
 /// Room left between two sites' grounds, metres.
@@ -113,7 +114,24 @@ impl Places {
             cache: HashMap::new(),
             fixed: Vec::new(),
             fixed_cache: HashMap::new(),
+            tiers: 0,
         }
+    }
+
+    /// Every site rolls its tier from its type's usual tier, in a map of
+    /// `tiers` tiers (topside-town "Tiers"); 0, the default, keeps each
+    /// at its type's danger.
+    pub fn with_tiers(mut self, tiers: u32) -> Self {
+        self.tiers = tiers;
+        self
+    }
+
+    /// The site's tier rolled into its spots, when the map has tiers.
+    fn tiered(&self, m: Makers, name: &str, mut rolled: MonumentDef, seed: u64) -> MonumentDef {
+        if let (true, Some(def)) = (self.tiers > 0, m.monuments.def(name)) {
+            crate::tier::set_tier(&mut rolled, def.danger, self.tiers, seed ^ 0x7153);
+        }
+        rolled
     }
 
     /// These sites as well, each where it is given: its monument rolled
@@ -162,6 +180,7 @@ impl Places {
                 .monuments
                 .roll(&monument, m.buildings, tile_hash(m.ground.seed, tile, 1))
                 .ok()?;
+            let rolled = self.tiered(m, &monument, rolled, tile_hash(m.ground.seed, tile, 1));
             let ground = crate::worldgen::monument_ground(&rolled);
             let place = Place {
                 monument,
@@ -233,6 +252,7 @@ impl Places {
             .monuments
             .roll(&kind.monument, m.buildings, tile_hash(seed, cell, 1))
             .ok()?;
+        let rolled = self.tiered(m, &kind.monument, rolled, tile_hash(seed, cell, 1));
         let ground = crate::worldgen::monument_ground(&rolled);
         // Too big for its spacing: it could reach a neighbour of its own
         // kind, so it does not stand here.

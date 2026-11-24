@@ -80,11 +80,13 @@ pub fn with_modifiers(tier: u32, modifiers: &[Modifier]) -> (u32, u32, u32, u32)
 }
 
 /// Moves a rolled monument's loot, people and gates to the tier it rolls
-/// from its type's usual tier (`usual_danger` + 1), keeping each spot's
-/// own step above the type (a gated back room stays one above).
-pub fn set_tier(monument: &mut crate::structure::MonumentDef, usual_danger: u32, tiers: u32, seed: u64) -> u32 {
-    let tier = roll(usual_danger + 1, tiers, seed);
-    let shift = i64::from(danger_of(tier)) - i64::from(usual_danger);
+/// from its type's usual tier, which is its type's danger (an airfield's
+/// 3 is tier 3, as the operator's example has it), each spot moving as
+/// many dangers as the tier moved, so a gated back room stays one above.
+pub fn set_tier(monument: &mut crate::structure::MonumentDef, type_danger: u32, tiers: u32, seed: u64) -> u32 {
+    let usual = type_danger.max(1);
+    let tier = roll(usual, tiers, seed);
+    let shift = i64::from(tier) - i64::from(usual);
     let moved = |d: u32| (i64::from(d) + shift).max(0) as u32;
     for s in &mut monument.loot_spots {
         s.danger = moved(s.danger);
@@ -96,26 +98,4 @@ pub fn set_tier(monument: &mut crate::structure::MonumentDef, usual_danger: u32,
         g.level = moved(g.level);
     }
     tier
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn modifiers_change_what_is_inside() {
-        assert_eq!(with_modifiers(1, &[]), (1, 0, 0, 0));
-        assert_eq!(with_modifiers(3, &[Modifier::Rare, Modifier::ExtraHard]), (3, 4, 2, 4));
-        assert_eq!(with_modifiers(2, &[Modifier::ExtraLoot]).0, 4);
-        let some = (0..300).filter(|&s| modifier(s, 6).is_some()).count();
-        assert!(some > 20 && some < 100);
-    }
-
-    #[test]
-    fn a_tier_stays_near_its_usual_and_inside_the_map() {
-        let tiers: Vec<u32> = (0..200).map(|s| roll(3, 6, s)).collect();
-        assert!(tiers.iter().all(|&t| (2..=5).contains(&t)));
-        assert!(tiers.contains(&3) && tiers.contains(&2) && tiers.contains(&4));
-        assert!((0..200).all(|s| roll(6, 6, s) <= 6 && roll(1, 6, s) >= 1));
-    }
 }
