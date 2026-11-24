@@ -148,7 +148,14 @@ pub struct BriefRoom {
     /// the stairs; left out when the ground floor has no stairs.
     #[serde(default)]
     pub upstairs: bool,
+    /// Whether it is a hidden room (topside todo Secrets 1): its way in is
+    /// hidden, and a hidden switch stands in the room it is reached from.
+    #[serde(default)]
+    pub hidden: bool,
 }
+
+/// The thing a hidden room's switch is (topside todo Secrets 1).
+pub const HIDDEN_SWITCH: &str = "hidden switch";
 
 /// Where `room` joins the rooms down (each cell's door spots in `doors`):
 /// the room down, the side, and the piece; a piece goes only on a free
@@ -225,9 +232,13 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
     let mut roll = Roll::new(seed);
     // The rooms wanted, the front room first, the rest in rolled order.
     let mut wanted: Vec<(String, bool)> = Vec::new();
-    for BriefRoom { room, count: (lo, hi), upstairs } in &brief.rooms {
+    let mut hidden_rooms: Vec<String> = Vec::new();
+    for BriefRoom { room, count: (lo, hi), upstairs, hidden } in &brief.rooms {
         for _ in 0..roll.between(*lo, *hi) {
             wanted.push((room.clone(), *upstairs));
+            if *hidden {
+                hidden_rooms.push(room.clone());
+            }
         }
     }
     if wanted.len() > 2 {
@@ -240,6 +251,8 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
     // of one), its piece. The front room has the way in on its south.
     let mut down: BTreeMap<(i32, i32), (String, &RoomPiece)> = BTreeMap::new();
     let mut ways: Vec<((i32, i32), Side)> = Vec::new();
+    // The ways into hidden rooms, by their place in `ways`.
+    let mut hidden_ways: Vec<usize> = Vec::new();
     let mut named: BTreeMap<String, u32> = BTreeMap::new();
     let mut name_of = |room: &str| {
         let n = named.entry(room.to_string()).or_insert(0);
@@ -264,6 +277,10 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
         };
         if let Some((at, side, piece)) = grow(pieces, room, &mut roll, &doors, &fits) {
             down.insert(next(at, side), (name_of(room), piece));
+            if let Some(k) = hidden_rooms.iter().position(|h| h == room) {
+                hidden_rooms.remove(k);
+                hidden_ways.push(ways.len());
+            }
             ways.push((at, side));
         }
     }
@@ -309,14 +326,26 @@ pub fn roll(brief: &Brief, pieces: &[RoomPiece], seed: u64) -> PlanDef {
     let cell = |(c, r): (i32, i32)| ((c - west) as usize, r as usize);
     // A way joins two rooms from the west or front one, east or north,
     // a door hung in it.
-    let way = |&(at, side): &((i32, i32), Side), level: u32| match side {
-        Side::East | Side::North => PlanWay { from: cell(at), side, door: true, level },
-        Side::West | Side::South => PlanWay { from: cell(next(at, side)), side: back(side), door: true, level },
+    let way = |&(at, side): &((i32, i32), Side), level: u32, hidden: bool| match side {
+        Side::East | Side::North => PlanWay { from: cell(at), side, door: true, level, hidden },
+        Side::West | Side::South => PlanWay { from: cell(next(at, side)), side: back(side), door: true, level, hidden },
     };
-    let plan_ways = ways.iter().map(|w| way(w, 0)).chain(up_ways.iter().map(|w| way(w, 1))).collect();
+    let plan_ways = ways
+        .iter()
+        .enumerate()
+        .map(|(k, w)| way(w, 0, hidden_ways.contains(&k)))
+        .chain(up_ways.iter().map(|w| way(w, 1, false)))
+        .collect();
     let mut plan_rooms = Vec::new();
     let mut furniture = Vec::new();
     let mut things = Vec::new();
+    // Each hidden room's switch, in a corner of the room it is reached
+    // from (Claude's spot).
+    for &k in &hidden_ways {
+        if let Some((name, _)) = down.get(&ways[k].0) {
+            things.push(PlanThing { thing: HIDDEN_SWITCH.to_string(), room: name.clone(), at: [0.45, 0.45] });
+        }
+    }
     for (&at, (name, p)) in &down {
         plan_rooms.push(PlanRoom { at: cell(at), name: name.clone(), level: 0 });
         furniture.extend(p.furniture.iter().map(|f| PlanFurniture { room: name.clone(), at: f.at, size: f.size, model: f.model.clone() }));

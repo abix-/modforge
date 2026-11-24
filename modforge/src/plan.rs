@@ -92,6 +92,37 @@ pub struct PlanWay {
     /// The storey it is on.
     #[serde(default)]
     pub level: u32,
+    /// A hidden way: its door reads as wall and opens from a hidden
+    /// switch (topside todo Secrets 1).
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+/// Where each hidden way's door stands, on the ground, the plan turned to
+/// face `front` (topside todo Secrets 1): the middle of the wall the way
+/// is in.
+pub fn hidden_doors(def: &PlanDef, front: Vec2) -> Vec<Vec2> {
+    def.ways
+        .iter()
+        .filter(|w| w.hidden)
+        .filter_map(|w| {
+            let (c, r) = w.from;
+            let other = match w.side {
+                Side::East => (c + 1, r),
+                Side::North => (c, r + 1),
+                _ => return None,
+            };
+            if other.0 >= def.columns.len() || other.1 >= def.rows.len() {
+                return None;
+            }
+            let (here, there) = (room_at(def, c, r), room_at(def, other.0, other.1));
+            let wall = match w.side {
+                Side::East => Vec3::new(here.x + (there.x - here.x).signum() * def.columns[c] / 2.0, 0.0, here.z),
+                _ => Vec3::new(here.x, 0.0, here.z + (there.z - here.z).signum() * def.rows[r] / 2.0),
+            };
+            Some(turn(wall, front))
+        })
+        .collect()
 }
 
 /// A way out: a room, its outside wall, and the way's width.
@@ -191,7 +222,7 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
             });
         }
         let mut openings: Vec<Opening> = Vec::new();
-        for &PlanWay { from: (wc, wr), side, door: hung, level: on } in &def.ways {
+        for &PlanWay { from: (wc, wr), side, door: hung, level: on, .. } in &def.ways {
             if on != level {
                 continue;
             }

@@ -519,6 +519,18 @@ impl Town {
         self.lots.iter().filter(|l| l.house)
     }
 
+    /// Every laid out house's hidden doors, each with its lot (topside
+    /// todo Secrets 1): the lot's hidden switch opens them.
+    pub fn hidden_doors(&self) -> Vec<(usize, Vec2)> {
+        (0..self.lots.len())
+            .filter_map(|i| self.rolled(i).map(|plan| (i, plan)))
+            .flat_map(|(i, plan)| {
+                let lot = &self.lots[i];
+                crate::plan::hidden_doors(&plan, lot.front).into_iter().map(move |at| (i, lot.at + at)).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     /// The house nearest `at`, none over a bunker: where an episode's
     /// thing stands in the town (topside todo Town 5, "The first episode
     /// is in the town").

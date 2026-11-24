@@ -40,6 +40,16 @@ pub enum InteractKind {
         lock: u32,
         door: bool,
     },
+    /// A hidden door (topside todo Secrets 1, topside-town "Lots of
+    /// secrets": "hidden rooms. hidden switches"): it reads as wall, says
+    /// nothing, and opens only from its switch.
+    Hidden {
+        lock: u32,
+    },
+    /// The hidden switch to the hidden doors of `lock`: E opens them.
+    HiddenSwitch {
+        lock: u32,
+    },
 }
 
 /// The name of the key that opens lock `lock`.
@@ -82,6 +92,14 @@ pub fn prompt_for(kind: InteractKind, item_name: Option<&str>, item_count: Optio
         .to_string(),
         InteractKind::Gate { level } => format!("locked (level {level})"),
         InteractKind::Locked { .. } => "[E] locked".to_string(),
+        // A hidden door is a wall: nothing to read, nothing to do.
+        InteractKind::Hidden { .. } => {
+            return Prompt {
+                text: String::new(),
+                can_interact: false,
+            };
+        }
+        InteractKind::HiddenSwitch { .. } => "[E] push".to_string(),
         InteractKind::Pickup => match (item_name, item_count) {
             (Some(name), Some(count)) if count > 1 => format!("[E] pick up {name} x{count}"),
             (Some(name), _) => format!("[E] pick up {name}"),
@@ -132,6 +150,10 @@ pub enum InteractResult {
     Unlock(InteractKind),
     /// No key to lock `lock`: it stays shut.
     NeedsKey(u32),
+    /// A hidden door: nothing happens.
+    Nothing,
+    /// A hidden switch pushed: the hidden doors of this lock open.
+    OpenHidden(u32),
 }
 
 /// Execute an interaction. modforge decides what happens; the
@@ -146,6 +168,8 @@ pub fn interact(
     match kind {
         InteractKind::Door { .. } => InteractResult::ToggleDoor,
         InteractKind::Gate { level } => InteractResult::Locked(level),
+        InteractKind::Hidden { .. } => InteractResult::Nothing,
+        InteractKind::HiddenSwitch { lock } => InteractResult::OpenHidden(lock),
         InteractKind::Locked { lock, door } => {
             if player_inv.count_of(&key_for(lock)) > 0 {
                 InteractResult::Unlock(unlocked(door))
