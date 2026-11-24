@@ -176,6 +176,15 @@ impl Show {
         }
     }
 
+    /// A vote cast on another bunker's show against its people (topside-
+    /// show "Other channels": "spy on them and even vote"): each of them
+    /// less liked by `by`, so their storms come harder (Claude's).
+    pub fn vote_against(&mut self, people: &[ActorId], by: f32) {
+        for who in people {
+            self.set_popularity(*who, self.popularity_of(*who) - by);
+        }
+    }
+
     /// "Last time on" the show: a title and the clips, edited to tell a
     /// better story than what happened (topside-show "What the show
     /// does" 1).
