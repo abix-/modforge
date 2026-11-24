@@ -69,21 +69,18 @@ pub enum Reroll {
 /// What else a storm does, beyond killing and rolling anew (topside todo
 /// "Storm 3", Claude's list the operator took, 2026-11-24: "Oh, I like
 /// the sound of that. Yeah, that's good."). Each is carried out by the
-/// game when the storm passes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+/// game when the storm passes. Loot, new people and hunters are events
+/// now, not storms (`event::Does`; operator, 2026-11-24: "events and
+/// storms are different"); an event can still do any of these
+/// (`event::Does::Storm`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Effect {
     /// The places swap lots: the same town, the map wrong.
     Shuffle,
     /// Everything outside ages: food spoils, built pieces weaken.
     Rot,
-    /// Loot rains down: new boxes on the surface, often of a higher tier.
-    Bounty,
-    /// New people are dropped on the surface.
-    Arrival,
     /// People caught outside come back changed, hostile.
     Changing,
-    /// Something comes with the storm and hunts the surface till morning.
-    Hunting,
     /// Electronics die until fixed.
     Static,
     /// Those outside lose their map and what they remember of the place.
@@ -153,10 +150,7 @@ impl StormType {
             .map(|e| match e {
                 Effect::Shuffle => ", and moves the places about",
                 Effect::Rot => ", and ages all that is outside",
-                Effect::Bounty => ", and drops loot",
-                Effect::Arrival => ", and brings new people",
                 Effect::Changing => ", and changes those caught outside",
-                Effect::Hunting => ", and brings a hunter till morning",
                 Effect::Static => ", and kills the electronics",
                 Effect::Forgetting => ", and makes those outside forget",
                 Effect::Deep => ", and reaches into the bunkers",
