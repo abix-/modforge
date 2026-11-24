@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 
 use crate::ground::tile_hash;
-use crate::house::{HouseDef, bunker_offset, home_spots, house, quarters_for};
+use crate::house::{HouseDef, bunker_offset, fixtures, home_spots, house, quarters_for};
 use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
@@ -376,6 +376,22 @@ impl Town {
             (0..quarters_for(l.front)).fold(bunker_offset(), |p, _| Vec2::new(-p.y, p.x))
         };
         self.over.iter().map(|&i| self.lots[i].at + turn(&self.lots[i])).collect()
+    }
+
+    /// Every house's water fixtures (`house::fixtures`): each its kind and
+    /// where it stands.
+    pub fn fixtures(&self) -> Vec<(&'static str, Vec2)> {
+        self.lots
+            .iter()
+            .filter(|l| l.house)
+            .flat_map(|l| fixtures(l.front).into_iter().map(move |(kind, at)| (kind, l.at + at)))
+            .collect()
+    }
+
+    /// Where the water tower stands: the town's north west corner, until
+    /// the tower is a building of its own (Claude's).
+    pub fn water_tower(&self) -> Vec2 {
+        self.bounds().0
     }
 
     /// The people living in the town (topside-town "The houses": up to 4

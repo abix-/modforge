@@ -151,6 +151,29 @@ pub fn home_spots(front: Vec2) -> Vec<Vec2> {
         .collect()
 }
 
+/// A house's water fixtures (topside-town "Everything works": faucets,
+/// toilets, showers): each its kind and where it stands from the house's
+/// middle, at the furniture it is part of, turned to face `front`.
+pub fn fixtures(front: Vec2) -> Vec<(&'static str, Vec2)> {
+    // The room, the kind, and which of the room's furniture it is.
+    const FIXTURES: [(&str, &str, usize); 4] = [("kitchen", "sink", 0), ("bathroom", "shower", 0), ("bathroom", "toilet", 1), ("bathroom", "sink", 2)];
+    let q = quarters_for(front);
+    FIXTURES
+        .iter()
+        .filter_map(|&(room, kind, piece)| {
+            let &((c, r), _) = ROOMS.iter().find(|(_, name)| *name == room)?;
+            let &([fx, fz], [sx, _, sz], _) = furniture_of(room).get(piece)?;
+            let (w, l) = (COLUMNS[c], ROWS[r]);
+            // Placed as `house` places the furniture.
+            let (sx, sz) = (sx.min(w - 0.4), sz.min(l - 0.4));
+            let dx = (fx * w).clamp(-(w / 2.0 - sx / 2.0 - 0.1), w / 2.0 - sx / 2.0 - 0.1);
+            let dz = (fz * l).clamp(-(l / 2.0 - sz / 2.0 - 0.1), l / 2.0 - sz / 2.0 - 0.1);
+            let p = room_at(c, r) + Vec3::new(dx, 0.0, dz);
+            Some((kind, (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))))
+        })
+        .collect()
+}
+
 /// The quarter turns that take the plan's front (+z, the ground's +y) to
 /// `front`.
 pub fn quarters_for(front: Vec2) -> u32 {
