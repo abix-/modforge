@@ -66,6 +66,32 @@ pub enum Reroll {
     World,
 }
 
+/// What else a storm does, beyond killing and rolling anew (topside todo
+/// "Storm 3", Claude's list the operator took, 2026-11-24: "Oh, I like
+/// the sound of that. Yeah, that's good."). Each is carried out by the
+/// game when the storm passes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+pub enum Effect {
+    /// The places swap lots: the same town, the map wrong.
+    Shuffle,
+    /// Everything outside ages: food spoils, built pieces weaken.
+    Rot,
+    /// Loot rains down: new boxes on the surface, often of a higher tier.
+    Bounty,
+    /// New people are dropped on the surface.
+    Arrival,
+    /// People caught outside come back changed, hostile.
+    Changing,
+    /// Something comes with the storm and hunts the surface till morning.
+    Hunting,
+    /// Electronics die until fixed.
+    Static,
+    /// Those outside lose their map and what they remember of the place.
+    Forgetting,
+    /// It reaches the top level of every bunker.
+    Deep,
+}
+
 /// A type of storm, told apart by its colours (topside-town "The storms":
 /// "there should be different types of storms, and maybe we could
 /// colorize that"), read from a game's content. Its sky's colours while
@@ -84,6 +110,9 @@ pub struct StormType {
     pub kills: bool,
     #[serde(default)]
     pub rolls: Vec<Reroll>,
+    /// What else it does (`Effect`).
+    #[serde(default)]
+    pub does: Vec<Effect>,
     #[serde(default)]
     pub from_storm: u32,
     #[serde(default = "usual_weight")]
@@ -118,7 +147,22 @@ impl StormType {
             (false, true) => "and makes another world under the same rules",
             (false, false) => "and leaves the world as it was",
         };
-        format!("the {}: it {kills} {rolls}", self.name)
+        let more: String = self
+            .does
+            .iter()
+            .map(|e| match e {
+                Effect::Shuffle => ", and moves the places about",
+                Effect::Rot => ", and ages all that is outside",
+                Effect::Bounty => ", and drops loot",
+                Effect::Arrival => ", and brings new people",
+                Effect::Changing => ", and changes those caught outside",
+                Effect::Hunting => ", and brings a hunter till morning",
+                Effect::Static => ", and kills the electronics",
+                Effect::Forgetting => ", and makes those outside forget",
+                Effect::Deep => ", and reaches into the bunkers",
+            })
+            .collect();
+        format!("the {}: it {kills} {rolls}{more}", self.name)
     }
 }
 
