@@ -52,13 +52,20 @@ pub enum StationKind {
 /// One recipe as data. Inputs are (item id, count) pairs consumed.
 /// Output is the item id and count produced, made with `layers` on it (a
 /// handle made with nails in it), none for a simple item.
-#[derive(Clone)]
+///
+/// Read from a game's content (topside's content/recipes.yaml), a recipe
+/// names only what it has: left out, it makes no layers and takes no
+/// time.
+#[derive(Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RecipeDef {
     pub name: String,
     pub inputs: Vec<(String, u32)>,
     pub output: (String, u32),
+    #[serde(default)]
     pub layers: Vec<String>,
     pub station: StationKind,
+    #[serde(default)]
     pub craft_time: f32,
 }
 
