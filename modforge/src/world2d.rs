@@ -115,7 +115,8 @@ impl World2d {
         self
     }
 
-    /// Where each topside person stands, by actor def: a tile rolled from
+    /// Where each topside person stands, by actor def: the town's people in
+    /// their houses (`Town::residents`), then each of the rest on a tile rolled from
     /// the seed anywhere inside the edge, taken only if it is land with
     /// nothing on it, off every site's ground and every bunker's clearing.
     /// The same every time for a seed.
@@ -123,7 +124,8 @@ impl World2d {
         if let Some(found) = &self.people_spots {
             return found.clone();
         }
-        let mut out = Vec::new();
+        // The town's people, in their houses.
+        let mut out = self.town.as_ref().map(Town::residents).unwrap_or_default();
         if let Some((lo, hi)) = self.ground.chunk_range() {
             let (lo, span) = (lo * CHUNK, (hi - lo) * CHUNK);
             for (i, (def, count)) in self.people.clone().into_iter().enumerate() {
@@ -140,7 +142,8 @@ impl World2d {
                         let open = chunk.ground_at(t).is_land()
                             && !chunk.things.iter().any(|thing| thing.tile == t);
                         let clear = !self.bunkers.iter().any(|c| c.at.distance(at) < c.radius)
-                            && self.sites_touching(r, at, at).is_empty();
+                            && self.sites_touching(r, at, at).is_empty()
+                            && !self.town.as_ref().is_some_and(|t| t.lots.iter().any(|l| l.covers(at)));
                         if open && clear {
                             out.push((def.clone(), at));
                             break;

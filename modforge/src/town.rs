@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 
 use crate::ground::tile_hash;
-use crate::house::{HouseDef, bunker_offset, house};
+use crate::house::{HouseDef, bunker_offset, home_spots, house, quarters_for};
 use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
@@ -43,6 +43,9 @@ pub struct TownDef {
     pub edge_lot: Vec2,
     /// The house every house lot stands.
     pub house: HouseDef,
+    /// Who lives in the houses with no bunker: an actor def, and how many
+    /// a house, fewest and most.
+    pub residents: (String, (u32, u32)),
 }
 
 /// Which part of the town a lot or street is in.
@@ -97,6 +100,7 @@ pub struct Town {
     seed: u64,
     /// The house lots over a bunker, the first the home one.
     over: Vec<usize>,
+    residents: (String, (u32, u32)),
 }
 
 impl Town {
@@ -307,6 +311,7 @@ impl Town {
             house: def.house.clone(),
             seed,
             over,
+            residents: def.residents.clone(),
         };
         town.street_tiles = town.lay_streets();
         town
@@ -367,17 +372,34 @@ impl Town {
     /// Where each bunker is, under its house's garage, the home one first.
     pub fn bunkers(&self) -> Vec<Vec2> {
         let turn = |l: &Lot| {
-            let o = bunker_offset();
             // The offset is for a house facing +y; turned as its house is.
-            let q = match (l.front.x.round() as i32, l.front.y.round() as i32) {
-                (-1, 0) => 1,
-                (0, -1) => 2,
-                (1, 0) => 3,
-                _ => 0,
-            };
-            (0..q).fold(o, |p, _| Vec2::new(-p.y, p.x))
+            (0..quarters_for(l.front)).fold(bunker_offset(), |p, _| Vec2::new(-p.y, p.x))
         };
         self.over.iter().map(|&i| self.lots[i].at + turn(&self.lots[i])).collect()
+    }
+
+    /// The people living in the town (topside-town "The houses": up to 4
+    /// a house, in the houses with no bunker): each house's count rolled
+    /// from the def's range, each person standing in a room of their
+    /// house. The same every time for a seed.
+    pub fn residents(&self) -> Vec<(String, Vec2)> {
+        let (lo, hi) = self.residents.1;
+        let mut out = Vec::new();
+        for (i, lot) in self.lots.iter().enumerate() {
+            if !lot.house || self.over.contains(&i) {
+                continue;
+            }
+            let count = lo + (tile_hash(self.seed, (i as i32, 1), TOWN_SALT + 0x50) % u64::from(hi.saturating_sub(lo) + 1)) as u32;
+            let spots = home_spots(lot.front);
+            for k in 0..count as usize {
+                if let Some(spot) = spots.get(k % spots.len().max(1)) {
+                    // Two in a room stand a metre apart.
+                    let apart = Vec2::new((k / spots.len().max(1)) as f32, 0.0);
+                    out.push((self.residents.0.clone(), lot.at + *spot + apart));
+                }
+            }
+        }
+        out
     }
 
     /// The square the town lies in, its lowest corner and its highest.

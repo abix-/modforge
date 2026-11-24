@@ -135,6 +135,33 @@ fn room_at(c: usize, r: usize) -> Vec3 {
     Vec3::new(xs[c], 0.0, zs[r]) - mid
 }
 
+/// Where the people living in a house stand when it is made: in each of
+/// its bedrooms and its living room, toward the room's front, clear of its
+/// furniture, from the house's middle, on the ground, turned to face
+/// `front` as the house is.
+pub fn home_spots(front: Vec2) -> Vec<Vec2> {
+    let q = quarters_for(front);
+    ROOMS
+        .iter()
+        .filter(|(_, name)| matches!(*name, "bedroom" | "living room"))
+        .map(|&((c, r), _)| {
+            let p = room_at(c, r) + Vec3::new(0.0, 0.0, 0.35 * ROWS[r]);
+            (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+        })
+        .collect()
+}
+
+/// The quarter turns that take the plan's front (+z, the ground's +y) to
+/// `front`.
+pub fn quarters_for(front: Vec2) -> u32 {
+    match (front.x.round() as i32, front.y.round() as i32) {
+        (-1, 0) => 1,
+        (0, -1) => 2,
+        (1, 0) => 3,
+        _ => 0,
+    }
+}
+
 /// Where a bunker's top room stands under a house facing +y (the plan
 /// unturned): the garage's middle, from the house's middle, on the ground.
 pub fn bunker_offset() -> Vec2 {
@@ -266,11 +293,5 @@ pub fn house(def: &HouseDef, front: Vec2, seed: u64, over_bunker: bool) -> Struc
         debug_assert!(false, "the house plan is legal: {e}");
     }
     // The plan's front faces +z; a quarter turn takes +z to -x.
-    let quarters = match (front.x.round() as i32, front.y.round() as i32) {
-        (-1, 0) => 1,
-        (0, -1) => 2,
-        (1, 0) => 3,
-        _ => 0,
-    };
-    turned(&plan, quarters)
+    turned(&plan, quarters_for(front))
 }
