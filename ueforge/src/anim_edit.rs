@@ -100,6 +100,9 @@ struct Edit {
     name: String,
     format: &'static str,
     slots: Vec<Slot>,
+    /// The engine's own local poses, each sample, read before the rewrite
+    /// (own_samples); None for a curve rewrite.
+    own: Option<std::sync::Arc<Vec<Vec<Xform>>>>,
 }
 
 static EDITS: Mutex<Vec<Edit>> = Mutex::new(Vec::new());
@@ -571,8 +574,50 @@ pub fn rewrite(
         name: seq.name(),
         format,
         slots,
+        own: Some(std::sync::Arc::new(was)),
     });
     Ok(summary)
+}
+
+/// The engine's own local pose of every skeleton bone, each sample, of a
+/// rewritten `seq` as it was before the rewrite (a UE format clip reads
+/// through the rewrite's views, so it cannot be read back); None when
+/// `seq` is not rewritten, so anim_data::clip reads its own.
+pub fn own_samples(seq: &UObject) -> Option<std::sync::Arc<Vec<Vec<Xform>>>> {
+    let base = seq.as_ptr() as usize;
+    EDITS
+        .lock()
+        .iter()
+        .find(|e| e.sequence == base && e.format != CURVES)
+        .and_then(|e| e.own.clone())
+}
+
+/// [`own_samples`] at `time` (seconds): the two samples about it blended
+/// as the engine blends a UE clip's keys (anim_codec Track::sample:
+/// positions and scales lerped, rotations FQuat::FastLerp, none with
+/// `clip.step`), so a time between samples reads as the engine plays it.
+/// `clip` is the sequence's played clip (rate, step). None as own_samples.
+pub fn own_local_pose(seq: &UObject, clip: &Clip, time: f32) -> Option<Vec<Xform>> {
+    let all = own_samples(seq)?;
+    let last = all.len().checked_sub(1)?;
+    let at = (f64::from(time.clamp(0.0, clip.duration)) * f64::from(clip.rate)).max(0.0);
+    let k0 = (at.floor() as usize).min(last);
+    let k1 = (k0 + 1).min(last);
+    let a = if clip.step { 0.0 } else { (at - k0 as f64).clamp(0.0, 1.0) };
+    Some(
+        all[k0]
+            .iter()
+            .zip(&all[k1])
+            .map(|(x0, x1)| {
+                let q1 = if x0.rot.dot(x1.rot) < 0.0 { -x1.rot } else { x1.rot };
+                Xform {
+                    rot: (x0.rot * (1.0 - a) + q1 * a).normalize(),
+                    pos: x0.pos.lerp(x1.pos, a),
+                    scale: x0.scale.lerp(x1.scale, a),
+                }
+            })
+            .collect(),
+    )
 }
 
 /// The format of a curve rewrite, kept apart from the bones'.
@@ -727,6 +772,7 @@ pub fn rewrite_curves(
         name: seq.name(),
         format: CURVES,
         slots,
+        own: None,
     });
     Ok(summary)
 }
