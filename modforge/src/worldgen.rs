@@ -340,13 +340,16 @@ impl World {
         for r in &self.roads {
             for p in &r.points {
                 let (c, row) = self.cell_of(*p);
-                for dr in -w..=w {
-                    for dc in -w..=w {
-                        let (cc, rr) = (c as isize + dc, row as isize + dr);
-                        if cc >= 0 && rr >= 0 && (cc as usize) < n && (rr as usize) < n {
-                            road[rr as usize * n + cc as usize] = true;
-                        }
-                    }
+                let (c, row, last) = (c as isize, row as isize, n as isize - 1);
+                // The square around the point, cut to the map: one run
+                // of cells per row.
+                let (lo, hi) = ((c - w).max(0), (c + w).min(last));
+                if lo > hi {
+                    continue;
+                }
+                for rr in (row - w).max(0)..=(row + w).min(last) {
+                    let start = rr as usize * n;
+                    road[start + lo as usize..=start + hi as usize].fill(true);
                 }
             }
         }
