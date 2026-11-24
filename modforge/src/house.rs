@@ -174,6 +174,24 @@ pub fn fixtures(front: Vec2) -> Vec<(&'static str, Vec2)> {
         .collect()
 }
 
+/// A house's wiring (topside-town "Everything works": "breaker boxes,
+/// outlets, switches"; Project Zomboid's house power): where its breaker
+/// box stands (the front hall, by the door), and each room's switch, by
+/// its front wall, with the light it turns on, at the room's middle, each
+/// from the house's middle, turned to face `front`. A house over a bunker
+/// has no garage, so no garage switch.
+pub fn wiring(front: Vec2, over_bunker: bool) -> (Vec2, Vec<(Vec2, Vec2)>) {
+    let q = quarters_for(front);
+    let turn = |p: Vec3| (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x));
+    let breaker = turn(room_at(2, 0) + Vec3::new(-0.4 * COLUMNS[2], 0.0, 0.4 * ROWS[0]));
+    let rooms = ROOMS
+        .iter()
+        .filter(|(_, name)| !(over_bunker && *name == "garage"))
+        .map(|&((c, r), _)| (turn(room_at(c, r) + Vec3::new(0.3 * COLUMNS[c], 0.0, 0.45 * ROWS[r])), turn(room_at(c, r))))
+        .collect();
+    (breaker, rooms)
+}
+
 /// The quarter turns that take the plan's front (+z, the ground's +y) to
 /// `front`.
 pub fn quarters_for(front: Vec2) -> u32 {

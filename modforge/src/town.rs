@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 
 use crate::ground::tile_hash;
-use crate::house::{HouseDef, bunker_offset, fixtures, home_spots, house, quarters_for};
+use crate::house::{HouseDef, bunker_offset, fixtures, home_spots, house, quarters_for, wiring};
 use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
@@ -386,6 +386,26 @@ impl Town {
             .filter(|l| l.house)
             .flat_map(|l| fixtures(l.front).into_iter().map(move |(kind, at)| (kind, l.at + at)))
             .collect()
+    }
+
+    /// Every house's wiring (`house::wiring`): its breaker box, and each
+    /// room's switch with its light, where they stand.
+    pub fn wiring(&self) -> Vec<(Vec2, Vec<(Vec2, Vec2)>)> {
+        self.lots
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.house)
+            .map(|(i, l)| {
+                let (breaker, rooms) = wiring(l.front, self.over.contains(&i));
+                (l.at + breaker, rooms.into_iter().map(|(s, light)| (l.at + s, l.at + light)).collect())
+            })
+            .collect()
+    }
+
+    /// Where the substation stands: the town's south east corner, until it
+    /// is a building of its own (Claude's).
+    pub fn substation(&self) -> Vec2 {
+        self.bounds().1
     }
 
     /// Where the water tower stands: the town's north west corner, until

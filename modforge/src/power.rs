@@ -40,6 +40,14 @@ impl Burning {
     }
 }
 
+/// Whether a light is lit (topside-town "Everything works"; Project
+/// Zomboid's house power): its switch on, its house's breaker on, and the
+/// breaker on a grid with power (the town's lines from the substation, or
+/// a generator wired to it).
+pub fn lit(grid: bool, breaker_on: bool, switch_on: bool) -> bool {
+    grid && breaker_on && switch_on
+}
+
 /// Which consumers are powered: the supply given out in order, each
 /// powered only if its whole draw is left.
 pub fn share(supply: f32, draws: &[f32]) -> Vec<bool> {

@@ -26,6 +26,12 @@ pub enum InteractKind {
     /// A source (a well, a river's water, a berry bush): E eats or drinks
     /// from it where it stands.
     Source,
+    /// A switch (a light switch, a breaker box): E turns it on or off
+    /// (topside-town "Everything works": "breaker boxes, outlets,
+    /// switches").
+    Switch {
+        on: bool,
+    },
 }
 
 /// What the player is looking at right now.
@@ -58,6 +64,12 @@ pub fn prompt_for(kind: InteractKind, item_name: Option<&str>, item_count: Optio
             Some(name) => format!("[E] use the {name}"),
             None => "[E] use".to_string(),
         },
+        InteractKind::Switch { on } => match (item_name, on) {
+            (Some(name), true) => format!("[E] turn the {name} off"),
+            (Some(name), false) => format!("[E] turn the {name} on"),
+            (None, true) => "[E] turn off".to_string(),
+            (None, false) => "[E] turn on".to_string(),
+        },
     };
     Prompt {
         text,
@@ -84,6 +96,8 @@ pub enum InteractResult {
     /// Eat or drink from the source where it stands: the consumer feeds
     /// its `food` to the user's survival (`SurvivalStats::eat`).
     UseSource,
+    /// A switch flips: the consumer turns it to `!on`.
+    ToggleSwitch,
 }
 
 /// Execute an interaction. modforge decides what happens; the
@@ -129,6 +143,7 @@ pub fn interact(
             InteractResult::OpenStation
         }
         InteractKind::Source => InteractResult::UseSource,
+        InteractKind::Switch { .. } => InteractResult::ToggleSwitch,
     }
 }
 
