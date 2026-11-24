@@ -153,10 +153,12 @@ pub fn home_spots(front: Vec2) -> Vec<Vec2> {
 
 /// A house's water fixtures (topside-town "Everything works": faucets,
 /// toilets, showers): each its kind and where it stands from the house's
-/// middle, at the furniture it is part of, turned to face `front`.
+/// middle, at the furniture it is part of, turned to face `front`. The
+/// medicine cabinet hangs over the bathroom sink ("medicine cabinets").
 pub fn fixtures(front: Vec2) -> Vec<(&'static str, Vec2)> {
     // The room, the kind, and which of the room's furniture it is.
-    const FIXTURES: [(&str, &str, usize); 4] = [("kitchen", "sink", 0), ("bathroom", "shower", 0), ("bathroom", "toilet", 1), ("bathroom", "sink", 2)];
+    const FIXTURES: [(&str, &str, usize); 5] =
+        [("kitchen", "sink", 0), ("bathroom", "shower", 0), ("bathroom", "toilet", 1), ("bathroom", "sink", 2), ("bathroom", "medicine cabinet", 2)];
     let q = quarters_for(front);
     FIXTURES
         .iter()
