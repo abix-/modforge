@@ -91,7 +91,7 @@ impl Roll {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
 pub enum BuildingSize {
     Small,
     Medium,
@@ -101,8 +101,10 @@ pub enum BuildingSize {
 /// One building type as data (design.md "Building types"): what
 /// varies on every roll (operator-locked: "the buildings should
 /// have parameters that change"). Rooms per floor fill a grid of
-/// `columns` by `rows`; floors stack. `name` is the id.
-#[derive(Clone, Debug)]
+/// `columns` by `rows`; floors stack. `name` is the id. Read from a
+/// game's content (topside's content/buildings.yaml).
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BuildingTypeDef {
     pub name: String,
     pub size: BuildingSize,
@@ -719,7 +721,7 @@ fn shifted(a: &Aabb, by: Vec3) -> Aabb {
 
 /// How a monument's buildings sit relative to each other (design.md
 /// "Arrangement rules").
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
 pub enum Arrangement {
     Clustered,
     AlongRoad,
@@ -728,7 +730,8 @@ pub enum Arrangement {
 
 /// One pick from a monument type's building list: `min` to `max`
 /// buildings drawn from `choices` (building type names).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BuildingSlot {
     pub choices: Vec<String>,
     pub min: u32,
@@ -738,16 +741,21 @@ pub struct BuildingSlot {
 /// A prop a monument type scatters around its origin on every roll:
 /// size, colour, how many of them, how far out they stand, and the
 /// picture the game draws it with (none draws it as a box in its colour).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PropDef {
     pub size: Vec3,
+    #[serde(rename = "colour")]
     pub color: Rgb,
     pub count: (u32, u32),
+    #[serde(default)]
     pub radius: f32,
+    #[serde(default)]
     pub picture: Option<String>,
     /// Stands on the site's middle instead (a ridge, topside design.md
     /// "The triangle rule"), and a site with no buildings keeps its loot
     /// just past its far (+z) side: behind it.
+    #[serde(default)]
     pub centred: bool,
 }
 
@@ -755,24 +763,31 @@ pub struct PropDef {
 /// is the id; `suffix` ends every rolled monument's name. A minor
 /// site (design.md: "something worth stopping for every 30 seconds")
 /// has no building slots, only props and a loot spot, and a small
-/// `spacing`.
-#[derive(Clone, Debug)]
+/// `spacing`. Read from a game's content (topside's
+/// content/monuments.yaml), a type names only what it has: left out, it
+/// has no buildings, no props, no gated room, and is good for nothing.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MonumentTypeDef {
     pub name: String,
+    #[serde(default)]
     pub slots: Vec<BuildingSlot>,
     pub arrangement: Arrangement,
     /// Base danger of its loot and NPC spots (design.md "Danger").
     pub danger: u32,
     /// Whether its last building hides a gated back room.
+    #[serde(default)]
     pub gated: bool,
     pub suffix: String,
     /// Least distance from another site of any type when worldgen
     /// places it; and how much ground is pressed flat under it.
     pub spacing: f32,
+    #[serde(default)]
     pub props: Vec<PropDef>,
     /// What the site is good for to a person who knows it (life.md):
     /// a camp for rest and safety. Its boxes are good for food on
     /// their own.
+    #[serde(default, rename = "good for")]
     pub good_for: crate::memory::GoodFor,
     /// The tallest thing that stands there, in metres above its
     /// ground: what can be seen from far away (topside design.md "The
