@@ -48,6 +48,24 @@ impl Hygiene {
     }
 }
 
+/// Clothes worn by someone filthy get dirty, and are washed then dried
+/// clean (topside-town "Everything works": "the washer and dryer clean
+/// them"; Project Zomboid's washer and dryer): their names, a dirty one
+/// `dirty <name>`, a washed one `wet <name>`.
+pub fn soiled(name: &str) -> Option<String> {
+    (!name.starts_with("dirty ") && !name.starts_with("wet ")).then(|| format!("dirty {name}"))
+}
+
+/// What a washer (`dry` false) or a dryer (`dry` true) makes of clothes
+/// put in it, if anything.
+pub fn launder(name: &str, dry: bool) -> Option<String> {
+    if dry {
+        name.strip_prefix("wet ").map(str::to_string)
+    } else {
+        name.strip_prefix("dirty ").map(|n| format!("wet {n}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,5 +79,14 @@ mod tests {
         assert_eq!(h.dirt, 60.0);
         h.wash(Wash::Whole, false);
         assert_eq!(h.dirt, 0.0);
+    }
+
+    #[test]
+    fn dirty_clothes_are_washed_then_dried() {
+        let dirty = soiled("shirt").unwrap();
+        assert_eq!(soiled(&dirty), None);
+        assert_eq!(launder(&dirty, true), None);
+        let wet = launder(&dirty, false).unwrap();
+        assert_eq!(launder(&wet, true).as_deref(), Some("shirt"));
     }
 }

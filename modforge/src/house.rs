@@ -229,6 +229,21 @@ pub fn kitchen(front: Vec2) -> Vec<(&'static str, Vec2)> {
         .collect()
 }
 
+/// A house's clothing (topside-town "Everything works": "closets and
+/// dressers hold clothes; the washer and dryer clean them"): a closet and
+/// a dresser in each bedroom, the washer and dryer in the laundry, each
+/// where it stands from the house's middle, turned to face `front`.
+/// Where each stands is Claude's.
+pub fn clothing(front: Vec2) -> Vec<(&'static str, Vec2)> {
+    let q = quarters_for(front);
+    let turn = |p: Vec3| (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x));
+    let bedrooms = ROOMS.iter().filter(|(_, name)| *name == "bedroom").flat_map(|&((c, r), _)| {
+        [("closet", -0.4), ("dresser", 0.4)].map(|(kind, fx)| (kind, room_at(c, r) + Vec3::new(fx * COLUMNS[c], 0.0, -0.35 * ROWS[r])))
+    });
+    let laundry = [("washer", -0.3), ("dryer", -0.1)].map(|(kind, fx)| (kind, room_at(0, 2) + Vec3::new(fx * COLUMNS[0], 0.0, 0.35 * ROWS[2])));
+    bedrooms.chain(laundry).map(|(kind, p)| (kind, turn(p))).collect()
+}
+
 /// Where the living room's couch stands, from the house's middle, turned
 /// to face `front` (topside-town "Everything works"). Claude's.
 pub fn couch(front: Vec2) -> Vec2 {
