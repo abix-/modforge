@@ -9,19 +9,31 @@ use crate::monument::Roll;
 
 /// One thing a table can give: the item and its layers (a pipe with
 /// nails), how many, how likely against the others, and the least
-/// danger a spot must have to roll it.
-#[derive(Clone, Debug, PartialEq)]
+/// danger a spot must have to roll it. Read from a game's content
+/// (topside's content/loot.yaml), an entry names only what it has: left
+/// out, it has no layers, gives one, and rolls at any danger.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LootEntry {
     pub item: String,
+    #[serde(default)]
     pub layers: Vec<String>,
+    #[serde(default = "one")]
     pub count: (u32, u32),
     pub weight: u32,
+    #[serde(default)]
     pub min_danger: u32,
+}
+
+/// A loot entry's `count` when its content leaves it out.
+fn one() -> (u32, u32) {
+    (1, 1)
 }
 
 /// A loot table: its entries, and how many picks a spot of danger 0
 /// makes; every point of danger adds `picks_per_danger` more.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LootTable {
     pub entries: Vec<LootEntry>,
     pub picks: (u32, u32),
