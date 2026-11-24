@@ -244,6 +244,22 @@ pub fn clothing(front: Vec2) -> Vec<(&'static str, Vec2)> {
     bedrooms.chain(laundry).map(|(kind, p)| (kind, turn(p))).collect()
 }
 
+/// A house's storage (topside-town "Everything works": "pantries,
+/// cabinets, garages, attics and basements hold things"): the kitchen's
+/// cabinets on its west wall and the garage's shelves, none when a
+/// bunker's top room stands in the garage's place; each where it stands
+/// from the house's middle, turned to face `front`. Where each stands is
+/// Claude's.
+pub fn storage(front: Vec2, over_bunker: bool) -> Vec<(&'static str, Vec2)> {
+    let q = quarters_for(front);
+    let turn = |p: Vec3| (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x));
+    let mut all = vec![("kitchen cabinet", turn(room_at(0, 1) + Vec3::new(-0.4 * COLUMNS[0], 0.0, 0.0)))];
+    if !over_bunker {
+        all.push(("garage shelf", turn(room_at(0, 0) + Vec3::new(-0.4 * COLUMNS[0], 0.0, -0.3 * ROWS[0]))));
+    }
+    all
+}
+
 /// Where the living room's couch stands, from the house's middle, turned
 /// to face `front` (topside-town "Everything works"). Claude's.
 pub fn couch(front: Vec2) -> Vec2 {

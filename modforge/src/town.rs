@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 
 use crate::ground::tile_hash;
-use crate::house::{HouseDef, bunker_offset, clothing, fixtures, heating, home_spots, house, kitchen, quarters_for, wiring};
+use crate::house::{HouseDef, bunker_offset, clothing, fixtures, heating, home_spots, house, kitchen, quarters_for, storage, wiring};
 use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
@@ -429,6 +429,17 @@ impl Town {
             .iter()
             .filter(|l| l.house)
             .map(|l| clothing(l.front).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
+            .collect()
+    }
+
+    /// Every house's storage (`house::storage`), in the same order as
+    /// `wiring`, each its kind and where it stands.
+    pub fn storage(&self) -> Vec<Vec<(&'static str, Vec2)>> {
+        self.lots
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.house)
+            .map(|(i, l)| storage(l.front, self.over.contains(&i)).into_iter().map(|(kind, at)| (kind, l.at + at)).collect())
             .collect()
     }
 
