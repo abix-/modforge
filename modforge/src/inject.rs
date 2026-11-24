@@ -22,7 +22,6 @@
 //! - updates the injstate file
 
 use std::ffi::OsString;
-use std::io::Read;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -461,20 +460,20 @@ fn send_shutdown_op(port: u16) -> anyhow::Result<()> {
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
 
-    let body = r#"{"op":"_shutdown"}"#;
-    let req = format!(
-        "POST /op HTTP/1.1\r\n\
-         Host: 127.0.0.1\r\n\
-         Content-Type: application/json\r\n\
-         Content-Length: {}\r\n\
-         Connection: close\r\n\
-         \r\n\
-         {}",
-        body.len(),
-        body
+    // The whole request is fixed, so it is written out once, here.
+    const BODY: &str = r#"{"op":"_shutdown"}"#;
+    const _: () = assert!(BODY.len() == 18, "Content-Length below is the body's length");
+    const REQUEST: &str = concat!(
+        "POST /op HTTP/1.1\r\n",
+        "Host: 127.0.0.1\r\n",
+        "Content-Type: application/json\r\n",
+        "Content-Length: 18\r\n",
+        "Connection: close\r\n",
+        "\r\n",
+        r#"{"op":"_shutdown"}"#,
     );
-    stream.write_all(req.as_bytes())?;
-    let mut resp = String::new();
-    let _ = stream.read_to_string(&mut resp);
+    stream.write_all(REQUEST.as_bytes())?;
+    // The answer is not read, only waited for: drained, not kept.
+    let _ = std::io::copy(&mut stream, &mut std::io::sink());
     Ok(())
 }
