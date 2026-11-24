@@ -197,8 +197,7 @@ impl World2d {
 
     /// Every site standing in the square from `lo` to `hi`: the places,
     /// and the town's houses (topside-town "The houses"), each a site of
-    /// one building, the house, on its lot. No house stands on a lot a
-    /// bunker is on.
+    /// one building, the house, on its lot.
     pub fn sites_in(&mut self, r: Registries, lo: Vec2, hi: Vec2) -> Vec<Place> {
         let mut out = self.places.in_area(Self::makers(&self.ground, r), lo, hi);
         out.extend(self.houses_in(lo, hi));
@@ -214,7 +213,6 @@ impl World2d {
             .iter()
             .enumerate()
             .filter(|(_, l)| l.house && l.at.cmpge(lo).all() && l.at.cmplt(hi).all())
-            .filter(|(_, l)| !self.bunkers.iter().any(|c| l.covers(c.at)))
             .map(|(i, l)| Place {
                 monument: "house".to_string(),
                 position: l.at.round(),

@@ -20,7 +20,6 @@ use glam::{Vec2, Vec3};
 
 use crate::monument::{Roll, WALL, door, spaced, window};
 use crate::structure::{LightDef, Opening, Rgb, RoomDef, Side, SolidDef, StructureDef, turned, validate};
-
 /// What a house varies by.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HouseDef {
@@ -41,7 +40,10 @@ pub struct HouseDef {
 /// The rooms' columns, west to east, and rows, front to back: interior
 /// metres.
 const COLUMNS: [f32; 4] = [6.0, 4.0, 3.0, 4.0];
-const ROWS: [f32; 3] = [6.0, 4.0, 4.0];
+/// The front row 8 m deep: the garage the size of a bunker's top room, so
+/// on a lot over a bunker (topside-town "The bunkers") the bunker's top
+/// room stands in the garage's place.
+const ROWS: [f32; 3] = [8.0, 4.0, 4.0];
 /// The garage door's width, metres.
 const GARAGE_DOOR: f32 = 3.0;
 
@@ -122,25 +124,44 @@ fn furniture_of(name: &str) -> &'static [Piece] {
     }
 }
 
+/// Where a room's middle is, from the plan's middle (the plan unturned,
+/// its front +z).
+fn room_at(c: usize, r: usize) -> Vec3 {
+    let xs = spaced(&COLUMNS, 1.0);
+    let zs = spaced(&ROWS, -1.0);
+    // The middle to a whole metre, so the garage, and a bunker under it,
+    // is whole metres from it.
+    let mid = Vec3::new((xs[0] + xs[3]) / 2.0, 0.0, (zs[0] + zs[2]) / 2.0).round();
+    Vec3::new(xs[c], 0.0, zs[r]) - mid
+}
+
+/// Where a bunker's top room stands under a house facing +y (the plan
+/// unturned): the garage's middle, from the house's middle, on the ground.
+pub fn bunker_offset() -> Vec2 {
+    let g = room_at(0, 0);
+    Vec2::new(g.x, g.z)
+}
+
 /// A house rolled from `seed`: the plan, its colours and small details,
 /// its front door facing `front` (a unit vector on the ground, toward its
 /// street; the plan's own front faces +z, the ground's +y), the house's
-/// middle at the structure's origin.
-pub fn house(def: &HouseDef, front: Vec2, seed: u64) -> StructureDef {
+/// middle at the structure's origin. Over a bunker, the house has no
+/// garage: the bunker's top room stands there, its own door to the front.
+pub fn house(def: &HouseDef, front: Vec2, seed: u64, over_bunker: bool) -> StructureDef {
     let mut roll = Roll::new(seed);
     let wall_color = *roll.pick(&def.walls);
     let floor_color = *roll.pick(&def.floors);
-    let xs = spaced(&COLUMNS, 1.0);
-    let zs = spaced(&ROWS, -1.0);
-    // The plan's middle at the origin.
-    let mid = Vec3::new((xs[0] + xs[3]) / 2.0, 0.0, (zs[0] + zs[2]) / 2.0);
     let (last_col, last_row) = (COLUMNS.len() - 1, ROWS.len() - 1);
     let mut rooms = Vec::new();
     let mut furniture = Vec::new();
     let mut lights = Vec::new();
+    let garage = (0, 0);
     for &((c, r), name) in &ROOMS {
+        if over_bunker && (c, r) == garage {
+            continue;
+        }
         let (w, l) = (COLUMNS[c], ROWS[r]);
-        let origin = Vec3::new(xs[c], 0.0, zs[r]) - mid;
+        let origin = room_at(c, r);
         let mut openings: Vec<Opening> = Vec::new();
         // The ways between rooms: both rooms author the gap, the first
         // hangs the door.
@@ -150,6 +171,9 @@ pub fn house(def: &HouseDef, front: Vec2, seed: u64) -> StructureDef {
                 Side::North => (wc, wr + 1),
                 _ => continue,
             };
+            if over_bunker && ((wc, wr) == garage || other == garage) {
+                continue;
+            }
             if (wc, wr) == (c, r) {
                 openings.push(Opening { door: hung, ..door(side, 0.0) });
             } else if other == (c, r) {

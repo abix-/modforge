@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 
 use crate::ground::tile_hash;
-use crate::house::{HouseDef, house};
+use crate::house::{HouseDef, bunker_offset, house};
 use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
@@ -95,12 +95,15 @@ pub struct Town {
     street_tiles: BTreeSet<Cell>,
     house: HouseDef,
     seed: u64,
+    /// The house lots over a bunker, the first the home one.
+    over: Vec<usize>,
 }
 
 impl Town {
-    /// The town `def` lays out from `seed`, placed so the house lot nearest
-    /// its middle has its middle at `home`. The same every time for a seed.
-    pub fn around(def: &TownDef, home: Vec2, seed: u64) -> Self {
+    /// The town `def` lays out from `seed`, with `bunkers` of its houses
+    /// over a bunker, placed so the first bunker, under the house nearest
+    /// the town's middle, is at `home`. The same every time for a seed.
+    pub fn around(def: &TownDef, home: Vec2, seed: u64, bunkers: u32) -> Self {
         let roll = |k: u64| tile_hash(seed, (0, 0), TOWN_SALT + k);
         let s = def.street;
         let (w, d) = (def.lot.x, def.lot.y);
@@ -265,11 +268,26 @@ impl Town {
         for t in &mut turnarounds {
             t.0 = turn(t.0);
         }
-        let middle = lots
-            .iter()
-            .filter(|l| l.house)
-            .min_by(|a, b| a.at.length().total_cmp(&b.at.length()))
-            .map_or(Vec2::ZERO, |l| l.at);
+        // The bunkers (topside-town "The bunkers"): `bunkers` of the
+        // houses stand over one, the first the house nearest the middle.
+        // A bunker is never turned, so only a house facing +y (its plan
+        // unturned) stands over one; with none, any house.
+        let facing: Vec<usize> = {
+            let up: Vec<usize> = (0..lots.len()).filter(|&i| lots[i].house && lots[i].front == Vec2::Y).collect();
+            if up.is_empty() { (0..lots.len()).filter(|&i| lots[i].house).collect() } else { up }
+        };
+        let mut over: Vec<usize> = Vec::new();
+        if let Some(&first) = facing.iter().min_by(|&&a, &&b| lots[a].at.length().total_cmp(&lots[b].at.length())) {
+            over.push(first);
+            let mut rest: Vec<(u64, usize)> = facing
+                .iter()
+                .filter(|&&i| i != first)
+                .map(|&i| (roll(200 + i as u64), i))
+                .collect();
+            rest.sort();
+            over.extend(rest.into_iter().take(bunkers.saturating_sub(1) as usize).map(|(_, i)| i));
+        }
+        let middle = over.first().map_or(Vec2::ZERO, |&i| lots[i].at + bunker_offset());
         let shift = (home - middle).round();
         for l in &mut lots {
             l.at += shift;
@@ -288,6 +306,7 @@ impl Town {
             street_tiles: BTreeSet::new(),
             house: def.house.clone(),
             seed,
+            over,
         };
         town.street_tiles = town.lay_streets();
         town
@@ -341,7 +360,24 @@ impl Town {
     /// The house standing on lot `i`, facing its street, its middle at
     /// the lot's: the same every time for a seed and a lot.
     pub fn house_on(&self, i: usize) -> StructureDef {
-        house(&self.house, self.lots[i].front, tile_hash(self.seed, (i as i32, 0), TOWN_SALT + 0x40))
+        let seed = tile_hash(self.seed, (i as i32, 0), TOWN_SALT + 0x40);
+        house(&self.house, self.lots[i].front, seed, self.over.contains(&i))
+    }
+
+    /// Where each bunker is, under its house's garage, the home one first.
+    pub fn bunkers(&self) -> Vec<Vec2> {
+        let turn = |l: &Lot| {
+            let o = bunker_offset();
+            // The offset is for a house facing +y; turned as its house is.
+            let q = match (l.front.x.round() as i32, l.front.y.round() as i32) {
+                (-1, 0) => 1,
+                (0, -1) => 2,
+                (1, 0) => 3,
+                _ => 0,
+            };
+            (0..q).fold(o, |p, _| Vec2::new(-p.y, p.x))
+        };
+        self.over.iter().map(|&i| self.lots[i].at + turn(&self.lots[i])).collect()
     }
 
     /// The square the town lies in, its lowest corner and its highest.
