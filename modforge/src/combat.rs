@@ -26,7 +26,8 @@ pub enum DamageType {
 /// then straight down to `far_fraction` at `far_range` and beyond.
 /// Rust: "rifles have always had a less severe damage falloff over
 /// distance than pistols".
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Falloff {
     pub full_range: f32,
     pub far_range: f32,
@@ -54,7 +55,12 @@ impl Falloff {
 
 /// One kind of hurt as data (Doom 3's damage def): what a weapon,
 /// projectile, or hazard names when it lands. `name` is the id.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// Read from a game's content (topside's content/damage.yaml), a def
+/// names only what it has: left out, `knockback` is 0, `ignores_armor`
+/// false, `self_scale` 1 and `falloff` none.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DamageDef {
     pub name: String,
     pub amount: f32,
@@ -62,13 +68,27 @@ pub struct DamageDef {
     /// Velocity added to the target along the hit direction, scaled
     /// by the target's mass (Quake 3: damage over a mass of 200,
     /// capped at 200).
+    #[serde(default)]
     pub knockback: f32,
     /// Armor is skipped (Doom 3 `noArmor`).
+    #[serde(default)]
     pub ignores_armor: bool,
     /// Damage to yourself is scaled by this (Doom 3
     /// `selfDamageScale`; Quake 3 halves it so rocket jumping works).
+    #[serde(default = "full")]
     pub self_scale: f32,
+    #[serde(default = "no_falloff")]
     pub falloff: Falloff,
+}
+
+/// A damage def's `self_scale` when its content leaves it out.
+fn full() -> f32 {
+    1.0
+}
+
+/// A damage def's `falloff` when its content leaves it out.
+fn no_falloff() -> Falloff {
+    Falloff::NONE
 }
 
 /// The checked-in damage defs. Consumers register content at startup
