@@ -31,14 +31,17 @@ pub fn first_reachable_destination<'a>(
 
 /// What a faction wants (design.md): hostile ones want your stuff,
 /// builders want to grow, and the player's is yours.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
 pub enum FactionKind {
     Hostile,
     Builder,
     Player,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+/// One faction, read from a game's content (topside's
+/// content/factions.yaml).
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FactionDef {
     pub name: String,
     pub kind: FactionKind,
