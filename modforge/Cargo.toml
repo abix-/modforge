@@ -93,6 +93,11 @@ zip = { workspace = true }
 name = "modforge-deploy"
 path = "src/bin/modforge_deploy.rs"
 
+# One op to a running mod's control plane, its result printed.
+[[bin]]
+name = "modforge-op"
+path = "src/bin/modforge_op.rs"
+
 # Injector for native-PE games (horsey-mod, jaggedalliance3-mod):
 # CreateRemoteThread(LoadLibraryW) the mod DLL into the running game.
 [[bin]]
