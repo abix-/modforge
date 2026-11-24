@@ -19,7 +19,8 @@ use crate::combat::{Health, Hit, HitResult, Protection, resolve_hit};
 /// color type.
 pub type Rgb = [f32; 3];
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Side {
     North,
     South,

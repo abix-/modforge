@@ -337,7 +337,7 @@ impl Town {
         for plan in &def.places {
             let part = if plan.edge { Part::Edge } else { Part::MainStreet };
             if let Some(k) = free.iter().position(|&i| town.lots[i].part == part) {
-                town.places.push((free.remove(k), *plan));
+                town.places.push((free.remove(k), plan.clone()));
             }
         }
         town
@@ -360,7 +360,7 @@ impl Town {
     /// once from its kind's usual tier: the same every time for a seed,
     /// and another in another world.
     pub fn tier_of(&self, i: usize) -> u32 {
-        let name = if self.lots[i].house { "house" } else { self.places.iter().find(|(lot, _)| *lot == i).map_or("", |(_, p)| p.name) };
+        let name = if self.lots[i].house { "house" } else { self.places.iter().find(|(lot, _)| *lot == i).map_or("", |(_, p)| p.name.as_str()) };
         let usual = self.usual_tiers.iter().find(|(n, _)| n == name).map_or(1, |(_, t)| *t);
         crate::tier::roll(usual, self.tiers, tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x71))
     }
@@ -378,12 +378,12 @@ impl Town {
     }
 
     /// Where every place's things stand, each with its place's name.
-    pub fn place_things(&self) -> Vec<(&'static str, &'static str, Vec2)> {
+    pub fn place_things(&self) -> Vec<(&str, &str, Vec2)> {
         self.places
             .iter()
             .flat_map(|(i, plan)| {
                 let lot = &self.lots[*i];
-                crate::plan::things_of(plan, lot.front).into_iter().map(move |(thing, at)| (plan.name, thing, lot.at + at))
+                crate::plan::things_of(plan, lot.front).into_iter().map(move |(thing, at)| (plan.name.as_str(), thing, lot.at + at))
             })
             .collect()
     }

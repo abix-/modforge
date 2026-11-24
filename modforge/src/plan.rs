@@ -9,52 +9,113 @@
 //! game where `things_of` says.
 
 use glam::{Vec2, Vec3};
+use serde::Deserialize;
 
 use crate::house::quarters_for;
 use crate::monument::{Roll, WALL, door, spaced, window};
 use crate::structure::{LightDef, Opening, Rgb, RoomDef, Side, SolidDef, StructureDef, turned, validate};
 
-/// One place's plan. Columns run west to east, rows front to back (the
-/// front +z, toward its street).
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One place's plan, a blueprint read from the game's content (topside's
+/// content/places.yaml). Columns run west to east, rows front to back
+/// (the front +z, toward its street).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PlanDef {
-    pub name: &'static str,
+    /// Its name; the content's key for it, filled in by the reader.
+    #[serde(default)]
+    pub name: String,
+    /// What it is, for whoever reads the content.
+    #[serde(default)]
+    pub about: String,
     /// Whether it stands at the edge of town (else on main street).
+    #[serde(default)]
     pub edge: bool,
     /// The rooms' interior sizes, metres.
-    pub columns: &'static [f32],
-    pub rows: &'static [f32],
-    /// Each room by (column, row), named.
-    pub rooms: &'static [((usize, usize), &'static str)],
-    /// The ways between rooms: from a room east or north, with a door
-    /// hung or an open way.
-    pub ways: &'static [((usize, usize), Side, bool)],
-    /// The ways out: a room, its outside wall, and the way's width.
-    pub exits: &'static [((usize, usize), Side, f32)],
-    /// Furniture by room name: where it sits as a share of the room
-    /// (-0.5 to 0.5 across and along), and its size.
-    pub furniture: &'static [(&'static str, [f32; 2], [f32; 3])],
-    /// The model each piece of `furniture` is drawn as, in its order
-    /// (`SolidDef::model`); a piece past the list's end, or named "", is
-    /// drawn as a block.
-    pub furniture_models: &'static [&'static str],
-    /// The things used in it by room name: the thing's name and where it
-    /// stands as a share of the room, in the first room of that name.
-    pub things: &'static [(&'static str, &'static str, [f32; 2])],
-    /// The things standing outside it (a farm's fields, a gas station's
-    /// pumps): the thing's name and where, metres from the plan's middle,
-    /// +z its front.
-    pub outside: &'static [(&'static str, [f32; 2])],
-    pub walls: &'static [Rgb],
+    pub columns: Vec<f32>,
+    pub rows: Vec<f32>,
+    pub rooms: Vec<PlanRoom>,
+    #[serde(default)]
+    pub ways: Vec<PlanWay>,
+    #[serde(default)]
+    pub exits: Vec<PlanExit>,
+    #[serde(default)]
+    pub furniture: Vec<PlanFurniture>,
+    #[serde(default)]
+    pub things: Vec<PlanThing>,
+    #[serde(default)]
+    pub outside: Vec<PlanOutside>,
+    pub walls: Vec<Rgb>,
     pub floor: Rgb,
+    #[serde(rename = "furniture colour")]
     pub furniture_color: Rgb,
     pub height: f32,
 }
 
+/// A room by (column, row), named.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanRoom {
+    pub at: (usize, usize),
+    pub name: String,
+}
+
+/// A way between rooms: from a room east or north, with a door hung or
+/// an open way.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanWay {
+    pub from: (usize, usize),
+    pub side: Side,
+    #[serde(default)]
+    pub door: bool,
+}
+
+/// A way out: a room, its outside wall, and the way's width.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanExit {
+    pub from: (usize, usize),
+    pub side: Side,
+    pub width: f32,
+}
+
+/// A piece of furniture in the first room of its name: where it sits as
+/// a share of the room (-0.5 to 0.5 across and along), its size, and the
+/// model it is drawn as (`SolidDef::model`), none a block.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanFurniture {
+    pub room: String,
+    pub at: [f32; 2],
+    pub size: [f32; 3],
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// A thing used in the place: its name and where it stands as a share of
+/// the first room of that name.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanThing {
+    pub thing: String,
+    pub room: String,
+    pub at: [f32; 2],
+}
+
+/// A thing standing outside the place (a farm's fields, a gas station's
+/// pumps): its name and where, metres from the plan's middle, +z its
+/// front.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanOutside {
+    pub thing: String,
+    pub at: [f32; 2],
+}
+
 /// Where a room's middle is, from the plan's middle, unturned.
 fn room_at(def: &PlanDef, c: usize, r: usize) -> Vec3 {
-    let xs = spaced(def.columns, 1.0);
-    let zs = spaced(def.rows, -1.0);
+    let xs = spaced(&def.columns, 1.0);
+    let zs = spaced(&def.rows, -1.0);
     let mid = Vec3::new((xs[0] + xs[xs.len() - 1]) / 2.0, 0.0, (zs[0] + zs[zs.len() - 1]) / 2.0).round();
     Vec3::new(xs[c], 0.0, zs[r]) - mid
 }
@@ -68,16 +129,17 @@ fn turn(p: Vec3, front: Vec2) -> Vec2 {
 /// colour and its windows).
 pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
     let mut roll = Roll::new(seed);
-    let wall_color = *roll.pick(def.walls);
+    let wall_color = *roll.pick(&def.walls);
     let (last_col, last_row) = (def.columns.len() - 1, def.rows.len() - 1);
     let mut rooms = Vec::new();
     let mut furniture = Vec::new();
     let mut lights = Vec::new();
-    for &((c, r), name) in def.rooms {
+    for PlanRoom { at: (c, r), name } in &def.rooms {
+        let (c, r) = (*c, *r);
         let (w, l) = (def.columns[c], def.rows[r]);
         let origin = room_at(def, c, r);
         let mut openings: Vec<Opening> = Vec::new();
-        for &((wc, wr), side, hung) in def.ways {
+        for &PlanWay { from: (wc, wr), side, door: hung } in &def.ways {
             let other = match side {
                 Side::East => (wc + 1, wr),
                 Side::North => (wc, wr + 1),
@@ -90,8 +152,8 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
                 openings.push(Opening { door: false, ..door(back, 0.0) });
             }
         }
-        for &(at, side, width) in def.exits {
-            if at == (c, r) {
+        for &PlanExit { from, side, width } in &def.exits {
+            if from == (c, r) {
                 openings.push(Opening { width, ..door(side, 0.0) });
             }
         }
@@ -116,17 +178,18 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
             floor: true,
             ceiling: true,
         });
-        for (i, &(_, [fx, fz], [sx, sy, sz])) in def.furniture.iter().enumerate().filter(|(_, f)| f.0 == name) {
+        for f in def.furniture.iter().filter(|f| &f.room == name) {
+            let ([fx, fz], [sx, sy, sz]) = (f.at, f.size);
             let size = Vec3::new(sx.min(w - 0.4), sy, sz.min(l - 0.4));
             let dx = (fx * w).clamp(-(w / 2.0 - size.x / 2.0 - 0.1), w / 2.0 - size.x / 2.0 - 0.1);
             let dz = (fz * l).clamp(-(l / 2.0 - size.z / 2.0 - 0.1), l / 2.0 - size.z / 2.0 - 0.1);
-            let model = def.furniture_models.get(i).filter(|m| !m.is_empty()).map(|m| m.to_string());
+            let model = f.model.clone().filter(|m| !m.is_empty());
             furniture.push(SolidDef { center: origin + Vec3::new(dx, size.y / 2.0, dz), size, color: def.furniture_color, model });
         }
         lights.push(LightDef { position: origin + Vec3::new(0.0, def.height - 0.4, 0.0), color: [1.0, 0.95, 0.85], intensity: 400_000.0 });
     }
     let plan = StructureDef {
-        name: def.name.to_string(),
+        name: def.name.clone(),
         wall_color,
         floor_color: def.floor,
         rooms,
@@ -144,16 +207,17 @@ pub fn build(def: &PlanDef, front: Vec2, seed: u64) -> StructureDef {
 
 /// Where each of the place's things stands, from its middle, turned to
 /// face `front`.
-pub fn things_of(def: &PlanDef, front: Vec2) -> Vec<(&'static str, Vec2)> {
+pub fn things_of(def: &PlanDef, front: Vec2) -> Vec<(&str, Vec2)> {
     def.things
         .iter()
-        .filter_map(|&(thing, room, [fx, fz])| {
-            let &((c, r), _) = def.rooms.iter().find(|(_, n)| *n == room)?;
+        .filter_map(|t| {
+            let [fx, fz] = t.at;
+            let (c, r) = def.rooms.iter().find(|room| room.name == t.room)?.at;
             let (w, l) = (def.columns[c], def.rows[r]);
             let p = room_at(def, c, r) + Vec3::new((fx * w).clamp(-(w / 2.0 - 0.5), w / 2.0 - 0.5), 0.0, (fz * l).clamp(-(l / 2.0 - 0.5), l / 2.0 - 0.5));
-            Some((thing, turn(p, front)))
+            Some((t.thing.as_str(), turn(p, front)))
         })
-        .chain(def.outside.iter().map(|&(thing, [x, z])| (thing, turn(Vec3::new(x, 0.0, z), front))))
+        .chain(def.outside.iter().map(|o| (o.thing.as_str(), turn(Vec3::new(o.at[0], 0.0, o.at[1]), front))))
         .collect()
 }
 
@@ -161,29 +225,34 @@ pub fn things_of(def: &PlanDef, front: Vec2) -> Vec<(&'static str, Vec2)> {
 mod tests {
     use super::*;
 
-    const SHOP: PlanDef = PlanDef {
-        name: "shop",
-        edge: false,
-        furniture_models: &[],
-        columns: &[8.0, 4.0],
-        rows: &[6.0, 4.0],
-        rooms: &[((0, 0), "floor"), ((1, 0), "office"), ((0, 1), "stockroom"), ((1, 1), "restroom")],
-        ways: &[((0, 0), Side::East, true), ((0, 0), Side::North, true), ((0, 1), Side::East, true)],
-        exits: &[((0, 0), Side::South, 2.0)],
-        furniture: &[("floor", [0.0, 0.0], [4.0, 1.5, 0.8])],
-        things: &[("register", "floor", [0.3, 0.3])],
-        outside: &[("sign", [0.0, 6.0])],
-        walls: &[[0.8, 0.8, 0.7]],
-        floor: [0.5, 0.5, 0.5],
-        furniture_color: [0.4, 0.3, 0.2],
-        height: 3.0,
-    };
+    const SHOP: &str = r#"{
+        "name": "shop",
+        "columns": [8.0, 4.0],
+        "rows": [6.0, 4.0],
+        "rooms": [
+            {"at": [0, 0], "name": "floor"}, {"at": [1, 0], "name": "office"},
+            {"at": [0, 1], "name": "stockroom"}, {"at": [1, 1], "name": "restroom"}
+        ],
+        "ways": [
+            {"from": [0, 0], "side": "east", "door": true}, {"from": [0, 0], "side": "north", "door": true},
+            {"from": [0, 1], "side": "east", "door": true}
+        ],
+        "exits": [{"from": [0, 0], "side": "south", "width": 2.0}],
+        "furniture": [{"room": "floor", "at": [0.0, 0.0], "size": [4.0, 1.5, 0.8]}],
+        "things": [{"thing": "register", "room": "floor", "at": [0.3, 0.3]}],
+        "outside": [{"thing": "sign", "at": [0.0, 6.0]}],
+        "walls": [[0.8, 0.8, 0.7]],
+        "floor": [0.5, 0.5, 0.5],
+        "furniture colour": [0.4, 0.3, 0.2],
+        "height": 3.0
+    }"#;
 
     #[test]
     fn a_plan_builds_every_room_and_places_its_things() {
-        let built = build(&SHOP, Vec2::new(0.0, 1.0), 7);
+        let shop: PlanDef = serde_json::from_str(SHOP).unwrap();
+        let built = build(&shop, Vec2::new(0.0, 1.0), 7);
         assert_eq!(built.rooms.len(), 4);
         assert!(validate(&built).is_ok());
-        assert_eq!(things_of(&SHOP, Vec2::new(0.0, 1.0)).len(), 2);
+        assert_eq!(things_of(&shop, Vec2::new(0.0, 1.0)).len(), 2);
     }
 }
