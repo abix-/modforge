@@ -13,15 +13,19 @@ use serde::{Deserialize, Serialize};
 
 /// One research topic as data.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TopicDef {
     pub name: String,
     /// What researching it takes, at its first level.
     pub cost: Vec<(String, u32)>,
     /// Topics done first.
+    #[serde(default)]
     pub needs: Vec<String>,
     /// The recipes it unlocks, by name: locked until it is done.
+    #[serde(default)]
     pub unlocks: Vec<String>,
     /// Researched again and again, each level costing more.
+    #[serde(default)]
     pub endless: bool,
 }
 
