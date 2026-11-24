@@ -68,6 +68,20 @@ pub fn set_play_rate(mesh: &UObject, montage: &UObject, rate: f32) -> Result<(),
     .map(|_| ())
 }
 
+/// Move the montage `mesh` plays to `position` seconds (AnimInstance
+/// Montage_SetPosition): it plays on from there, not stopped or
+/// started again. Game thread.
+pub fn set_position(mesh: &UObject, montage: &UObject, position: f32) -> Result<(), String> {
+    let anim = anim_instance(mesh).ok_or("no anim instance")?;
+    call(
+        anim,
+        "AnimInstance",
+        "Montage_SetPosition",
+        json!({"Montage": addr(montage), "NewPosition": position}),
+    )
+    .map(|_| ())
+}
+
 /// Every curve `mesh`'s anim instance holds now and its value
 /// (AnimInstance GetAllCurveNames, GetCurveValue): what the animations
 /// set this frame. Game thread. Asked 2026-11-22: "we need to be able to
