@@ -5,7 +5,7 @@
 //! Days to Die's buildings are tier 1 to 5, enemies and loot scaling
 //! together.
 
-use crate::roll::Roll;
+use crate::monument::Roll;
 
 /// The tier a place of `usual` tier rolls, from 1 to `tiers`: most often
 /// its usual tier, one either side half as often, two above now and then.
@@ -77,6 +77,25 @@ pub fn with_modifiers(tier: u32, modifiers: &[Modifier]) -> (u32, u32, u32, u32)
         }
     }
     (boxes, loot, people, hard)
+}
+
+/// Moves a rolled monument's loot, people and gates to the tier it rolls
+/// from its type's usual tier (`usual_danger` + 1), keeping each spot's
+/// own step above the type (a gated back room stays one above).
+pub fn set_tier(monument: &mut crate::structure::MonumentDef, usual_danger: u32, tiers: u32, seed: u64) -> u32 {
+    let tier = roll(usual_danger + 1, tiers, seed);
+    let shift = i64::from(danger_of(tier)) - i64::from(usual_danger);
+    let moved = |d: u32| (i64::from(d) + shift).max(0) as u32;
+    for s in &mut monument.loot_spots {
+        s.danger = moved(s.danger);
+    }
+    for s in &mut monument.npc_spots {
+        s.danger = moved(s.danger);
+    }
+    for g in &mut monument.gates {
+        g.level = moved(g.level);
+    }
+    tier
 }
 
 #[cfg(test)]
