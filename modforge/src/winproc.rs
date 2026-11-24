@@ -334,8 +334,9 @@ pub fn process_regions_json() -> serde_json::Value {
     // A growing count = the game is calling VirtualAlloc more.
     // A stable count with growing committed bytes = the game is
     // committing pages within already-reserved zones.
-    let mut alloc_bases_private: std::collections::HashSet<usize> =
-        std::collections::HashSet::new();
+    // Gathered, then sorted and deduplicated once at the end: no hashing
+    // per region.
+    let mut alloc_bases_private: Vec<usize> = Vec::new();
 
     // Track top-N largest committed regions for the report.
     // Region key collapses adjacent same-type/same-protection
@@ -381,7 +382,7 @@ pub fn process_regions_json() -> serde_json::Value {
                 by_type_mapped += size;
             } else if mtype == MEM_PRIVATE {
                 by_type_private += size;
-                alloc_bases_private.insert(info.AllocationBase as usize);
+                alloc_bases_private.push(info.AllocationBase as usize);
                 if size < 64 * 1024 {
                     hist_priv_4k += 1;
                     hist_priv_4k_bytes += size;
@@ -462,6 +463,8 @@ pub fn process_regions_json() -> serde_json::Value {
         addr = next;
     }
 
+    alloc_bases_private.sort_unstable();
+    alloc_bases_private.dedup();
     top_regions.sort_by(|a, b| b.0.cmp(&a.0));
     let top: Vec<serde_json::Value> = top_regions
         .into_iter()
