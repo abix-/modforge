@@ -88,6 +88,11 @@ pub struct StormType {
     pub from_storm: u32,
     #[serde(default = "usual_weight")]
     pub weight: u32,
+    /// The research topic that teaches what it does (topside-town "The
+    /// storms": "You don't understand the storm until you get to research
+    /// down"); none when nothing teaches it.
+    #[serde(default)]
+    pub learned_by: Option<String>,
 }
 
 fn yes() -> bool {
@@ -102,6 +107,18 @@ impl StormType {
     /// Whether it rolls `what` anew.
     pub fn rolls(&self, what: Reroll) -> bool {
         self.rolls.contains(&what)
+    }
+
+    /// What it does, in words, for one who has learned it.
+    pub fn says(&self) -> String {
+        let kills = if self.kills { "kills whoever is outside" } else { "kills nobody" };
+        let rolls = match (self.rolls(Reroll::Reality), self.rolls(Reroll::World)) {
+            (true, true) => "and makes another world under other rules",
+            (true, false) => "and changes the rules, leaving the world standing",
+            (false, true) => "and makes another world under the same rules",
+            (false, false) => "and leaves the world as it was",
+        };
+        format!("the {}: it {kills} {rolls}", self.name)
     }
 }
 
