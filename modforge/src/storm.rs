@@ -55,6 +55,75 @@ impl StormDef {
     }
 }
 
+/// What a storm rolls anew when it passes (topside-town "The storms":
+/// "Maybe there's different types of storms that changes what re-rolls").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+pub enum Reroll {
+    /// Another reality is handed over.
+    Reality,
+    /// The ground, what stands on it, the things lying outside and the
+    /// topside people: the world rolled from a new seed.
+    World,
+}
+
+/// A type of storm, told apart by its colours (topside-town "The storms":
+/// "there should be different types of storms, and maybe we could
+/// colorize that"), read from a game's content. Its sky's colours while
+/// it warns and while it rages, red, green, blue and how much it covers,
+/// 0 to 1; whether it kills whoever is in the open; what it rolls anew;
+/// the least storm it can be (0 the first, so later storms can do more:
+/// "an escalating series of things"); how likely against the others (100
+/// when left out).
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StormType {
+    pub name: String,
+    pub warning: [f32; 4],
+    pub storm: [f32; 4],
+    #[serde(default = "yes")]
+    pub kills: bool,
+    #[serde(default)]
+    pub rolls: Vec<Reroll>,
+    #[serde(default)]
+    pub from_storm: u32,
+    #[serde(default = "usual_weight")]
+    pub weight: u32,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn usual_weight() -> u32 {
+    100
+}
+
+impl StormType {
+    /// Whether it rolls `what` anew.
+    pub fn rolls(&self, what: Reroll) -> bool {
+        self.rolls.contains(&what)
+    }
+}
+
+/// The type storm number `storm` (0 the first) is, rolled from `seed`
+/// among the types it can be, by their weights; none when no type can.
+pub fn pick_type(types: &[StormType], storm: u32, seed: u64) -> Option<&StormType> {
+    let can: Vec<&StormType> = types.iter().filter(|t| t.from_storm <= storm && t.weight > 0).collect();
+    let total: u64 = can.iter().map(|t| u64::from(t.weight)).sum();
+    if total == 0 {
+        return None;
+    }
+    let mut left = crate::roll::salted_index(seed ^ u64::from(storm), 0x5707_7E00, total);
+    for t in &can {
+        let w = u64::from(t.weight);
+        if left < w {
+            return Some(t);
+        }
+        left -= w;
+    }
+    can.last().copied()
+}
+
 /// When the storm hits, in seconds on the clock: `days` game days (a range,
 /// as an episode's data gives it) after `from`, rolled from `seed`
 /// (`roll::salted_index`, the same every time for the same seed), a game
