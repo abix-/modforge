@@ -119,6 +119,10 @@ pub struct StormType {
     /// down"); none when nothing teaches it.
     #[serde(default)]
     pub learned_by: Option<String>,
+    /// The weather it brings while it rages (the normal storm's rain:
+    /// "just rain and thunder"); none for its own sky alone.
+    #[serde(default)]
+    pub weather: Option<crate::weather::Weather>,
 }
 
 fn yes() -> bool {
@@ -211,6 +215,7 @@ impl StormType {
                 self.does.push(*e);
             }
         }
+        self.weather = self.weather.or(other.weather);
         self
     }
 }
