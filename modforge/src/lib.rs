@@ -41,6 +41,7 @@ pub mod grid;
 pub mod ground;
 pub mod handoff;
 pub mod harness;
+pub mod history;
 pub mod hook;
 pub mod hot_reload;
 pub mod house;
