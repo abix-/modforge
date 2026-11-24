@@ -381,6 +381,18 @@ impl Town {
     }
 
     /// The same town with its places moved about `times` times (topside
+    /// The town after `wipes` wiping storms (topside todo Town 6: "what's
+    /// on top of the bunkers... later that's going to change"): its
+    /// streets, lots and bunkers stay, and what stands on every lot is
+    /// rolled anew, its tier, its house and who lives there, the house
+    /// over each bunker too.
+    pub fn rerolled(mut self, wipes: u32) -> Self {
+        if wipes > 0 {
+            self.seed = tile_hash(self.seed, (wipes as i32, 0), TOWN_SALT + 0x5B);
+        }
+        self
+    }
+
     /// todo "Storm effect 2", the shuffle storm: the same town, the map
     /// wrong): each time, the places of one part (main street's, the
     /// edge's) trade lots among themselves, rolled from the town's seed.
