@@ -60,7 +60,7 @@ const STREAM: usize = 0x50;
 const CODEC: usize = 0x70;
 /// Precision of a rewritten curve value (UE's ACL curve codec default
 /// CurvePrecision is 0.001).
-const PRECISION: f32 = 0.001;
+pub(crate) const PRECISION: f32 = 0.001;
 
 /// The curve codec a sequence's curve stream is written for.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

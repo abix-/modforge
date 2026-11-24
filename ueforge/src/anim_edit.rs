@@ -73,10 +73,6 @@ const UE_OFFSETS: usize = 0x10;
 const UE_SCALE_OFFSETS: usize = 0x20;
 const UE_STREAM: usize = 0x38;
 const UE_KEY_FORMAT: usize = 0x60;
-/// How close the new data must read back to what was asked, in cm and
-/// in quaternion dot.
-const POS_TOLERANCE: f64 = 0.05;
-const ROT_TOLERANCE: f64 = 0.9999;
 
 /// A place that holds the ACL buffer's address.
 #[derive(Clone, Copy, Debug)]
@@ -427,6 +423,18 @@ fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec
     // Per track is written in full floats; key lerp in the clip's own
     // packing (the engine's decoders were picked from it), so the check
     // allows what that packing can be off by.
+    // What full floats can be off by: each component by at most half an
+    // f32 step of the largest value written, so a position by under one
+    // step of it, and a unit rotation's dot by under two f32 epsilons
+    // (Guess 45: no fixed limits).
+    let big = keys
+        .iter()
+        .filter_map(|k| k.pos.as_ref())
+        .flatten()
+        .map(|p| p.abs().max_element())
+        .fold(1.0f64, f64::max);
+    let f32_pos = f64::from(f32::EPSILON) * big;
+    let f32_rot = 2.0 * f64::from(f32::EPSILON);
     let (offsets_w, scale_w, stream_w, formats, pos_tol, rot_tol) = if per_track {
         let w = codec::encode_per_track(&keys, has_scale);
         (
@@ -434,8 +442,8 @@ fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec
             w.scale_offsets,
             w.stream,
             [0, 0, 0],
-            POS_TOLERANCE,
-            ROT_TOLERANCE,
+            f32_pos,
+            1.0 - f32_rot,
         )
     } else {
         let f = codec::LerpFormats {
@@ -450,8 +458,8 @@ fn ue_slots(clip: &Clip, was: &[Vec<Xform>], poses: &[Vec<Xform>]) -> Result<Vec
             w.scale_offsets,
             w.stream,
             [codes[1], codes[2], codes[3]],
-            POS_TOLERANCE.max(w.vec_step * 2.0),
-            ROT_TOLERANCE.min(1.0 - 4.0 * w.rot_step * w.rot_step),
+            w.vec_step * 2.0 + f32_pos,
+            1.0 - 4.0 * w.rot_step * w.rot_step - f32_rot,
         )
     };
     let w = codec::Written {
@@ -642,13 +650,22 @@ pub fn rewrite_curves(
     edit(&c, &mut values)?;
     let bytes = crate::anim_curves::encode(&c, &values)?;
     let now = keep(&bytes);
+    // What the codec can be off by (Guess 45): ACL its own precision; a
+    // rich curve's keys are the floats written, read at their own times,
+    // so their f32 rounding (a lerp's three roundings, Higham 2.2).
+    let limit = |a: f32, b: f32| -> f32 {
+        match c.codec {
+            crate::anim_curves::Codec::Acl => crate::anim_curves::PRECISION,
+            crate::anim_curves::Codec::RichCurve => 3.0 * f32::EPSILON * a.abs().max(b.abs()).max(1.0),
+        }
+    };
     for (i, want) in values.iter().enumerate() {
         let got = crate::anim_curves::decode_sample(&c, now, bytes.len(), i as u32)?;
         if let Some((k, (a, b))) = want
             .iter()
             .zip(&got)
             .enumerate()
-            .find(|(_, (a, b))| (*a - *b).abs() > 0.005)
+            .find(|(_, (a, b))| (*a - *b).abs() > limit(**a, **b))
         {
             return Err(format!(
                 "{}: curve {} sample {i} reads back {b}, not {a}",

@@ -221,17 +221,6 @@ pub unsafe fn package_of(c: &UObject) -> Option<String> {
     Some(top.name())
 }
 
-/// Directions around the chain line a thickness sample's outline is
-/// taken in. Dynamic Penetration for Games takes 64 from a drawn map; a
-/// half cm sample of a drawn mesh can hold as few as 10 vertices, so
-/// fewer directions, each still holding one.
-const AROUND: usize = 16;
-
-/// How long a slice along the chain each thickness sample is measured
-/// from, cm, at least its step. Drawn rings can be about 1 cm apart, so
-/// a shorter slice can fall between them.
-const SLICE_CM: f64 = 1.0;
-
 /// How much of a vertex's weight must be on the chain for the thickness
 /// to count it. Drawn with the chain alone ([`Mesh::on_chain`]), the
 /// share on other bones is pulled in; a higher share also leaves out
@@ -251,48 +240,57 @@ fn dir_at(pts: &[DVec3], starts: &[f64], s: f64) -> DVec3 {
     (pts[j + 1] - pts[j]).normalize_or(DVec3::X)
 }
 
-/// Points `pts`' outline around `mid`: the farthest from it in each of
-/// [`AROUND`] directions.
-fn outline(pts: &[DVec2], mid: DVec2) -> [Option<DVec2>; AROUND] {
-    let mut cells = [None; AROUND];
-    for &p in pts {
-        let q = p - mid;
-        let a = (q.y.atan2(q.x) / std::f64::consts::TAU).rem_euclid(1.0);
-        let c: &mut Option<DVec2> = &mut cells[(a * AROUND as f64) as usize % AROUND];
-        if c.is_none_or(|o| q.length() > (o - mid).length()) {
-            *c = Some(p);
-        }
-    }
-    cells
-}
-
 /// A sample's radius from its vertices `pts` (on the plane across the
-/// chain line, the line at the origin): the outline's mean distance
-/// from its middle. The middle, as GirthFrame.cs: the midpoints of lines
-/// through the centre taken lie on the circle through it and the
-/// middle, around halfway between, so twice their mean from it; then
-/// (mine) the outline taken again around that middle, 10 times, since
-/// fixed directions from far off centre leave it off. None with no
-/// vertex.
+/// chain line): the circle fitted to all of them in one step, Kasa 1976
+/// ("A circle fitting procedure and its error analysis"): the least
+/// squares of x^2 + y^2 + D x + E y + F, a 3 by 3 linear solve, centre
+/// (-D/2, -E/2) (Guesses 26 and 44: no outline directions, no rounds).
+/// Worked about the points' mean, for float accuracy. None with fewer
+/// than three points or all on one line (the solve's pivot within float
+/// rounding of 0).
 fn girth(pts: &[DVec2]) -> Option<f64> {
-    if pts.is_empty() {
+    if pts.len() < 3 {
         return None;
     }
-    let mut mid = DVec2::ZERO;
-    for _ in 0..10 {
-        let cells = outline(pts, mid);
-        let pairs: Vec<DVec2> = (0..AROUND / 2)
-            .filter_map(|i| Some((cells[i]? + cells[i + AROUND / 2]?) / 2.0))
-            .collect();
-        mid = if pairs.is_empty() {
-            let out: Vec<DVec2> = cells.iter().flatten().copied().collect();
-            out.iter().sum::<DVec2>() / out.len() as f64
-        } else {
-            mid + (pairs.iter().sum::<DVec2>() / pairs.len() as f64 - mid) * 2.0
-        };
+    let mean = pts.iter().sum::<DVec2>() / pts.len() as f64;
+    let mut m = [[0.0f64; 4]; 3];
+    for p in pts {
+        let q = *p - mean;
+        let row = [q.x, q.y, 1.0];
+        let z = -(q.x * q.x + q.y * q.y);
+        for i in 0..3 {
+            for j in 0..3 {
+                m[i][j] += row[i] * row[j];
+            }
+            m[i][3] += row[i] * z;
+        }
     }
-    let out: Vec<DVec2> = outline(pts, mid).iter().flatten().copied().collect();
-    Some(out.iter().map(|p| p.distance(mid)).sum::<f64>() / out.len() as f64)
+    let size = m.iter().flat_map(|r| r[..3].iter()).fold(0.0f64, |a, v| a.max(v.abs()));
+    // Gaussian elimination with partial pivoting.
+    for k in 0..3 {
+        let p = (k..3).max_by(|a, b| m[*a][k].abs().total_cmp(&m[*b][k].abs()))?;
+        m.swap(k, p);
+        if !(m[k][k].abs() > 3.0 * f64::EPSILON * size) {
+            return None;
+        }
+        for i in k + 1..3 {
+            let f = m[i][k] / m[k][k];
+            for j in k..4 {
+                m[i][j] -= f * m[k][j];
+            }
+        }
+    }
+    let mut s = [0.0f64; 3];
+    for i in (0..3).rev() {
+        let mut v = m[i][3];
+        for j in i + 1..3 {
+            v -= m[i][j] * s[j];
+        }
+        s[i] = v / m[i][i];
+    }
+    let (d, e, f) = (s[0], s[1], s[2]);
+    let r2 = (d * d + e * e) / 4.0 - f;
+    (r2 > 0.0).then(|| r2.sqrt())
 }
 
 impl Mesh {
@@ -481,7 +479,13 @@ impl Mesh {
         if end < 0.0 || end / step > 100_000.0 {
             return None;
         }
-        let half = (step.max(SLICE_CM)) / 2.0;
+        // Each slice at least as long as the widest gap between his
+        // vertices along the chain, so no slice falls between his rings
+        // (Guess 42: measured from his mesh, not a fixed cm).
+        let mut along: Vec<f64> = on.iter().map(|(s, _)| *s).collect();
+        along.sort_by(f64::total_cmp);
+        let widest_gap = along.windows(2).map(|w| w[1] - w[0]).fold(0.0f64, f64::max);
+        let half = step.max(widest_gap) / 2.0;
         let slices: Vec<Vec<DVec2>> = (0..=(end / step).floor() as usize)
             .map(|k| {
                 let mid = (k as f64 + 0.5) * step;
