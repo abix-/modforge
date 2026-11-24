@@ -177,21 +177,32 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
     let mut dealt = [vec![0.0; a.kinds.len()], vec![0.0; b.kinds.len()]];
     let stats = |u: &Unit| &sides[u.side].kinds[u.kind];
     let mut t = 0.0;
-    let alive = |units: &[Unit], s: usize| units.iter().any(|u| u.side == s && u.life > 0.0);
-    while t < limit && alive(&units, 0) && alive(&units, 1) {
+    // The living of each side, in order, found once a step: whom the other
+    // side can aim at and splash.
+    let mut living: [Vec<usize>; 2] = [Vec::new(), Vec::new()];
+    for (k, u) in units.iter().enumerate() {
+        if u.life > 0.0 {
+            living[u.side].push(k);
+        }
+    }
+    let mut hits = vec![0.0; units.len()];
+    let mut moves = Vec::new();
+    let mut fired = Vec::new();
+    while t < limit && !living[0].is_empty() && !living[1].is_empty() {
         // Damage lands at the end of the step, so neither side shoots first.
-        let mut hits = vec![0.0; units.len()];
-        let mut moves = Vec::new();
-        let mut fired = Vec::new();
+        hits.iter_mut().for_each(|h| *h = 0.0);
+        moves.clear();
+        fired.clear();
         for (i, u) in units.iter().enumerate() {
             if u.life <= 0.0 {
                 continue;
             }
             let me = stats(u);
-            let target = units
+            let foes = &living[1 - u.side];
+            let target = foes
                 .iter()
-                .enumerate()
-                .filter(|(_, e)| e.side != u.side && e.life > 0.0 && me.can_hit(stats(e)))
+                .map(|&j| (j, &units[j]))
+                .filter(|(_, e)| me.can_hit(stats(e)))
                 .map(|(j, e)| (j, (e.x - u.x).hypot(e.y - u.y)))
                 .min_by(|p, q| p.1.total_cmp(&q.1));
             let Some((j, dist)) = target else { continue };
@@ -209,26 +220,31 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
                 continue;
             }
             let tgt = &units[j];
-            for (k, e) in units.iter().enumerate() {
+            for &k in foes {
+                let e = &units[k];
                 let splashed = me.splash > 0.0 && (e.x - tgt.x).hypot(e.y - tgt.y) <= me.splash;
-                if e.side != u.side && e.life > 0.0 && me.can_hit(stats(e)) && (k == j || splashed)
-                {
+                if me.can_hit(stats(e)) && (k == j || splashed) {
                     hits[k] += me.damage;
                     dealt[u.side][u.kind] += me.damage.min(e.life);
                 }
             }
             fired.push(i);
         }
-        for i in fired {
+        for &i in &fired {
             units[i].cooldown = stats(&units[i]).attack_interval;
         }
-        for (i, x, y) in moves {
+        for &(i, x, y) in &moves {
             units[i].x = x;
             units[i].y = y;
         }
-        for (u, h) in units.iter_mut().zip(hits) {
+        living[0].clear();
+        living[1].clear();
+        for (k, (u, h)) in units.iter_mut().zip(&hits).enumerate() {
             u.life -= h;
             u.cooldown -= STEP;
+            if u.life > 0.0 {
+                living[u.side].push(k);
+            }
         }
         t += STEP;
     }
@@ -247,7 +263,7 @@ pub fn fight(a: &Side, b: &Side, limit: f64) -> FightResult {
             })
             .collect()
     });
-    let winner = match (alive(&units, 0), alive(&units, 1)) {
+    let winner = match (!living[0].is_empty(), !living[1].is_empty()) {
         (true, false) => Some(0),
         (false, true) => Some(1),
         _ => None,
