@@ -90,6 +90,27 @@ pub enum Does {
     Spoil,
     /// What a storm can do, done now.
     Storm(Effect),
+    /// Trouble at home, inside the player's own walls (topside todo
+    /// Events 5).
+    Home(Home),
+}
+
+/// The trouble at home an event can make (topside todo Events 5,
+/// Claude's list the operator took, 2026-11-24).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Home {
+    /// A short circuit: something that burns catches fire.
+    Fire,
+    /// One of the people falls sick, and it spreads (`sickness`).
+    Sickness,
+    /// The bottom level floods.
+    Flood,
+    /// Someone breaks: steals from the store and runs.
+    Breaks,
+    /// Two of the people fall out.
+    FallOut,
+    /// Two of the people fall for each other.
+    InLove,
 }
 
 fn usual_danger() -> u32 {
@@ -422,7 +443,7 @@ pub fn layer(events: &EventsDef, base: &EventDef, budget: f32, night: bool, seed
                 let h = hours.0 + (hours.1 - hours.0) * share(seed, salt + 2);
                 *hours = (h, h);
             }
-            Does::Spoil | Does::Storm(_) => {}
+            Does::Spoil | Does::Storm(_) | Does::Home(_) => {}
         }
     }
     let at = |k: u64| base.places.get(roll(seed, 0xE7E7_0500 + k, base.places.len() as u64) as usize).copied().unwrap_or(Place::Town);

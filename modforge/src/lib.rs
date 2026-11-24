@@ -87,6 +87,7 @@ pub mod relationship;
 pub mod research;
 pub mod ring;
 pub mod roll;
+pub mod sickness;
 pub mod route;
 pub mod rpg;
 pub mod scanner;
