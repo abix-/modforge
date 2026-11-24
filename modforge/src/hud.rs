@@ -32,6 +32,24 @@ pub enum InteractKind {
     Switch {
         on: bool,
     },
+    /// A locked door (`door`) or a locked box, a safe (topside-town
+    /// "Everything works": "locks, keys, deadbolts, safes"; Project
+    /// Zomboid's house keys): E with its key carried (`key_for(lock)`)
+    /// unlocks it, for good; without, it stays shut.
+    Locked {
+        lock: u32,
+        door: bool,
+    },
+}
+
+/// The name of the key that opens lock `lock`.
+pub fn key_for(lock: u32) -> String {
+    format!("key {lock}")
+}
+
+/// What a lock is once its key has opened it: a closed door, or a box.
+pub fn unlocked(door: bool) -> InteractKind {
+    if door { InteractKind::Door { open: false } } else { InteractKind::Container }
 }
 
 /// What the player is looking at right now.
@@ -52,6 +70,7 @@ pub fn prompt_for(kind: InteractKind, item_name: Option<&str>, item_count: Optio
         }
         .to_string(),
         InteractKind::Gate { level } => format!("locked (level {level})"),
+        InteractKind::Locked { .. } => "[E] locked".to_string(),
         InteractKind::Pickup => match (item_name, item_count) {
             (Some(name), Some(count)) if count > 1 => format!("[E] pick up {name} x{count}"),
             (Some(name), _) => format!("[E] pick up {name}"),
@@ -98,6 +117,10 @@ pub enum InteractResult {
     UseSource,
     /// A switch flips: the consumer turns it to `!on`.
     ToggleSwitch,
+    /// The key was carried: the lock is now this.
+    Unlock(InteractKind),
+    /// No key to lock `lock`: it stays shut.
+    NeedsKey(u32),
 }
 
 /// Execute an interaction. modforge decides what happens; the
@@ -112,6 +135,13 @@ pub fn interact(
     match kind {
         InteractKind::Door { .. } => InteractResult::ToggleDoor,
         InteractKind::Gate { level } => InteractResult::Locked(level),
+        InteractKind::Locked { lock, door } => {
+            if player_inv.count_of(&key_for(lock)) > 0 {
+                InteractResult::Unlock(unlocked(door))
+            } else {
+                InteractResult::NeedsKey(lock)
+            }
+        }
         InteractKind::Pickup => {
             if let Some(stack) = pickup_stack {
                 if player_inv.add(stack, max_stack).is_some() {
@@ -971,6 +1001,16 @@ mod tests {
             &mut state,
         );
         assert_eq!(r, InteractResult::ToggleDoor);
+    }
+
+    #[test]
+    fn a_lock_opens_only_with_its_key() {
+        let mut inv = Inventory::new(5);
+        let mut state = HudState::new();
+        let safe = InteractKind::Locked { lock: 7, door: false };
+        assert_eq!(interact(safe, &mut inv, None, 10, &mut state), InteractResult::NeedsKey(7));
+        inv.slots[0] = Some(stack(&key_for(7), 1));
+        assert_eq!(interact(safe, &mut inv, None, 10, &mut state), InteractResult::Unlock(InteractKind::Container));
     }
 
     #[test]

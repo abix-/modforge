@@ -273,6 +273,25 @@ pub fn driveway(front: Vec2) -> Vec2 {
     (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
 }
 
+/// Where a house's front door stands, its doorway's middle in the hall's
+/// south wall, from the house's middle, turned to face `front` (the
+/// opening the plan makes for room (2, 0)).
+pub fn front_door(front: Vec2) -> Vec2 {
+    let q = quarters_for(front);
+    let p = room_at(2, 0) + Vec3::new(0.0, 0.0, 0.5 * ROWS[0]);
+    (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+}
+
+/// Where a house's safe stands (topside-town "Everything works":
+/// "safes"): against the first bedroom's back wall, between its closet
+/// and its dresser, turned to face `front`. Claude's.
+pub fn safe(front: Vec2) -> Vec2 {
+    let q = quarters_for(front);
+    let (c, r) = ROOMS.iter().find(|(_, name)| *name == "bedroom").map_or((0, 0), |&(at, _)| at);
+    let p = room_at(c, r) + Vec3::new(0.0, 0.0, -0.35 * ROWS[r]);
+    (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+}
+
 /// Where the living room's couch stands, from the house's middle, turned
 /// to face `front` (topside-town "Everything works"). Claude's.
 pub fn couch(front: Vec2) -> Vec2 {
