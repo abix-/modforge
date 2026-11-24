@@ -54,18 +54,12 @@ pub enum Leaves {
     Morning,
 }
 
-/// Something in the air that lasts a while.
+/// Something in the air that lasts a while: a weather (`weather`, which
+/// already decides what it does to those outside and to sight), or the
+/// day gone dark.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Lasting {
-    /// Hurts those outside (radiation).
-    Fallout,
-    /// Hurts those outside (cold).
-    Cold,
-    /// Hurts those outside (heat).
-    Heat,
-    /// The sky closes in.
-    Fog,
-    /// Day goes dark.
+    Weather(crate::weather::Weather),
     Dark,
 }
 
@@ -245,6 +239,20 @@ pub struct Event {
     pub warning: Warning,
     /// The seed the game rolls the exact spots from.
     pub seed: u64,
+}
+
+impl Event {
+    /// What the player is told while it is foretold (Claude's words, for
+    /// the operator to change): a sound, a light, or the broadcast naming
+    /// it; nothing when it comes unforetold.
+    pub fn foretold(&self) -> Option<String> {
+        match self.warning {
+            Warning::None => None,
+            Warning::Sound => Some("Something far off. Listen.".to_string()),
+            Warning::Sky => Some("A light crosses the sky.".to_string()),
+            Warning::Broadcast => Some(format!("On the air: {} coming.", self.name)),
+        }
+    }
 }
 
 impl Director {
