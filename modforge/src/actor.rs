@@ -12,7 +12,7 @@ use crate::structure::Rgb;
 
 /// How far from home an actor ranges when left alone (the brain's
 /// wander and leash radius): a guard holds its post, a hunter roams.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
 pub enum Behaviour {
     /// Stays within a few metres of its post; turns and fights what
     /// comes, never chases. With speed zero this is the turret.
@@ -31,20 +31,28 @@ impl Behaviour {
     }
 }
 
-/// One kind of actor, as data.
-#[derive(Clone, Debug, PartialEq)]
+/// One kind of actor, as data. Read from a game's content (topside's
+/// content/actors.yaml), a def names only what it has: left out, it
+/// belongs to no faction, has no protection, and starts with nothing in
+/// hand.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActorDef {
     pub name: String,
     /// A registered faction, or None for a neutral who belongs to no
     /// side (design.md).
+    #[serde(default)]
     pub faction: Option<String>,
     pub behaviour: Behaviour,
     pub max_health: f32,
+    #[serde(default)]
     pub protection: Protection,
     /// Item in the weapon slot at spawn, if any.
+    #[serde(default)]
     pub weapon: Option<String>,
     /// The layers on that weapon, by `LayerDef` name (a raider's wooden
     /// handle carries an axe head).
+    #[serde(default)]
     pub weapon_layers: Vec<String>,
     /// How far the actor notices a target.
     pub sight: f32,
