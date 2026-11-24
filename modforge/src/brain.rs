@@ -110,9 +110,20 @@ pub trait GameFacts {
     fn water_room(&self) -> f32 {
         0.0
     }
+    /// The tier of the place standing at a point (topside-town "Tiers"),
+    /// 1 where there is none: a higher tier's boxes draw people from
+    /// farther, so they meet and fight over the scarce high tier places
+    /// (topside todo Tier 5).
+    fn tier_at(&self, _at: Vec3) -> u32 {
+        1
+    }
 }
 
 impl GameFacts for () {}
+
+/// How many metres farther a box is worth walking for each tier its place
+/// stands above tier 1 (topside todo Tier 5; Claude's).
+pub const TIER_PULL: f32 = 60.0;
 
 impl std::fmt::Debug for Perception<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -744,18 +755,17 @@ fn supply_best(p: &Perception) -> Option<Target> {
         })
 }
 
-/// The nearest known box not yet looked inside, other than their store.
+/// The nearest known box not yet looked inside, other than their store, a
+/// box in a higher tier place counting as `TIER_PULL` metres nearer for
+/// each tier above the first (topside todo Tier 5).
 fn unopened<'a>(p: &Perception<'a>) -> Option<&'a Known> {
     let store = p.game.store().map(|(key, _)| key);
+    let far = |k: &Known| k.position.distance(p.position) - p.game.tier_at(k.position).saturating_sub(1) as f32 * TIER_PULL;
     p.memory
         .known
         .iter()
         .filter(|k| k.checked_at.is_none() && Some(k.key) != store)
-        .min_by(|a, b| {
-            a.position
-                .distance(p.position)
-                .total_cmp(&b.position.distance(p.position))
-        })
+        .min_by(|a, b| far(a).total_cmp(&far(b)))
 }
 
 /// Carrying food or water home: when the bunker is no longer short, the
