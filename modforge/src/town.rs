@@ -365,6 +365,18 @@ impl Town {
         crate::tier::roll(usual, self.tiers, tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x71))
     }
 
+    /// The modifiers on what stands on lot `i` (topside-town "Tiers":
+    /// "per building, per monument, per area"): its own, one building in
+    /// six, and its area's, one part of the town in four (the parts:
+    /// main street, the residential streets, the cul-de-sacs, the edge),
+    /// so a whole area can be guarded. The odds are Claude's.
+    pub fn modifiers_of(&self, i: usize) -> Vec<crate::tier::Modifier> {
+        let part = self.lots[i].part as i32;
+        let own = crate::tier::modifier(tile_hash(self.seed, (i as i32, 3), TOWN_SALT + 0x72), 6);
+        let area = crate::tier::modifier(tile_hash(self.seed, (part, 4), TOWN_SALT + 0x73), 4);
+        own.into_iter().chain(area).collect()
+    }
+
     /// Where every place's things stand, each with its place's name.
     pub fn place_things(&self) -> Vec<(&'static str, &'static str, Vec2)> {
         self.places

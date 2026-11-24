@@ -219,26 +219,29 @@ impl World2d {
             // A house, or a place of the town (plan.rs) on its lot.
             .filter_map(|(i, l)| {
                 let structure = if l.house { town.house_on(i) } else { town.place_on(i)? };
-                Some((l, structure, town.tier_of(i)))
+                Some((l, structure, town.tier_of(i), town.modifiers_of(i)))
             })
-            .map(|(l, structure, tier)| {
+            .map(|(l, structure, tier, modifiers)| {
                 // Its tier (topside-town "Tiers") in what is found inside:
                 // a box a tier, filled at the tier's danger, and from tier
                 // 3 up people at it, one fewer than the tier past 2, each
-                // in a room of its own in turn. How many is Claude's.
-                let danger = crate::tier::danger_of(tier);
+                // in a room of its own in turn, all as its modifiers make
+                // them (tier.rs). How many is Claude's.
+                let (boxes, loot, people, hard) = crate::tier::with_modifiers(tier, &modifiers);
                 let rooms: Vec<Vec3> = structure.rooms.iter().filter(|r| r.origin.y.abs() < 0.5).map(|r| Vec3::new(r.origin.x, 0.0, r.origin.z)).collect();
                 let at = |k: usize| rooms.get(k % rooms.len().max(1)).copied().unwrap_or(Vec3::ZERO);
-                let loot_spots = (0..tier as usize).map(|k| LootSpot { position: at(k) + Vec3::new(0.6, 0.0, 0.6), danger }).collect();
-                let npc_spots = (0..tier.saturating_sub(2) as usize).map(|k| NpcSpot { position: at(k + 1), danger }).collect();
-                (l, structure, loot_spots, npc_spots)
+                let loot_spots = (0..boxes as usize).map(|k| LootSpot { position: at(k) + Vec3::new(0.6, 0.0, 0.6), danger: loot }).collect();
+                let npc_spots = (0..people as usize).map(|k| NpcSpot { position: at(k + 1), danger: hard }).collect();
+                // Named by its modifiers, as Diablo names a rare.
+                let name = modifiers.iter().map(|m| m.word()).chain([structure.name.as_str()]).collect::<Vec<_>>().join(" ");
+                (l, structure, name, loot_spots, npc_spots)
             })
-            .map(|(l, structure, loot_spots, npc_spots)| Place {
-                monument: structure.name.clone(),
+            .map(|(l, structure, name, loot_spots, npc_spots)| Place {
+                monument: name.clone(),
                 position: l.at.round(),
                 biome: String::new(),
                 rolled: MonumentDef {
-                    name: structure.name.clone(),
+                    name,
                     kind: structure.name.clone(),
                     members: vec![MonumentMember {
                         structure,
