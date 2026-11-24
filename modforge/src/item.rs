@@ -370,7 +370,12 @@ impl ItemRegistry {
 /// carry their parts). The item is its own first layer; these go over
 /// it, each changing both its numbers and how it looks: a melee
 /// weapon's head decides the damage its hits land.
-#[derive(Clone)]
+///
+/// Read from a game's content (topside's content/layers.yaml), a layer
+/// names only what it has: left out, it lands no damage of its own and
+/// adds nothing.
+#[derive(Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LayerDef {
     pub name: String,
     /// The slot it goes in; an item takes it only when the item's
@@ -378,14 +383,19 @@ pub struct LayerDef {
     pub slot: String,
     /// The damage def a hit with this layer on lands, in place of the
     /// item's own. None leaves the item's damage as it is.
+    #[serde(default)]
     pub damage: Option<String>,
     /// Added to the item's reach, in metres (a gun's barrel, its sight).
+    #[serde(default)]
     pub reach: f32,
     /// Added to the item's spread, in degrees (a barrel, a stock).
+    #[serde(default)]
     pub spread_degrees: f32,
     /// Added to the item's seconds between shots (a grip).
+    #[serde(default)]
     pub delay: f32,
     /// The picture drawn for this layer, over the item's own.
+    #[serde(default)]
     pub picture: Option<String>,
 }
 
