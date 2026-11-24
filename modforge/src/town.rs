@@ -13,6 +13,8 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 
 use crate::ground::tile_hash;
+use crate::house::{HouseDef, house};
+use crate::structure::StructureDef;
 use crate::path::Cell;
 use crate::walk::{cell_of, centre};
 
@@ -39,6 +41,8 @@ pub struct TownDef {
     /// and their size.
     pub edge_lots: u32,
     pub edge_lot: Vec2,
+    /// The house every house lot stands.
+    pub house: HouseDef,
 }
 
 /// Which part of the town a lot or street is in.
@@ -89,6 +93,8 @@ pub struct Town {
     pub turnarounds: Vec<(Vec2, f32)>,
     pub lots: Vec<Lot>,
     street_tiles: BTreeSet<Cell>,
+    house: HouseDef,
+    seed: u64,
 }
 
 impl Town {
@@ -280,6 +286,8 @@ impl Town {
             turnarounds,
             lots,
             street_tiles: BTreeSet::new(),
+            house: def.house.clone(),
+            seed,
         };
         town.street_tiles = town.lay_streets();
         town
@@ -328,6 +336,12 @@ impl Town {
     /// The houses' lots.
     pub fn houses(&self) -> impl Iterator<Item = &Lot> {
         self.lots.iter().filter(|l| l.house)
+    }
+
+    /// The house standing on lot `i`, facing its street, its middle at
+    /// the lot's: the same every time for a seed and a lot.
+    pub fn house_on(&self, i: usize) -> StructureDef {
+        house(&self.house, self.lots[i].front, tile_hash(self.seed, (i as i32, 0), TOWN_SALT + 0x40))
     }
 
     /// The square the town lies in, its lowest corner and its highest.

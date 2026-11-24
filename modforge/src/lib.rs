@@ -37,6 +37,7 @@ pub mod handoff;
 pub mod harness;
 pub mod hook;
 pub mod hot_reload;
+pub mod house;
 pub mod hud;
 pub mod inject;
 pub mod input;

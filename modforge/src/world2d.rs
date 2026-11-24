@@ -7,13 +7,15 @@
 
 use std::collections::HashMap;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 
 use crate::biome::BiomeRegistry;
 use crate::ground::{Ground, GroundChunk, GroundGen, tile_hash};
 use crate::monument::{BuildingRegistry, MonumentRegistry};
 use crate::path::{Cell, search};
 use crate::places::{Makers, Place, Places};
+use crate::memory::GoodFor;
+use crate::structure::{MonumentDef, MonumentMember};
 use crate::town::Town;
 use crate::walk::{CHUNK, ChunkKey, TILE, cell_of, centre};
 
@@ -193,9 +195,46 @@ impl World2d {
         }
     }
 
-    /// Every site standing in the square from `lo` to `hi`.
+    /// Every site standing in the square from `lo` to `hi`: the places,
+    /// and the town's houses (topside-town "The houses"), each a site of
+    /// one building, the house, on its lot. No house stands on a lot a
+    /// bunker is on.
     pub fn sites_in(&mut self, r: Registries, lo: Vec2, hi: Vec2) -> Vec<Place> {
-        self.places.in_area(Self::makers(&self.ground, r), lo, hi)
+        let mut out = self.places.in_area(Self::makers(&self.ground, r), lo, hi);
+        out.extend(self.houses_in(lo, hi));
+        out
+    }
+
+    /// The town's houses standing in the square from `lo` to `hi`.
+    fn houses_in(&self, lo: Vec2, hi: Vec2) -> Vec<Place> {
+        let Some(town) = &self.town else {
+            return Vec::new();
+        };
+        town.lots
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.house && l.at.cmpge(lo).all() && l.at.cmplt(hi).all())
+            .filter(|(_, l)| !self.bunkers.iter().any(|c| l.covers(c.at)))
+            .map(|(i, l)| Place {
+                monument: "house".to_string(),
+                position: l.at.round(),
+                biome: String::new(),
+                rolled: MonumentDef {
+                    name: "house".to_string(),
+                    kind: "house".to_string(),
+                    members: vec![MonumentMember {
+                        structure: town.house_on(i),
+                        offset: Vec3::ZERO,
+                    }],
+                    loot_spots: Vec::new(),
+                    npc_spots: Vec::new(),
+                    gates: Vec::new(),
+                    props: Vec::new(),
+                    good_for: GoodFor::default(),
+                },
+                ground: l.size.length() / 2.0,
+            })
+            .collect()
     }
 
     /// The sites whose ground reaches into the square from `lo` to `hi`.
@@ -282,8 +321,10 @@ impl World2d {
     /// Every road tile in the square from `lo` to `hi` (inclusive tiles).
     fn road_tiles(&mut self, r: Registries, lo: Cell, hi: Cell) -> Vec<Cell> {
         let (a, b) = (centre(lo), centre(hi));
+        // The places only: the town's houses are on its streets.
         let sites: Vec<Place> = self
-            .sites_in(r, a - ROAD_REACH, b + ROAD_REACH)
+            .places
+            .in_area(Self::makers(&self.ground, r), a - ROAD_REACH, b + ROAD_REACH)
             .into_iter()
             .filter(|p| !p.rolled.members.is_empty())
             .collect();

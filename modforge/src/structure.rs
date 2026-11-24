@@ -579,6 +579,52 @@ pub fn validate(def: &StructureDef) -> Result<(), String> {
     Ok(())
 }
 
+/// A structure turned `quarters` quarter turns about its origin, each
+/// taking +z (south) to -x (west): its rooms and their openings, stairs,
+/// hatches, furniture and lights. Captured parts are left as they are.
+pub fn turned(def: &StructureDef, quarters: u32) -> StructureDef {
+    let mut out = def.clone();
+    for _ in 0..quarters % 4 {
+        let p = |v: Vec3| Vec3::new(-v.z, v.y, v.x);
+        let size = |v: Vec3| Vec3::new(v.z, v.y, v.x);
+        let side = |s: Side| match s {
+            Side::South => Side::West,
+            Side::West => Side::North,
+            Side::North => Side::East,
+            Side::East => Side::South,
+        };
+        for room in &mut out.rooms {
+            room.origin = p(room.origin);
+            room.interior = size(room.interior);
+            for o in &mut room.openings {
+                // An offset runs +x on north and south walls and +z on east
+                // and west: a turned east or west wall's runs the other way.
+                if matches!(o.side, Side::East | Side::West) {
+                    o.offset = -o.offset;
+                }
+                o.side = side(o.side);
+            }
+        }
+        for s in &mut out.stairs {
+            s.base = p(s.base);
+            s.side = side(s.side);
+        }
+        for h in &mut out.hatches {
+            h.min = (-(h.min.1 + h.size.1), h.min.0);
+            h.size = (h.size.1, h.size.0);
+            h.hinge = side(h.hinge);
+        }
+        for f in &mut out.furniture {
+            f.center = p(f.center);
+            f.size = size(f.size);
+        }
+        for l in &mut out.lights {
+            l.position = p(l.position);
+        }
+    }
+    out
+}
+
 /// Floor and landing slab thickness, step depth, and the most one
 /// step may rise: a comfortable climb, not a ladder (topside design.md
 /// "The bunker you start in"; building codes' rise of about 0.18 m and

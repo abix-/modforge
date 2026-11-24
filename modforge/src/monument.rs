@@ -24,7 +24,7 @@ use crate::structure::{
 };
 use crate::unknown::rng;
 
-const WALL: f32 = 0.2;
+pub(crate) const WALL: f32 = 0.2;
 /// Every doorway a standard door block wide (topside design.md "Built in 1
 /// m blocks, doors as blocks").
 const DOOR_WIDTH: f32 = crate::structure::DOOR_BLOCK;
@@ -648,7 +648,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
 /// Centre coordinates of rooms laid side by side with the given
 /// interior extents, two wall thicknesses apart, starting at 0 and
 /// advancing in `direction` (+1 east, -1 north).
-fn spaced(extents: &[f32], direction: f32) -> Vec<f32> {
+pub(crate) fn spaced(extents: &[f32], direction: f32) -> Vec<f32> {
     let mut out = Vec::with_capacity(extents.len());
     let mut cursor = 0.0;
     for (i, e) in extents.iter().enumerate() {
@@ -660,7 +660,7 @@ fn spaced(extents: &[f32], direction: f32) -> Vec<f32> {
     out
 }
 
-fn door(side: Side, offset: f32) -> Opening {
+pub(crate) fn door(side: Side, offset: f32) -> Opening {
     Opening {
         side,
         offset,
@@ -670,7 +670,7 @@ fn door(side: Side, offset: f32) -> Opening {
     }
 }
 
-fn window(side: Side, offset: f32) -> Opening {
+pub(crate) fn window(side: Side, offset: f32) -> Opening {
     Opening {
         side,
         offset,
