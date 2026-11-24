@@ -22,6 +22,7 @@ use patternsleuth::process::internal::read_image;
 use patternsleuth::scanner::Pattern;
 use patternsleuth::{PatternConfig, ScanResult};
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 // Scan only the executable .text section, so 16-byte runs of 0xff
 // (or other innocuous data) in .rdata/.data don't pass for function
@@ -39,6 +40,17 @@ pub fn inspect_file_function(path: &std::path::Path, rva: u32) -> Result<Vec<Str
     let start = image.base_address + u64::from(rva);
     let mut listing = Vec::new();
     let mut exceeded = false;
+    // Each import by its address, once: per library, the first of its
+    // names at that address, libraries in the order the image lists them.
+    let mut import_at: HashMap<u64, Vec<(&str, &str)>> = HashMap::new();
+    for (library, imports) in &image.imports {
+        for (name, address) in imports {
+            let named = import_at.entry(*address).or_default();
+            if named.last().is_none_or(|(l, _)| *l != library.as_str()) {
+                named.push((library.as_str(), name.as_str()));
+            }
+        }
+    }
     patternsleuth::disassemble::disassemble(&image, start, |instruction| {
         let at = instruction.ip();
         if image
@@ -55,10 +67,8 @@ pub fn inspect_file_function(path: &std::path::Path, rva: u32) -> Result<Vec<Str
         let mut line = format!("+0x{:X} {instruction}", at - image.base_address);
         if instruction.is_ip_rel_memory_operand() {
             let target = instruction.ip_rel_memory_address();
-            for (library, imports) in &image.imports {
-                if let Some((name, _)) = imports.iter().find(|(_, address)| **address == target) {
-                    line.push_str(&format!("  import {library}!{name}"));
-                }
+            for (library, name) in import_at.get(&target).into_iter().flatten() {
+                let _ = write!(line, "  import {library}!{name}");
             }
             if let Ok(bytes) = image.memory.range_from(target..) {
                 if let Some(prefix) = bytes.get(..8) {
