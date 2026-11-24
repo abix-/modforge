@@ -178,6 +178,16 @@ pub fn settlement_rung(
 }
 
 impl SurvivalStats {
+    /// Sleep rests by what one sleeps on (topside-town "Everything
+    /// works": "beds, couches and sleeping bags rest a person"; Project
+    /// Zomboid's beds): `comfort` of 1 rests at the full sleeping rate (a
+    /// bed), less gives back only that share of it. Called after `tick`
+    /// for someone asleep.
+    pub fn slept_on(&mut self, rates: SurvivalRates, comfort: f32, dt: f32) {
+        let lost = rates.sleep_per_sec * (1.0 - comfort.clamp(0.0, 1.0)) * dt;
+        self.rest = (self.rest - lost).max(0.0);
+    }
+
     /// Move every need for `dt` seconds under `condition`: hunger and
     /// thirst drain; rest drains awake and refills asleep; safety
     /// drains with a threat in sight and refills otherwise, faster at

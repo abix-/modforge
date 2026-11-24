@@ -227,6 +227,14 @@ pub fn kitchen(front: Vec2) -> Vec<(&'static str, Vec2)> {
         .collect()
 }
 
+/// Where the living room's couch stands, from the house's middle, turned
+/// to face `front` (topside-town "Everything works"). Claude's.
+pub fn couch(front: Vec2) -> Vec2 {
+    let q = quarters_for(front);
+    let p = room_at(1, 0) + Vec3::new(0.0, 0.0, -0.35 * ROWS[0]);
+    (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
+}
+
 /// Where the dining table's middle stands, from the house's middle,
 /// turned to face `front` (a candle on it, topside-town "Everything
 /// works").
