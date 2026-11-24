@@ -28,6 +28,7 @@ pub mod duel;
 pub mod edge;
 pub mod envelope;
 pub mod exposure;
+pub mod broadcast;
 pub mod faction;
 pub mod fire;
 pub mod fluid;

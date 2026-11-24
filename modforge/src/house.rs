@@ -291,6 +291,23 @@ pub fn smoke_detector(front: Vec2) -> Vec2 {
     (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x))
 }
 
+/// Where a house's TV, radio and phone stand (topside-town "Everything
+/// works": "phones, radios, TVs"): the TV and the radio against the
+/// living room's back wall, the phone in the hall by the front door;
+/// and its mailbox, at the street, 2 m past the driveway's side. Each
+/// from the house's middle, turned to face `front`. Claude's.
+pub fn den(front: Vec2) -> [(&'static str, Vec2); 4] {
+    let q = quarters_for(front);
+    let turn = |p: Vec3| (0..q).fold(Vec2::new(p.x, p.z), |p, _| Vec2::new(-p.y, p.x));
+    let living = room_at(1, 0);
+    [
+        ("tv", turn(living + Vec3::new(-0.2 * COLUMNS[1], 0.0, -0.4 * ROWS[0]))),
+        ("radio", turn(living + Vec3::new(0.2 * COLUMNS[1], 0.0, -0.4 * ROWS[0]))),
+        ("phone", turn(room_at(2, 0) + Vec3::new(0.35 * COLUMNS[2], 0.0, 0.3 * ROWS[0]))),
+        ("mailbox", turn(room_at(1, 0) + Vec3::new(0.0, 0.0, 0.5 * ROWS[0] + 6.0))),
+    ]
+}
+
 /// Where a house's safe stands (topside-town "Everything works":
 /// "safes"): against the first bedroom's back wall, between its closet
 /// and its dresser, turned to face `front`. Claude's.
