@@ -37,6 +37,10 @@ pub struct PlanDef {
     /// The things used in it by room name: the thing's name and where it
     /// stands as a share of the room, in the first room of that name.
     pub things: &'static [(&'static str, &'static str, [f32; 2])],
+    /// The things standing outside it (a farm's fields, a gas station's
+    /// pumps): the thing's name and where, metres from the plan's middle,
+    /// +z its front.
+    pub outside: &'static [(&'static str, [f32; 2])],
     pub walls: &'static [Rgb],
     pub floor: Rgb,
     pub furniture_color: Rgb,
@@ -144,6 +148,7 @@ pub fn things_of(def: &PlanDef, front: Vec2) -> Vec<(&'static str, Vec2)> {
             let p = room_at(def, c, r) + Vec3::new((fx * w).clamp(-(w / 2.0 - 0.5), w / 2.0 - 0.5), 0.0, (fz * l).clamp(-(l / 2.0 - 0.5), l / 2.0 - 0.5));
             Some((thing, turn(p, front)))
         })
+        .chain(def.outside.iter().map(|&(thing, [x, z])| (thing, turn(Vec3::new(x, 0.0, z), front))))
         .collect()
 }
 
@@ -161,6 +166,7 @@ mod tests {
         exits: &[((0, 0), Side::South, 2.0)],
         furniture: &[("floor", [0.0, 0.0], [4.0, 1.5, 0.8])],
         things: &[("register", "floor", [0.3, 0.3])],
+        outside: &[("sign", [0.0, 6.0])],
         walls: &[[0.8, 0.8, 0.7]],
         floor: [0.5, 0.5, 0.5],
         furniture_color: [0.4, 0.3, 0.2],
@@ -172,6 +178,6 @@ mod tests {
         let built = build(&SHOP, Vec2::new(0.0, 1.0), 7);
         assert_eq!(built.rooms.len(), 4);
         assert!(validate(&built).is_ok());
-        assert_eq!(things_of(&SHOP, Vec2::new(0.0, 1.0)).len(), 1);
+        assert_eq!(things_of(&SHOP, Vec2::new(0.0, 1.0)).len(), 2);
     }
 }
