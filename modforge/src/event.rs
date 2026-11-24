@@ -436,8 +436,18 @@ pub fn layer(events: &EventsDef, base: &EventDef, budget: f32, night: bool, seed
         }
     }
     let spare = (left.max(0.0) / base.cost.max(1) as f32).min(2.0);
-    let size = (1.0 + spare) * twists.iter().map(|t| t.size).product::<f32>();
-    let mut does: Vec<Does> = base.does.iter().chain(twists.iter().flat_map(|t| t.adds.iter())).cloned().collect();
+    // What the twists add, size and say, in one pass over them.
+    let mut does: Vec<Does> = base.does.clone();
+    let (mut sized, mut twice, mut unforetold) = (1.0f32, false, false);
+    let mut names = Vec::with_capacity(twists.len());
+    for t in &twists {
+        does.extend(t.adds.iter().cloned());
+        sized *= t.size;
+        twice |= t.twice;
+        unforetold |= t.unforetold;
+        names.push(t.name.clone());
+    }
+    let size = (1.0 + spare) * sized;
     for (n, d) in does.iter_mut().enumerate() {
         let salt = 0xE7E7_0400 + n as u64 * 8;
         let counted = |(lo, hi): (u32, u32)| {
@@ -467,10 +477,10 @@ pub fn layer(events: &EventsDef, base: &EventDef, budget: f32, night: bool, seed
     }
     let at = |k: u64| base.places.get(roll(seed, 0xE7E7_0500 + k, base.places.len() as u64) as usize).copied().unwrap_or(Place::Town);
     let mut places = vec![at(0)];
-    if twists.iter().any(|t| t.twice) {
+    if twice {
         places.push(at(1));
     }
-    let warning = if twists.iter().any(|t| t.unforetold) || base.warnings.is_empty() {
+    let warning = if unforetold || base.warnings.is_empty() {
         Warning::None
     } else {
         base.warnings[roll(seed, 0xE7E7_0600, base.warnings.len() as u64) as usize]
@@ -480,7 +490,7 @@ pub fn layer(events: &EventsDef, base: &EventDef, budget: f32, night: bool, seed
         mood: base.mood,
         does,
         places,
-        twists: twists.iter().map(|t| t.name.clone()).collect(),
+        twists: names,
         warning,
         seed,
         voted_down: None,
