@@ -97,6 +97,7 @@ pub mod shutdown;
 pub mod snapshots;
 pub mod statetree;
 pub mod storm;
+pub mod event;
 pub mod storyteller;
 pub mod structure;
 pub mod studs;
