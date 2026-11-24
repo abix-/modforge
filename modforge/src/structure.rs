@@ -354,24 +354,22 @@ pub fn group_nearby(parts: &[PartDef], radius: f32, min: usize, max: usize) -> V
             continue;
         }
         let n = members.len() as f32;
-        let cx = members.iter().map(|&j| parts[j].offset.x).sum::<f32>() / n;
-        let cz = members.iter().map(|&j| parts[j].offset.z).sum::<f32>() / n;
-        let base_y = members
-            .iter()
-            .map(|&j| parts[j].offset.y)
-            .fold(f32::MAX, f32::min);
-        out.push(
-            members
-                .iter()
-                .map(|&j| PartDef {
-                    offset: parts[j].offset - Vec3::new(cx, base_y, cz),
-                    ..parts[j].clone()
-                })
-                .collect(),
-        );
+        // Their middle on the ground and their lowest point, in one pass.
+        let (sx, sz, base_y) = members.iter().fold((0.0f32, 0.0f32, f32::MAX), |(sx, sz, y), &j| {
+            let at = parts[j].offset;
+            (sx + at.x, sz + at.z, y.min(at.y))
+        });
+        let (cx, cz) = (sx / n, sz / n);
+        // Each moved to the group's own frame, and taken.
+        let mut group = Vec::with_capacity(members.len());
         for &j in &members {
+            group.push(PartDef {
+                offset: parts[j].offset - Vec3::new(cx, base_y, cz),
+                ..parts[j].clone()
+            });
             taken[j] = true;
         }
+        out.push(group);
     }
     out
 }
