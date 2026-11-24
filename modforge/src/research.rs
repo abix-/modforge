@@ -497,8 +497,15 @@ pub fn decode_imm_at_call_site(
     lookback: u32,
 ) -> Result<BTreeMap<i64, usize>> {
     anyhow::ensure!(matches!(imm_size, 1 | 4), "imm_size must be 1 or 4");
-    let sig = format!("e8 X0x{target_fn:x}");
-    let calls = scan_all(game, &sig, 1, 5, 16, 4096)?;
+    // The call's pattern, on the stack: "e8 X0x" and at most 16 hex digits.
+    let mut buf = [0u8; 32];
+    let len = {
+        let mut out = std::io::Cursor::new(&mut buf[..]);
+        std::io::Write::write_fmt(&mut out, format_args!("e8 X0x{target_fn:x}"))?;
+        out.position() as usize
+    };
+    let sig = std::str::from_utf8(&buf[..len])?;
+    let calls = scan_all(game, sig, 1, 5, 16, 4096)?;
     let opcode_bytes = parse_hex_bytes(imm_opcode);
     let mut hist: BTreeMap<i64, usize> = BTreeMap::new();
     for c in calls {
