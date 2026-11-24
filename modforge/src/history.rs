@@ -11,11 +11,13 @@
 
 use crate::monument::Roll;
 
-/// One person in the history: their id, their group (faction), and the
-/// place they start the week at (their home, an index into the places).
+/// One person in the history: their id, their kind (a raider, a wolf), their
+/// group (faction), and the place they start the week at (their home, an
+/// index into the places).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Figure {
     pub id: u64,
+    pub kind: String,
     pub group: Option<String>,
     pub home: usize,
 }
@@ -35,17 +37,19 @@ pub enum Event {
 
 /// Each day, of 1000: a living person goes to another place.
 const MOVES: u64 = 250;
-/// Two hostile people at one place fight.
-const FIGHTS: u64 = 300;
 /// A fight ends with one dead.
 const KILLS: u64 = 400;
 /// A person at a place not their home takes something.
 const TAKES: u64 = 350;
 
 /// Rolls `days` days of history over the figures and `places` places, the
-/// same events every time for a seed. `hostile` says whether two groups
-/// fight on sight. Answers every event in the order it happened.
-pub fn roll(figures: &[Figure], places: usize, days: u32, hostile: &dyn Fn(Option<&str>, Option<&str>) -> bool, seed: u64) -> Vec<Event> {
+/// same events every time for a seed. `fights` gives, of 1000, the chance
+/// that two figures meeting at a place come to blows (operator,
+/// 2026-11-23: raiders are hostile by definition, scavengers and wolves
+/// might be, "all of those is a chance for hostility to occur... then we
+/// roll it to see what happens"). Answers every event in the order it
+/// happened.
+pub fn roll(figures: &[Figure], places: usize, days: u32, fights: &dyn Fn(&Figure, &Figure) -> u64, seed: u64) -> Vec<Event> {
     let mut roll = Roll::new(seed);
     let mut at: Vec<usize> = figures.iter().map(|f| f.home).collect();
     let mut alive = vec![true; figures.len()];
@@ -69,7 +73,7 @@ pub fn roll(figures: &[Figure], places: usize, days: u32, hostile: &dyn Fn(Optio
                     continue;
                 }
                 let (a, b) = (&figures[i], &figures[j]);
-                if !hostile(a.group.as_deref(), b.group.as_deref()) || !roll.chance(FIGHTS) {
+                if !roll.chance(fights(a, b)) {
                     continue;
                 }
                 if roll.chance(KILLS) {
