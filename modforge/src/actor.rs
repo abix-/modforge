@@ -58,6 +58,10 @@ pub struct ActorDef {
     pub sight: f32,
     /// How close the actor wants to be before attacking.
     pub reach: f32,
+    /// What it carries at spawn besides its weapon: each item and how
+    /// many (a gunman's shells).
+    #[serde(default)]
+    pub carries: Vec<(String, u32)>,
 }
 
 impl ActorDef {
@@ -610,6 +614,7 @@ mod tests {
             weapon_layers: Vec::new(),
             sight: 20.0,
             reach: 1.5,
+            carries: Vec::new(),
         }
     }
 

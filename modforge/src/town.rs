@@ -62,6 +62,19 @@ pub struct TownDef {
     /// bunker is under it; a house with none is `house`.
     pub pieces: Vec<RoomPiece>,
     pub briefs: Vec<Brief>,
+    /// A house of this tier or above is boarded up and held by armed
+    /// people (topside-town "Tiers": "if it's a tier 6 enemy house, maybe
+    /// it's all boarded up... and there's people with guns inside"); none
+    /// for a town with no such houses.
+    pub boarded: Option<Boarded>,
+}
+
+/// A boarded house: the least tier boarded, and who holds it, by actor
+/// def.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Boarded {
+    pub tier: u32,
+    pub who: String,
 }
 
 /// Which part of the town a lot or street is in.
@@ -123,6 +136,7 @@ pub struct Town {
     usual_tiers: Vec<(String, u32)>,
     pieces: Vec<RoomPiece>,
     briefs: Vec<Brief>,
+    boarded: Option<Boarded>,
 }
 
 impl Town {
@@ -339,6 +353,7 @@ impl Town {
             usual_tiers: def.usual_tiers.clone(),
             pieces: def.pieces.clone(),
             briefs: def.briefs.clone(),
+            boarded: def.boarded.clone(),
         };
         town.street_tiles = town.lay_streets();
         // Each place on the next free lot of its part: main street's from
@@ -374,6 +389,13 @@ impl Town {
         let name = if self.lots[i].house { "house" } else { self.places.iter().find(|(lot, _)| *lot == i).map_or("", |(_, p)| p.name.as_str()) };
         let usual = self.usual_tiers.iter().find(|(n, _)| n == name).map_or(1, |(_, t)| *t);
         crate::tier::roll(usual, self.tiers, tile_hash(self.seed, (i as i32, 2), TOWN_SALT + 0x71))
+    }
+
+    /// Who holds the house on lot `i` when it is boarded up (`boarded`):
+    /// a house at or above the boarded tier, not over a bunker.
+    pub fn boarded_by(&self, i: usize) -> Option<&str> {
+        let b = self.boarded.as_ref()?;
+        (self.lots[i].house && !self.over.contains(&i) && self.tier_of(i) >= b.tier).then_some(b.who.as_str())
     }
 
     /// The modifiers on what stands on lot `i` (topside-town "Tiers":

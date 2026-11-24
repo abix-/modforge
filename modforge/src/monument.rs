@@ -929,6 +929,7 @@ impl MonumentRegistry {
                     + first.origin
                     + Vec3::new(0.0, 0.0, first.interior.z / 2.0 + 2.0),
                 danger: def.danger,
+                who: None,
             });
             if let (true, Some(wall)) = (gated_here, gate_wall) {
                 gates.push(Gate {

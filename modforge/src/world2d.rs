@@ -218,10 +218,15 @@ impl World2d {
             .filter(|(_, l)| l.at.cmpge(lo).all() && l.at.cmplt(hi).all())
             // A house, or a place of the town (plan.rs) on its lot.
             .filter_map(|(i, l)| {
-                let structure = if l.house { town.house_on(i) } else { town.place_on(i)? };
-                Some((l, structure, town.tier_of(i), town.modifiers_of(i)))
+                let mut structure = if l.house { town.house_on(i) } else { town.place_on(i)? };
+                // A boarded house's windows are boarded (town.rs `boarded`).
+                let held_by = town.boarded_by(i);
+                if held_by.is_some() {
+                    crate::structure::board_up(&mut structure);
+                }
+                Some((l, structure, town.tier_of(i), town.modifiers_of(i), held_by))
             })
-            .map(|(l, structure, tier, modifiers)| {
+            .map(|(l, structure, tier, modifiers, held_by)| {
                 // Its tier (topside-town "Tiers") in what is found inside:
                 // a box a tier, filled at the tier's danger, and from tier
                 // 3 up people at it, one fewer than the tier past 2, each
@@ -231,7 +236,14 @@ impl World2d {
                 let rooms: Vec<Vec3> = structure.rooms.iter().filter(|r| r.origin.y.abs() < 0.5).map(|r| Vec3::new(r.origin.x, 0.0, r.origin.z)).collect();
                 let at = |k: usize| rooms.get(k % rooms.len().max(1)).copied().unwrap_or(Vec3::ZERO);
                 let loot_spots = (0..boxes as usize).map(|k| LootSpot { position: at(k) + Vec3::new(0.6, 0.0, 0.6), danger: loot }).collect();
-                let npc_spots = (0..people as usize).map(|k| NpcSpot { position: at(k + 1), danger: hard }).collect();
+                // A boarded house's people are those who hold it.
+                let npc_spots = (0..people as usize)
+                    .map(|k| NpcSpot {
+                        position: at(k + 1),
+                        danger: hard,
+                        who: held_by.map(str::to_string),
+                    })
+                    .collect();
                 // Named by its modifiers, as Diablo names a rare.
                 let name = modifiers.iter().map(|m| m.word()).chain([structure.name.as_str()]).collect::<Vec<_>>().join(" ");
                 (l, structure, name, loot_spots, npc_spots)

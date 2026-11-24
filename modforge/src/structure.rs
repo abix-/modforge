@@ -1398,6 +1398,17 @@ pub struct LootSpot {
 pub struct NpcSpot {
     pub position: Vec3,
     pub danger: u32,
+    /// Who stands there, by actor def; none to pick by `danger`.
+    pub who: Option<String>,
+}
+
+/// Boards up every window of a building: each gap in a wall with a sill
+/// and no door is filled (topside-town "Tiers": "it's all boarded up and
+/// it's all protected from all of the windows with boards").
+pub fn board_up(structure: &mut StructureDef) {
+    for room in &mut structure.rooms {
+        room.openings.retain(|o| o.door || o.sill <= 0.0);
+    }
 }
 
 /// A gate: a locked area requiring progression to access. The gate
@@ -2621,6 +2632,7 @@ mod tests {
             npc_spots: vec![NpcSpot {
                 position: Vec3::new(7.0, 0.0, 3.0),
                 danger: 1,
+                who: None,
             }],
             gates: vec![],
             props: vec![],
