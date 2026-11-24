@@ -270,9 +270,47 @@ pub struct Armor {
 #[derive(Default)]
 pub struct ItemRegistry {
     defs: Vec<ItemDef>,
+    /// The item categories (topside Decisions 2026-11-23, "There's items
+    /// and item categories"; Minecraft's item tags): each a name and the
+    /// items in it, an item in as many as it fits.
+    categories: Vec<(String, Vec<String>)>,
 }
 
 impl ItemRegistry {
+    /// Puts `items` in the category `name` (made on first use), as
+    /// Minecraft's tags list their items.
+    pub fn categorize(&mut self, name: &str, items: &[&str]) {
+        let at = match self.categories.iter().position(|(n, _)| n == name) {
+            Some(at) => at,
+            None => {
+                self.categories.push((name.to_string(), Vec::new()));
+                self.categories.len() - 1
+            }
+        };
+        for item in items {
+            if !self.categories[at].1.iter().any(|i| i == item) {
+                self.categories[at].1.push(item.to_string());
+            }
+        }
+    }
+
+    /// Whether `item` answers `wanted`: it is that item, or it is in the
+    /// category of that name.
+    pub fn answers(&self, item: &str, wanted: &str) -> bool {
+        item == wanted || self.categories.iter().any(|(n, items)| n == wanted && items.iter().any(|i| i == item))
+    }
+
+    /// The categories `item` is in.
+    pub fn categories_of(&self, item: &str) -> Vec<&str> {
+        self.categories.iter().filter(|(_, items)| items.iter().any(|i| i == item)).map(|(n, _)| n.as_str()).collect()
+    }
+
+    /// How many of what answers `wanted` (an item or a category) `held`
+    /// holds.
+    pub fn count_in(&self, held: &Inventory, wanted: &str) -> u32 {
+        held.slots.iter().flatten().filter(|s| self.answers(&s.item, wanted)).map(|s| s.count).sum()
+    }
+
     /// Every def, in the order registered.
     pub fn all(&self) -> &[ItemDef] {
         &self.defs

@@ -92,12 +92,14 @@ impl RecipeRegistry {
     }
 }
 
-/// Check whether an inventory has all inputs for a recipe.
-pub fn can_craft(recipe: &RecipeDef, inventory: &Inventory) -> bool {
+/// Check whether an inventory has all inputs for a recipe. An input names
+/// one item or a category of them (`ItemRegistry::answers`: any fiber,
+/// or one kind of it).
+pub fn can_craft(recipe: &RecipeDef, inventory: &Inventory, items: &ItemRegistry) -> bool {
     recipe
         .inputs
         .iter()
-        .all(|(id, count)| inventory.count_of(id) >= *count)
+        .all(|(id, count)| items.count_in(inventory, id) >= *count)
 }
 
 /// Execute a recipe: remove inputs from inventory, create the output
@@ -113,7 +115,7 @@ pub fn craft(
     now: f32,
     salt: u64,
 ) -> Option<ItemStack> {
-    if !can_craft(recipe, inventory) {
+    if !can_craft(recipe, inventory, items) {
         return None;
     }
     // A recipe whose layers do not fit its item makes nothing and takes
@@ -136,7 +138,7 @@ pub fn craft(
                 break;
             }
             if let Some(stack) = &inventory.slots[slot] {
-                if stack.item == *id {
+                if items.answers(&stack.item, id) {
                     let take = remaining.min(stack.count);
                     inventory.remove(slot, take);
                     remaining -= take;
@@ -247,12 +249,12 @@ mod tests {
 
     #[test]
     fn can_craft_checks_inputs() {
-        let (_, recipes, inv) = setup();
+        let (items, recipes, inv) = setup();
         let recipe = recipes.def("craft knife").unwrap();
-        assert!(can_craft(recipe, &inv));
+        assert!(can_craft(recipe, &inv, &items));
 
         let empty = Inventory::new(5);
-        assert!(!can_craft(recipe, &empty));
+        assert!(!can_craft(recipe, &empty, &items));
     }
 
     #[test]
