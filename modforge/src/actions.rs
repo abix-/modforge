@@ -76,6 +76,9 @@ pub enum Action {
     Respawn,
     /// The dodge roll (topside combat.md "The roll").
     Roll,
+    /// A jump, from standing on something (topside todo Secrets 2: places
+    /// "reached only by jumping").
+    Jump,
     /// The map: the corner minimap to a full screen overlay and back
     /// (topside authority.md "Presentation", Diablo 2's automap).
     Map,
@@ -137,6 +140,7 @@ pub enum Key {
     MouseRight,
     Enter,
     Space,
+    C,
 }
 
 /// What a key is bound to. Held keys repeat their action every tick
@@ -193,6 +197,8 @@ impl Bindings {
                 ),
                 (Key::Enter, Tapped(Respawn)),
                 (Key::Space, Tapped(Roll)),
+                // Space is the roll's, so the jump is C (Claude's key).
+                (Key::C, Tapped(Jump)),
                 (Key::M, Tapped(Map)),
             ],
         }
