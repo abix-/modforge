@@ -91,6 +91,11 @@ pub struct Mesh {
     pub verts: Vec<Vert>,
     #[serde(default)]
     pub morphs: Vec<Morph>,
+    /// Its reference pose and each bone's inverse rest affine, worked out
+    /// on first use and kept (operator 2026-11-23: "we don't need to
+    /// recalculate the same mathematical thing over and over again").
+    #[serde(skip)]
+    pub rest: OnceLock<(Vec<Xform>, Vec<glam::DAffine3>)>,
 }
 
 enum State {
@@ -294,6 +299,26 @@ impl Mesh {
 
     /// Each bone's transform in component space, reference pose.
     pub fn ref_pose(&self) -> Vec<Xform> {
+        self.rest_once().0.clone()
+    }
+
+    /// Each bone's rest affine inverted (rest space to bone space), kept.
+    pub fn rest_inverse(&self) -> &[glam::DAffine3] {
+        &self.rest_once().1
+    }
+
+    fn rest_once(&self) -> &(Vec<Xform>, Vec<glam::DAffine3>) {
+        self.rest.get_or_init(|| {
+            let pose = self.ref_pose_worked();
+            let inv = pose
+                .iter()
+                .map(|r| glam::DAffine3::from_scale_rotation_translation(r.scale, r.rot, r.pos).inverse())
+                .collect();
+            (pose, inv)
+        })
+    }
+
+    fn ref_pose_worked(&self) -> Vec<Xform> {
         let mut out: Vec<Xform> = Vec::with_capacity(self.bones.len());
         for b in &self.bones {
             let local = Xform {
@@ -341,7 +366,7 @@ impl Mesh {
         morphs: &[(&str, f64)],
         which: &[usize],
     ) -> Vec<DVec3> {
-        let rest = self.ref_pose();
+        let (rest, rest_inv) = self.rest_once();
         // Only the vertices asked for are moved by the morphs, and each
         // bone's skinning (rest to pose) is one affine map, made once per
         // call (the same sum as at.point(rest.inverse_point(p)) per
@@ -370,9 +395,8 @@ impl Mesh {
         let mut skin: Vec<Option<glam::DAffine3>> = vec![None; rest.len()];
         let mut skin_of = |b: usize| -> glam::DAffine3 {
             *skin[b].get_or_insert_with(|| {
-                let r = rest[b];
-                let at = pose.get(b).copied().flatten().unwrap_or(r);
-                affine(&at) * affine(&r).inverse()
+                let at = pose.get(b).copied().flatten().unwrap_or(rest[b]);
+                affine(&at) * rest_inv[b]
             })
         };
         which
@@ -585,6 +609,7 @@ mod tests {
             sockets: Vec::new(),
             verts,
             morphs: Vec::new(),
+            rest: OnceLock::new(),
         }
     }
 
