@@ -245,9 +245,13 @@ pub fn sequence_at(montage: &UObject, position: f32) -> Option<(&'static UObject
     let all = segments(montage)?;
     let last = all.len().saturating_sub(1);
     for (i, s) in all.into_iter().enumerate() {
-        // The montage's very end is the last segment's last frame.
+        // The montage's very end is the last segment's last frame. A
+        // montage can report a length a float step past its last segment,
+        // so the last segment takes the montage's end within 1 ms, as
+        // position_of takes a sample time.
         let end = s.start + s.len();
-        if position < s.start || position > end || (position == end && i != last) {
+        let past = if i == last { end + 1e-3 } else { end };
+        if position < s.start || position > past || (position == end && i != last) {
             continue;
         }
         let span = s.anim_end - s.anim_start;
